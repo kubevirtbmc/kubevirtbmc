@@ -201,7 +201,8 @@ make deploy
 make deploy IMG=<some-registry>/virtbmc-controller:<tag>
 ```
 
-> [!NOTE] If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as admin.
+> [!NOTE]
+> If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as admin.
 
 ### Interact with Virtual BMCs
 
