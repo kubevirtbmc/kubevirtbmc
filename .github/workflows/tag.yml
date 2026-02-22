@@ -9,7 +9,7 @@ jobs:
   build-tag:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       REPO: starbops
       MANAGER: virtbmc-controller
@@ -57,3 +57,14 @@ jobs:
         push: true
         tags: ${{ env.REPO }}/${{ env.AGENT }}:${{ env.VERSION }}
         labels: ${{ steps.meta.outputs.labels }}
+    - name: Generate install manifest YAML
+      run: |
+        make generate-install-manifest IMG=${{ env.REPO }}/${{ env.MANAGER }}:${{ env.VERSION }}
+
+    - name: Create Release and upload install manifest
+      uses: softprops/action-gh-release@v2
+      with:
+        files: kubevirtbmc-install.yaml
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

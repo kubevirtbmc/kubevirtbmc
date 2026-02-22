@@ -211,6 +211,15 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+INSTALL_MANIFEST ?= kubevirtbmc-install.yaml
+.PHONY: generate-install-manifest
+generate-install-manifest: manifests kustomize
+	@echo "Generating install manifest with image: $(IMG)"
+	@mkdir -p $(dir $(INSTALL_MANIFEST))
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default > $(INSTALL_MANIFEST)
+	@echo "Generated $(INSTALL_MANIFEST)"
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to
