@@ -200,6 +200,12 @@ rules:
   - update
   - patch
 - apiGroups:
+  - subresources.kubevirt.io
+  resources:
+  - virtualmachines/restart
+  verbs:
+  - update
+- apiGroups:
   - kubevirt.io
   resources:
   - virtualmachineinstances

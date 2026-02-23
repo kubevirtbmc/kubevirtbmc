@@ -297,8 +297,14 @@ func (m *VirtualMachineResourceManager) PowerOff() error {
 }
 
 func (m *VirtualMachineResourceManager) PowerCycle() error {
-	return m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
-		Delete(m.ctx, m.name, metav1.DeleteOptions{})
+	isUp, err := m.GetPowerStatus()
+	if err != nil {
+		return err
+	}
+	if !isUp {
+		return m.PowerOn()
+	}
+	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
 }
 
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
@@ -588,22 +587,22 @@ func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 
 func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 	testCases := []struct {
-		name        string
-		vm          *kubevirtv1.VirtualMachine
-		vmi         *kubevirtv1.VirtualMachineInstance
-		shouldError bool
+		name       string
+		vm         *kubevirtv1.VirtualMachine
+		vmi        *kubevirtv1.VirtualMachineInstance
+		shouldFail bool
 	}{
 		{
-			name:        "Power cycle a running virtual machine should delete its virtual machine instance",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
-			vmi:         builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
-			shouldError: false,
+			name:       "Power cycle a running virtual machine should trigger VM restart",
+			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			vmi:        builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			shouldFail: false,
 		},
 		{
-			name:        "Power cycle a non-running virtual machine should error",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
-			vmi:         nil,
-			shouldError: true,
+			name:       "Power cycle a halted virtual machine should trigger VM start via PowerOn",
+			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			vmi:        nil,
+			shouldFail: false,
 		},
 	}
 
@@ -623,16 +622,22 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 			}
 
 			err := vmrm.PowerCycle()
-			if tc.shouldError {
+			if tc.shouldFail {
 				require.Error(t, err)
 				return
 			}
-
 			require.NoError(t, err)
 
-			_, err = fakeVirtClient.KubevirtV1().VirtualMachineInstances(testNamespace).Get(context.TODO(), testVMName, metav1.GetOptions{})
-			require.Error(t, err)
-			require.True(t, apierrors.IsNotFound(err))
+			vm, err := fakeVirtClient.KubevirtV1().VirtualMachines(testNamespace).Get(context.TODO(), testVMName, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.NotNil(t, vm)
+
+			if tc.vmi != nil {
+				require.Equal(t, testVMName, vm.Name)
+			} else {
+				require.NotNil(t, vm.Spec.Running)
+				require.True(t, *vm.Spec.Running)
+			}
 		})
 	}
 }
