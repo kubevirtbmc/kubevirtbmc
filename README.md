@@ -1,5 +1,13 @@
 # KubeVirtBMC
 
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/images/kubevirtbmc_logo.png"/>
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/images/kubevirtbmc_logo_transparent.png"/>
+    <img src="docs/assets/images/kubevirtbmc_logo_transparent.png" alt="KubeVirtBMC" width="400"/>
+  </picture>
+</div>
+
 [![main build and publish workflow](https://github.com/starbops/kubevirtbmc/actions/workflows/main.yml/badge.svg)](https://github.com/starbops/kubevirtbmc/actions/workflows/main.yml)
 [![release](https://img.shields.io/github/v/release/starbops/kubevirtbmc)](https://github.com/starbops/kubevirtbmc/releases)
 
