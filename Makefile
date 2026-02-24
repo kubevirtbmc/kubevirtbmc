@@ -121,15 +121,17 @@ golangci-lint:
 
 .PHONY: e2e-setup
 e2e-setup: kind ## Setup end-to-end test environment.
-	$(KIND) create cluster --name kvbmc-e2e --config test/e2e/kind-config.yaml --image=kindest/node:$(KIND_K8S_VERSION)
+	@$(KIND) get clusters 2>/dev/null | grep -q kvbmc-e2e || \
+		$(KIND) create cluster --name kvbmc-e2e --config test/kind-config.yaml --image=kindest/node:$(KIND_K8S_VERSION)
 
 .PHONY: e2e-teardown
 e2e-teardown: kind ## Teardown end-to-end test environment.
 	$(KIND) delete cluster --name kvbmc-e2e
 
 .PHONY: e2e-test
-e2e-test: generate fmt vet kind ## Run end-to-end tests.
-	go test -v ./test/...
+e2e-test: generate fmt vet kind ## Run end-to-end tests (controller first, then agent: IPMI, Redfish, Virtual Media).
+	go test -v ./test/virtbmc-controller/...
+	go test -v ./test/virtbmc-agent/...
 
 .PHONY: local-e2e-test
 local-e2e-test: e2e-setup e2e-test e2e-teardown ## Run end-to-end tests locally.

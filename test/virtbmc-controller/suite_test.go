@@ -1,7 +1,6 @@
-package e2e
+package virtbmccontroller
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,9 +10,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextcs "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -32,6 +29,7 @@ const (
 )
 
 var (
+	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == "true"
 	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
 	isCertManagerAlreadyInstalled = false
 
@@ -53,14 +51,10 @@ var (
 	k8sClient client.Client
 )
 
-// TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
-// temporary environment to validate project changes with the the purposed to be used in CI jobs.
-// The default setup requires Kind, builds/loads the Manager Docker image locally, and installs
-// CertManager.
-func TestE2E(t *testing.T) {
+func TestVirtBMCController(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting KubeVirtBMC end-to-end test suite\n")
-	RunSpecs(t, "E2E Suite")
+	_, _ = fmt.Fprintf(GinkgoWriter, "Starting KubeVirtBMC controller E2E test suite\n")
+	RunSpecs(t, "VirtBMC Controller E2E Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -80,25 +74,15 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(config, client.Options{Scheme: scheme.Scheme})
 	Expect(err).ToNot(HaveOccurred())
 
-	By("creating the VirtualMachine CRD")
-	err = util.CreateOrUpdateCRD(crdClient, "../../config/kubevirt-crd/kubevirt.io_virtualmachines.yaml")
-	Expect(err).ToNot(HaveOccurred())
-	Eventually(func() bool {
-		crd, err := crdClient.ApiextensionsV1().CustomResourceDefinitions().Get(
-			context.TODO(),
-			"virtualmachines.kubevirt.io",
-			metav1.GetOptions{},
-		)
-		if err != nil {
-			return false
+	if !skipKubeVirtInstall {
+		By("installing KubeVirt (before cert-managerso VMs can run in e2e")
+		if !util.IsKubeVirtInstalled() {
+			err = util.InstallKubeVirt()
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: KubeVirt is already installed. Skipping installation...\n")
 		}
-		for _, cond := range crd.Status.Conditions {
-			if cond.Type == apiextv1.Established && cond.Status == apiextv1.ConditionTrue {
-				return true
-			}
-		}
-		return false
-	}, timeout, interval).Should(BeTrue())
+	}
 
 	if !skipCertManagerInstall {
 		By("checking if cert-manager is installed already")
@@ -119,20 +103,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	var err error
-
-	By("undeploying the controller-manager")
-	cmd := exec.Command("make", "undeploy")
-	_, _ = util.Run(cmd)
-
-	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling cert-manager...\n")
-		util.UninstallCertManager()
-	}
-
-	By("deleting VirtualMachine CRD")
-	err = util.DeleteCRD(crdClient, "../../config/kubevirt-crd/kubevirt.io_virtualmachines.yaml")
-	Expect(err).ToNot(HaveOccurred())
+	// Do not undeploy or delete anything so the agent e2e test (run in a separate process) can use the same cluster state.
 })
 
 func getClientConfig() (*rest.Config, error) {

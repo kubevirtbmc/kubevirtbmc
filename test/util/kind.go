@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 )
@@ -12,6 +13,9 @@ func LoadImageToKindClusterWithName(names ...string) error {
 	}
 	kindOptions := append([]string{"load", "docker-image", "--name", cluster}, names...)
 	cmd := exec.Command("kind", kindOptions...)
-	_, err := Run(cmd)
-	return err
+	out, err := Run(cmd)
+	if err != nil {
+		return fmt.Errorf("kind load docker-image failed: %w\noutput: %s", err, out)
+	}
+	return nil
 }

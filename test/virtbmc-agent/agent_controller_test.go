@@ -1,0 +1,307 @@
+package virtbmcagent
+
+import (
+	"context"
+	"strings"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"k8s.io/client-go/kubernetes"
+
+	"kubevirt.io/kubevirtbmc/test/util"
+)
+
+// Agent e2e tests run in order: IPMI first, then Redfish, then Virtual Media.
+
+var _ = Describe("Agent e2e", Ordered, func() {
+	var (
+		env       *agentTestEnv
+		ctx       context.Context
+		ns        string
+		authToken string
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+		ns = agentNamespace
+		var err error
+		env, err = ensureAgentTestEnv(ctx, ns, k8sClient)
+		Expect(err).NotTo(HaveOccurred())
+
+		clientset, err := kubernetes.NewForConfig(config)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(CreateIPMIToolPod(ctx, clientset, ns)).To(Succeed())
+		Expect(CreateRedfishClientPod(ctx, clientset, ns)).To(Succeed())
+
+		authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(authToken).NotTo(BeEmpty())
+	})
+
+	ipmiReq := func(args ...string) IPMIRequest {
+		return IPMIRequest{
+			ServiceHost: env.ServiceHost,
+			Username:    env.Username,
+			Password:    env.Password,
+			Args:        args,
+		}
+	}
+	redfishBasic := func(method, path, body string) RedfishRequest {
+		return RedfishRequest{
+			BaseURL:  env.RedfishBaseURL,
+			Method:   method,
+			Path:     path,
+			Body:     body,
+			Username: env.Username,
+			Password: env.Password,
+		}
+	}
+	redfishSession := func(method, path, body string) RedfishRequest {
+		return RedfishRequest{
+			BaseURL:    env.RedfishBaseURL,
+			Method:     method,
+			Path:       path,
+			Body:       body,
+			XAuthToken: authToken,
+		}
+	}
+
+	Context("IPMI operations", func() {
+		Context("Power management", func() {
+			It("should report power status", func() {
+				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("Chassis Power is on"),
+					ContainSubstring("Chassis Power is off"),
+				))
+			})
+
+			It("should accept power off (graceful) and VM is actually off", func() {
+				_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+			})
+
+			It("should accept power on and VM is actually running", func() {
+				_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+
+			It("should accept power cycle and VM is stopped then started again", func() {
+				_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "cycle"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIPowerCycle(ctx, k8sClient, ns)
+			})
+		})
+
+		Context("Boot device configuration", func() {
+			It("should set boot device to PXE", func() {
+				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("Set Boot Device"),
+					ContainSubstring("Boot"),
+					Equal(""),
+				))
+			})
+
+			It("should set boot device to disk", func() {
+				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("Set Boot Device"),
+					ContainSubstring("Boot"),
+					Equal(""),
+				))
+			})
+		})
+	})
+
+	Context("Redfish operations", func() {
+		Context("Authentication", func() {
+			It("should allow access with basic auth", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishBasic("GET", "/Systems/1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring(`"@odata.id":"/redfish/v1/Systems/1"`))
+			})
+		})
+
+		Context("Service discovery", func() {
+			It("should return service root at /redfish/v1", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring(`"@odata.id":"/redfish/v1"`))
+				Expect(out).To(ContainSubstring("RedfishVersion"))
+				Expect(out).To(ContainSubstring("Systems"))
+				Expect(out).To(ContainSubstring("Managers"))
+			})
+		})
+
+		Context("Power management", func() {
+			It("should return system power state", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("On"),
+					ContainSubstring("Off"),
+				))
+			})
+			It("should accept graceful shutdown action and VM is actually off", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"GracefulShutdown"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+			})
+
+			It("should accept power on reset action and VM is actually running", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"On"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+
+			It("should accept graceful restart action and VM is stopped then started again", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"GracefulRestart"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIPowerCycle(ctx, k8sClient, ns)
+			})
+
+			It("should accept force restart action and VM is stopped then started again", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"ForceRestart"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIPowerCycle(ctx, k8sClient, ns)
+			})
+
+			It("should accept force off action and VM is actually off", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"ForceOff"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+			})
+
+			It("should accept power on reset action and VM is actually running", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"On"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+		})
+
+		Context("Boot configuration", func() {
+			It("should return current boot configuration", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring("Boot"))
+			})
+
+			It("should set boot to PXE once", func() {
+				body := `{"Boot":{"BootSourceOverrideTarget":"Pxe","BootSourceOverrideEnabled":"Once"}}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+
+			It("should set boot to PXE continuous", func() {
+				body := `{"Boot":{"BootSourceOverrideTarget":"Pxe","BootSourceOverrideEnabled":"Continuous"}}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+
+			It("should set boot to disk", func() {
+				body := `{"Boot":{"BootSourceOverrideTarget":"Hdd","BootSourceOverrideEnabled":"Once"}}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+
+			It("should set boot mode to UEFI", func() {
+				body := `{"Boot":{"BootSourceOverrideMode":"UEFI"}}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+
+			It("should set boot mode to Legacy", func() {
+				body := `{"Boot":{"BootSourceOverrideMode":"Legacy"}}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+		})
+
+		Context("System and manager information", func() {
+			It("should return system details", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring("ComputerSystem"))
+			})
+
+			It("should return manager information", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Managers/BMC", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring("Manager"))
+			})
+		})
+	})
+
+	Context("Virtual Media operations", func() {
+		BeforeAll(func() {
+			if !util.VirtualMediaPrerequisitesMet() {
+				Skip("Virtual media tests require CDI (datavolumes.cdi.kubevirt.io) and KubeVirt with DeclarativeHotplugVolumes feature gate enabled; see README.")
+			}
+		})
+
+		Context("Virtual Media Redfish API", func() {
+			It("should return virtual media resource CD1", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Managers/BMC/VirtualMedia/CD1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring("VirtualMedia"))
+				Expect(out).To(ContainSubstring("CD1"))
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("Inserted"),
+					ContainSubstring("Image"),
+				))
+			})
+
+			It("should accept InsertMedia action", func() {
+				body := `{"Image":"https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso","Inserted":true}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia", body))
+				Expect(err).NotTo(HaveOccurred())
+				trimmed := strings.TrimSpace(out)
+				Expect(trimmed).To(SatisfyAny(
+					ContainSubstring("200"),
+				))
+			})
+
+			It("should return virtual media status after insert attempt", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Managers/BMC/VirtualMedia/CD1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring("VirtualMedia"))
+				Expect(out).To(ContainSubstring("CD1"))
+			})
+
+			It("should accept EjectMedia action", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.EjectMedia", `{}`))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+		})
+	})
+})
