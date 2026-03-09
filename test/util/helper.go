@@ -96,6 +96,39 @@ func UninstallCertManager() {
 	}
 }
 
+func DeployHelmChart(releaseName, namespace, chartPath, imageRepo, imageTag string) error {
+	args := []string{
+		"upgrade",
+		"--install",
+		releaseName,
+		chartPath,
+		"--namespace",
+		namespace,
+		"--create-namespace",
+		"--wait",
+		"--timeout",
+		"5m",
+	}
+
+	if imageRepo != "" {
+		args = append(args, "--set", fmt.Sprintf("image.repository=%s", imageRepo))
+	}
+	if imageTag != "" {
+		args = append(args, "--set", fmt.Sprintf("image.tag=%s", imageTag))
+	}
+
+	cmd := exec.Command("helm", args...)
+	_, err := Run(cmd)
+	return err
+}
+
+func UninstallHelmRelease(releaseName, namespace string) {
+	cmd := exec.Command("helm", "uninstall", releaseName, "--namespace", namespace)
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
 func getProjectDir() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {

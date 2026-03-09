@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,13 +28,17 @@ import (
 )
 
 const (
-	timeout  = time.Second * 60
-	interval = time.Millisecond * 250
+	timeout         = time.Second * 60
+	interval        = time.Millisecond * 250
+	helmReleaseName = "kubevirtbmc"
+	helmNamespace   = "kubevirtbmc-system"
+	helmChartPath   = "deploy/charts/kubevirtbmc"
 )
 
 var (
 	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
 	isCertManagerAlreadyInstalled = false
+	deployWithHelmChart           = os.Getenv("DEPLOY_WITH_HELM_CHART") == "true"
 
 	controllerManagerImage = fmt.Sprintf("starbops/virtbmc-controller:%s", func() string {
 		if tag := os.Getenv("TAG"); tag != "" {
@@ -113,8 +118,13 @@ var _ = BeforeSuite(func() {
 	}
 
 	By("deploying the controller-manager")
-	cmd := exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", controllerManagerImage))
-	_, err = util.Run(cmd)
+	if deployWithHelmChart {
+		imageRepo, imageTag := splitImageRef(controllerManagerImage)
+		err = util.DeployHelmChart(helmReleaseName, helmNamespace, helmChartPath, imageRepo, imageTag)
+	} else {
+		cmd := exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", controllerManagerImage))
+		_, err = util.Run(cmd)
+	}
 	Expect(err).ToNot(HaveOccurred())
 })
 
@@ -122,8 +132,12 @@ var _ = AfterSuite(func() {
 	var err error
 
 	By("undeploying the controller-manager")
-	cmd := exec.Command("make", "undeploy")
-	_, _ = util.Run(cmd)
+	if deployWithHelmChart {
+		util.UninstallHelmRelease(helmReleaseName, helmNamespace)
+	} else {
+		cmd := exec.Command("make", "undeploy")
+		_, _ = util.Run(cmd)
+	}
 
 	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
 		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling cert-manager...\n")
@@ -137,4 +151,12 @@ var _ = AfterSuite(func() {
 
 func getClientConfig() (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags("", path.Join(os.Getenv("HOME"), ".kube", "config"))
+}
+
+func splitImageRef(image string) (string, string) {
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon == -1 {
+		return image, ""
+	}
+	return image[:lastColon], image[lastColon+1:]
 }
