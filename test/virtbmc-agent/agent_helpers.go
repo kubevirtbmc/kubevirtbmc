@@ -32,10 +32,11 @@ const (
 	agentTestInterval    = 250 * time.Millisecond
 	agentPodName         = "testvm-virtbmc"
 	vmPowerStatusTimeout = 120 * time.Second
+	helperPodTimeout     = 180 * time.Second
 
 	redfishClientPodName = "redfish-client"
 	ipmitoolPodName      = "ipmitool"
-	sleepDuration        = "infinity"
+	sleepDuration        = "999999999"
 )
 
 type agentTestEnv struct {
@@ -205,7 +206,7 @@ func CreateRedfishClientPod(ctx context.Context, clientset *kubernetes.Clientset
 			return false
 		}
 		return p.Status.Phase == corev1.PodRunning
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(), "redfish-client pod should reach Running")
+	}, helperPodTimeout, agentTestInterval).Should(BeTrue(), "redfish-client pod should reach Running")
 	return nil
 }
 
@@ -233,7 +234,7 @@ func CreateIPMIToolPod(ctx context.Context, clientset *kubernetes.Clientset, nam
 			return false
 		}
 		return p.Status.Phase == corev1.PodRunning
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(), "ipmitool pod should reach Running")
+	}, helperPodTimeout, agentTestInterval).Should(BeTrue(), "ipmitool pod should reach Running")
 	return nil
 }
 

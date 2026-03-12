@@ -1,6 +1,7 @@
 package virtbmccontroller
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,7 +11,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	apiextcs "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -47,7 +50,6 @@ var (
 	}())
 
 	config    *rest.Config
-	crdClient *apiextcs.Clientset
 	k8sClient client.Client
 )
 
@@ -67,15 +69,13 @@ var _ = BeforeSuite(func() {
 	By("creating the clientsets")
 	config, err = getClientConfig()
 	Expect(err).ToNot(HaveOccurred())
-	crdClient, err = apiextcs.NewForConfig(config)
-	Expect(err).ToNot(HaveOccurred())
 	Expect(kubevirtv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(bmcv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	k8sClient, err = client.New(config, client.Options{Scheme: scheme.Scheme})
 	Expect(err).ToNot(HaveOccurred())
 
 	if !skipKubeVirtInstall {
-		By("installing KubeVirt (before cert-managerso VMs can run in e2e")
+		By("installing KubeVirt (before cert-manager so VMs can run in e2e)")
 		if !util.IsKubeVirtInstalled() {
 			err = util.InstallKubeVirt()
 			Expect(err).ToNot(HaveOccurred())
@@ -103,7 +103,38 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	// Do not undeploy or delete anything so the agent e2e test (run in a separate process) can use the same cluster state.
+	// Delete test resources and undeploy the controller-manager; KubeVirt and cert-manager base install remain.
+	if k8sClient != nil {
+		ctx := context.Background()
+		objs := []client.Object{
+			&kubevirtv1.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Name: util.E2EVMName, Namespace: util.E2ENamespace}},
+			&corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: util.E2ESecretName, Namespace: util.E2ENamespace}},
+			&bmcv1.VirtualMachineBMC{ObjectMeta: metav1.ObjectMeta{Name: util.E2EBMCName, Namespace: util.E2ENamespace}},
+		}
+		for _, obj := range objs {
+			err := k8sClient.Delete(ctx, obj)
+			if err != nil && !apierrors.IsNotFound(err) {
+				Expect(err).ToNot(HaveOccurred(), "delete %s/%s", obj.GetNamespace(), obj.GetName())
+			}
+		}
+		By("waiting for test resources to be gone")
+		Eventually(func() bool {
+			var vm kubevirtv1.VirtualMachine
+			return apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKey{Namespace: util.E2ENamespace, Name: util.E2EVMName}, &vm))
+		}, timeout, interval).Should(BeTrue(), "VirtualMachine %s/%s should be deleted", util.E2ENamespace, util.E2EVMName)
+		Eventually(func() bool {
+			var secret corev1.Secret
+			return apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKey{Namespace: util.E2ENamespace, Name: util.E2ESecretName}, &secret))
+		}, timeout, interval).Should(BeTrue(), "Secret %s/%s should be deleted", util.E2ENamespace, util.E2ESecretName)
+		Eventually(func() bool {
+			var bmc bmcv1.VirtualMachineBMC
+			return apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKey{Namespace: util.E2ENamespace, Name: util.E2EBMCName}, &bmc))
+		}, timeout, interval).Should(BeTrue(), "VirtualMachineBMC %s/%s should be deleted", util.E2ENamespace, util.E2EBMCName)
+	}
+	By("undeploying the controller-manager")
+	cmd := exec.Command("make", "undeploy")
+	_, err := util.Run(cmd)
+	Expect(err).ToNot(HaveOccurred(), "make undeploy should succeed")
 })
 
 func getClientConfig() (*rest.Config, error) {
