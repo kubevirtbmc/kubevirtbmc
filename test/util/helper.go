@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const (
-	certManagerURLTmpl     = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
+	certManagerURLFmt      = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
 	kubeVirtStableVersion  = "https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt"
 	kubeVirtOperatorURLFmt = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-operator.yaml"
 	kubeVirtCRURLFmt       = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-cr.yaml"
@@ -127,22 +128,20 @@ func InstallKubeVirt() error {
 		return fmt.Errorf("apply KubeVirt CR: %w", err)
 	}
 
-	for i := 0; i < 60; i++ {
-		cmd = exec.Command("kubectl", "get", "kubevirt", "kubevirt", "-n", "kubevirt", "-o", "jsonpath={.status.phase}")
+	Eventually(func() (string, error) {
+		cmd := exec.Command("kubectl", "get", "kubevirt", "kubevirt", "-n", "kubevirt", "-o", "jsonpath={.status.phase}")
 		out, err := Run(cmd)
-		if err == nil && strings.TrimSpace(out) == "Deployed" {
-			return nil
+		if err != nil {
+			return "", err
 		}
-		if i < 59 {
-			cmd = exec.Command("sleep", "5")
-			_, _ = Run(cmd)
-		}
-	}
-	return fmt.Errorf("KubeVirt did not reach Deployed phase within 5 minutes")
+		return strings.TrimSpace(out), nil
+	}, "5m", "5s").Should(Equal("Deployed"), "KubeVirt should reach Deployed phase")
+
+	return nil
 }
 
 func InstallCertManager() error {
-	url := fmt.Sprintf(certManagerURLTmpl, certManagerVersion)
+	url := fmt.Sprintf(certManagerURLFmt, certManagerVersion)
 	cmd := exec.Command("kubectl", "apply", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		return err
@@ -158,7 +157,7 @@ func InstallCertManager() error {
 }
 
 func UninstallCertManager() {
-	url := fmt.Sprintf(certManagerURLTmpl, certManagerVersion)
+	url := fmt.Sprintf(certManagerURLFmt, certManagerVersion)
 	cmd := exec.Command("kubectl", "delete", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		warnError(err)

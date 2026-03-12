@@ -35,7 +35,7 @@ const (
 
 	redfishClientPodName = "redfish-client"
 	ipmitoolPodName      = "ipmitool"
-	sleepDuration        = "1000"
+	sleepDuration        = "infinity"
 )
 
 type agentTestEnv struct {
