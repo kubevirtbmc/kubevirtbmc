@@ -7,7 +7,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -79,8 +78,8 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			Expect(err).To(HaveOccurred(), "IPMI command should fail when IPMI is disabled")
 
 			By("recording the current pod UID before enabling IPMI")
-			var podBefore corev1.Pod
-			Expect(k8sClient.Get(ctx, testutil.AgentPodKey(ns), &podBefore)).To(Succeed())
+			podBefore, err := testutil.AgentPod(ctx, k8sClient, ns)
+			Expect(err).NotTo(HaveOccurred())
 
 			By("enabling IPMI on the VirtualMachineBMC")
 			bmc := &bmcv1.VirtualMachineBMC{}
@@ -687,13 +686,13 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					By("recording the current agent pod UID")
-					var podBefore corev1.Pod
-					Expect(k8sClient.Get(ctx, testutil.AgentPodKey(ns), &podBefore)).To(Succeed())
+					podBefore, err := testutil.AgentPod(ctx, k8sClient, ns)
+					Expect(err).NotTo(HaveOccurred())
 
 					By("deleting the agent pod to trigger restart")
-					var podToDelete corev1.Pod
-					Expect(k8sClient.Get(ctx, testutil.AgentPodKey(ns), &podToDelete)).To(Succeed())
-					Expect(k8sClient.Delete(ctx, &podToDelete)).To(Succeed())
+					podToDelete, err := testutil.AgentPod(ctx, k8sClient, ns)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(k8sClient.Delete(ctx, podToDelete)).To(Succeed())
 
 					By("waiting for new agent pod to be recreated and ready")
 					Eventually(testutil.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")

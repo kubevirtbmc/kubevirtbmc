@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strconv"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -30,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -153,129 +153,6 @@ func (r *VirtualMachineBMCReconciler) agentResourceRequests() corev1.ResourceLis
 	}
 }
 
-func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualMachineBMC *bmcv1.VirtualMachineBMC) *corev1.Pod {
-	name := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
-	serviceAccountName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
-	var secretName string
-	if virtualMachineBMC.Spec.AuthSecretRef != nil {
-		secretName = virtualMachineBMC.Spec.AuthSecretRef.Name
-	}
-
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
-				VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
-			},
-			Annotations: map[string]string{
-				EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
-			},
-			Name:      name,
-			Namespace: virtualMachineBMC.Namespace,
-		},
-		Spec: corev1.PodSpec{
-			ServiceAccountName: serviceAccountName,
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsNonRoot: ptr.To(true),
-				SeccompProfile: &corev1.SeccompProfile{
-					Type: corev1.SeccompProfileTypeRuntimeDefault,
-				},
-			},
-			Containers: []corev1.Container{
-				{
-					Name:  virtBMCContainerName,
-					Image: fmt.Sprintf("%s:%s", r.AgentImageName, r.AgentImageTag),
-					Args: func() []string {
-						args := []string{
-							"--address",
-							"0.0.0.0",
-							"--redfish-port",
-							strconv.Itoa(redfishPort),
-						}
-						if specIPMIEnabled(&virtualMachineBMC.Spec) {
-							args = append(args, "--enable-ipmi", "--ipmi-port", strconv.Itoa(ipmiPort))
-						}
-						args = append(args, virtualMachineBMC.Namespace, virtualMachineBMC.Spec.VirtualMachineRef.Name)
-						return args
-					}(),
-					Ports: func() []corev1.ContainerPort {
-						ports := []corev1.ContainerPort{
-							{
-								Name:          redfishPortName,
-								ContainerPort: redfishPort,
-								Protocol:      corev1.ProtocolTCP,
-							},
-						}
-						if specIPMIEnabled(&virtualMachineBMC.Spec) {
-							ports = append(ports, corev1.ContainerPort{
-								Name:          ipmiPortName,
-								ContainerPort: ipmiPort,
-								Protocol:      corev1.ProtocolUDP,
-							})
-						}
-						return ports
-					}(),
-					Env: []corev1.EnvVar{
-						{
-							Name: "BMC_USERNAME",
-							ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: secretName,
-									},
-									Key: bmcUserKey,
-								},
-							},
-						},
-						{
-							Name: "BMC_PASSWORD",
-							ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: secretName,
-									},
-									Key: bmcPasswordKey,
-								},
-							},
-						},
-						{
-							Name: "POD_NAME",
-							ValueFrom: &corev1.EnvVarSource{
-								FieldRef: &corev1.ObjectFieldSelector{
-									FieldPath: "metadata.name",
-								},
-							},
-						},
-					},
-					ReadinessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							HTTPGet: &corev1.HTTPGetAction{
-								Path: "/redfish/v1",
-								Port: intstr.FromString(redfishPortName),
-							},
-						},
-						InitialDelaySeconds: 2,
-						PeriodSeconds:       10,
-					},
-					Resources: corev1.ResourceRequirements{
-						Requests: r.agentResourceRequests(),
-					},
-					SecurityContext: &corev1.SecurityContext{
-						AllowPrivilegeEscalation: ptr.To(false),
-						ReadOnlyRootFilesystem:   ptr.To(true),
-						RunAsNonRoot:             ptr.To(true),
-						Capabilities: &corev1.Capabilities{
-							Drop: []corev1.Capability{"ALL"},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	return pod
-}
-
 func (r *VirtualMachineBMCReconciler) constructServiceFromVirtualMachineBMC(virtualMachineBMC *bmcv1.VirtualMachineBMC) *corev1.Service {
 	name := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
 
@@ -315,30 +192,6 @@ func (r *VirtualMachineBMCReconciler) constructServiceFromVirtualMachineBMC(virt
 	}
 
 	return svc
-}
-
-func (r *VirtualMachineBMCReconciler) deleteVirtBMCPod(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
-	log := log.FromContext(ctx)
-	podName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
-
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: virtualMachineBMC.Namespace,
-		},
-	}
-
-	if err := r.Delete(ctx, pod); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.V(1).Info("virtBMC Pod already absent", "pod", podName)
-			return nil
-		}
-
-		log.Error(err, "unable to delete virtBMC Pod", "pod", podName)
-		return err
-	}
-
-	return nil
 }
 
 // patchStatusCondition records the given condition on the VirtualMachineBMC
@@ -436,26 +289,16 @@ func (r *VirtualMachineBMCReconciler) validateSecretExists(ctx context.Context, 
 	return true, nil
 }
 
-func (r *VirtualMachineBMCReconciler) getVirtBMCPod(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (*corev1.Pod, error) {
-	podName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
-
-	pod := &corev1.Pod{}
-	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: virtualMachineBMC.Namespace}, pod); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return pod, nil
-}
-
 func specIPMIEnabled(spec *bmcv1.VirtualMachineBMCSpec) bool {
 	return spec.IPMI != nil && spec.IPMI.Enabled != nil && *spec.IPMI.Enabled
 }
 
-func podIPMIEnabled(pod *corev1.Pod) bool {
-	val, ok := pod.Annotations[EnableIPMIAnnotation]
+// deploymentIPMIEnabled reports the IPMI state stamped on the Deployment's pod
+// template by constructDeploymentFromVirtualMachineBMC, so it can be compared
+// against the desired spec without depending on the underlying Pod's name
+// (which the Deployment's ReplicaSet generates dynamically).
+func deploymentIPMIEnabled(deployment *appsv1.Deployment) bool {
+	val, ok := deployment.Spec.Template.Annotations[EnableIPMIAnnotation]
 	if !ok {
 		return false
 	}
@@ -500,33 +343,34 @@ func (r *VirtualMachineBMCReconciler) patchVirtBMCServicePorts(
 }
 
 // reconcileIPMIChange detects a mismatch between the spec's enableIPMI flag and
-// the stamped annotation on the existing pod. When a mismatch is found it
-// deletes the stale pod (ports are immutable) and patches the Service in-place
-// (preserving ClusterIP), then requeues so the main loop recreates the pod.
+// the IPMI annotation stamped on the Deployment's pod template. When a mismatch
+// is found it deletes the stale Deployment (ports are immutable) and patches
+// the Service in-place (preserving ClusterIP), then requeues so the main loop
+// recreates the Deployment.
 func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (requeue bool, err error) {
 	log := log.FromContext(ctx)
 
-	pod, err := r.getVirtBMCPod(ctx, virtualMachineBMC)
+	deployment, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
 	if err != nil {
 		return false, err
 	}
 
-	if pod == nil {
+	if deployment == nil {
 		return false, nil
 	}
 
-	currentHasIPMI := podIPMIEnabled(pod)
+	currentHasIPMI := deploymentIPMIEnabled(deployment)
 	desiredHasIPMI := specIPMIEnabled(&virtualMachineBMC.Spec)
 
 	if currentHasIPMI == desiredHasIPMI {
 		return false, nil
 	}
 
-	log.Info("enableIPMI changed, replacing pod and patching service",
+	log.Info("enableIPMI changed, replacing deployment and patching service",
 		"currentHasIPMI", currentHasIPMI,
 		"desiredHasIPMI", desiredHasIPMI)
 
-	if err := r.deleteVirtBMCPod(ctx, virtualMachineBMC); err != nil {
+	if err := r.deleteVirtBMCDeployment(ctx, virtualMachineBMC); err != nil {
 		return false, err
 	}
 
@@ -543,6 +387,7 @@ func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, v
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods;services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="apps",resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=bind
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -579,8 +424,8 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	if !vmExists || !secretExists {
-		if err := r.deleteVirtBMCPod(ctx, &virtualMachineBMC); err != nil {
-			log.Error(err, "unable to delete virtBMC Pod")
+		if err := r.deleteVirtBMCDeployment(ctx, &virtualMachineBMC); err != nil {
+			log.Error(err, "unable to delete virtBMC Deployment")
 			return ctrl.Result{}, err
 		}
 	}
@@ -605,19 +450,9 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// Prepare the virtBMC Pod
-	pod := r.constructPodFromVirtualMachineBMC(&virtualMachineBMC)
-	if err := ctrl.SetControllerReference(&virtualMachineBMC, pod, r.Scheme); err != nil {
+	if err := r.ensureVirtBMCDeployment(ctx, &virtualMachineBMC); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// Create the virtBMC Pod on the cluster
-	if err := r.Create(ctx, pod); err != nil && !apierrors.IsAlreadyExists(err) {
-		log.Error(err, "unable to create Pod for VirtualMachineBMC", "pod", pod)
-		return ctrl.Result{}, err
-	}
-
-	log.V(1).Info("created Pod for VirtualMachineBMC", "pod", pod)
 
 	// Prepare the virtBMC Service
 	svc := r.constructServiceFromVirtualMachineBMC(&virtualMachineBMC)
@@ -714,10 +549,10 @@ func (r *VirtualMachineBMCReconciler) findVirtualMachineBMCsForSecretAndVM(ctx c
 		case *corev1.Secret:
 			if vmBMC.Spec.AuthSecretRef != nil && vmBMC.Spec.AuthSecretRef.Name == o.GetName() {
 				vmBMCCopy := vmBMC.DeepCopy()
-				if err := r.deleteVirtBMCPod(ctx, vmBMCCopy); err != nil {
-					log.Error(err, "unable to delete virtBMC Pod during Secret change", "vmBMC", vmBMC.Name)
+				if err := r.rolloutRestartVirtBMCDeployment(ctx, vmBMCCopy); err != nil {
+					log.Error(err, "unable to restart virtBMC Deployment during Secret change", "vmBMC", vmBMC.Name)
 				}
-				log.Info("Deleted virtBMC Pod after Secret change")
+				log.Info("Restarted virtBMC deployment after Secret change")
 
 				match = true
 			}

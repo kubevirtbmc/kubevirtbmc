@@ -23,6 +23,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -48,7 +49,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 		serviceAccountName := fmt.Sprintf("%s-virtbmc", testVMName)
 		roleBindingName := fmt.Sprintf("%s-virtbmc-rolebinding", testVMName)
 
-		It("Should create RBAC resources, Pod and Service ", func() {
+		It("Should create RBAC resources, Deployment and Service ", func() {
 			ctx := context.Background()
 
 			By("Creating the referenced VirtualMachine first")
@@ -132,41 +133,43 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(createdRB.Subjects).To(HaveLen(1))
 			Expect(createdRB.Subjects[0].Name).To(Equal(serviceAccountName))
 
-			By("Checking that the Pod is created with correct name")
-			podLookupKey := types.NamespacedName{
+			By("Checking that the Deployment is created with correct name")
+			deploymentLookupKey := types.NamespacedName{
 				Name:      testVMName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
-			createdPod := &corev1.Pod{}
+			createdDeployment := &appsv1.Deployment{}
 
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, podLookupKey, createdPod)
+				err := k8sClient.Get(ctx, deploymentLookupKey, createdDeployment)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(createdPod.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
-			Expect(createdPod.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
-			Expect(createdPod.Spec.ServiceAccountName).To(Equal(serviceAccountName))
-			Expect(createdPod.Spec.Containers).To(HaveLen(1))
-			Expect(createdPod.Spec.Containers[0].Name).To(Equal(virtBMCContainerName))
-			Expect(createdPod.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal(DefaultAgentCPURequest))
-			Expect(createdPod.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal(DefaultAgentMemoryRequest))
+			Expect(createdDeployment.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
+			Expect(createdDeployment.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
+			Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
+			Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
+			Expect(createdDeployment.Spec.Template.Spec.ServiceAccountName).To(Equal(serviceAccountName))
+			Expect(createdDeployment.Spec.Template.Spec.Containers).To(HaveLen(1))
+			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Name).To(Equal(virtBMCContainerName))
+			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal(DefaultAgentCPURequest))
+			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal(DefaultAgentMemoryRequest))
 			hasPodNameEnv := false
-			for _, env := range createdPod.Spec.Containers[0].Env {
+			for _, env := range createdDeployment.Spec.Template.Spec.Containers[0].Env {
 				if env.Name == "POD_NAME" && env.ValueFrom != nil && env.ValueFrom.FieldRef != nil && env.ValueFrom.FieldRef.FieldPath == "metadata.name" {
 					hasPodNameEnv = true
 				}
 			}
 			Expect(hasPodNameEnv).To(BeTrue())
 
-			By("Checking that the Pod and container have a restricted-compliant securityContext")
-			Expect(createdPod.Spec.SecurityContext).NotTo(BeNil())
-			Expect(createdPod.Spec.SecurityContext.RunAsNonRoot).NotTo(BeNil())
-			Expect(*createdPod.Spec.SecurityContext.RunAsNonRoot).To(BeTrue())
-			Expect(createdPod.Spec.SecurityContext.SeccompProfile).NotTo(BeNil())
-			Expect(createdPod.Spec.SecurityContext.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+			By("Checking that the Pod template and container have a restricted-compliant securityContext")
+			Expect(createdDeployment.Spec.Template.Spec.SecurityContext).NotTo(BeNil())
+			Expect(createdDeployment.Spec.Template.Spec.SecurityContext.RunAsNonRoot).NotTo(BeNil())
+			Expect(*createdDeployment.Spec.Template.Spec.SecurityContext.RunAsNonRoot).To(BeTrue())
+			Expect(createdDeployment.Spec.Template.Spec.SecurityContext.SeccompProfile).NotTo(BeNil())
+			Expect(createdDeployment.Spec.Template.Spec.SecurityContext.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
 
-			container := createdPod.Spec.Containers[0]
+			container := createdDeployment.Spec.Template.Spec.Containers[0]
 			Expect(container.SecurityContext).NotTo(BeNil())
 			Expect(container.SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
 			Expect(*container.SecurityContext.AllowPrivilegeEscalation).To(BeFalse())
@@ -398,14 +401,14 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
-			By("Waiting for Pod to be created")
-			podLookupKey := types.NamespacedName{
+			By("Waiting for Deployment to be created")
+			deploymentLookupKey := types.NamespacedName{
 				Name:      vmName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
 			Eventually(func() bool {
-				pod := &corev1.Pod{}
-				err := k8sClient.Get(ctx, podLookupKey, pod)
+				deployment := &appsv1.Deployment{}
+				err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
@@ -446,7 +449,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(foundCondition).To(BeTrue())
 		})
 
-		It("Should update condition and delete Pod when Secret is deleted", func() {
+		It("Should update condition and delete Deployment when Secret is deleted", func() {
 			ctx := context.Background()
 
 			vmName := "testvm-secret-delete"
@@ -519,14 +522,14 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
-			By("Waiting for Pod to be created")
-			podLookupKey := types.NamespacedName{
+			By("Waiting for Deployment to be created")
+			deploymentLookupKey := types.NamespacedName{
 				Name:      vmName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
 			Eventually(func() bool {
-				pod := &corev1.Pod{}
-				err := k8sClient.Get(ctx, podLookupKey, pod)
+				deployment := &appsv1.Deployment{}
+				err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
@@ -551,15 +554,15 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return false
 			}, timeout, interval).Should(BeTrue())
 
-			By("Verifying that the Pod is deleted")
+			By("Verifying that the Deployment is deleted")
 			Eventually(func() bool {
-				pod := &corev1.Pod{}
-				err := k8sClient.Get(ctx, podLookupKey, pod)
+				deployment := &appsv1.Deployment{}
+				err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
 				return errors.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
 		})
 
-		It("Should delete and recreate Pod when Secret is changed", func() {
+		It("Should trigger a Deployment rollout when Secret is changed", func() {
 			ctx := context.Background()
 
 			vmName := "testvm-secret-change"
@@ -613,18 +616,21 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, virtualMachineBMC)).To(Succeed())
 
-			By("Waiting for Pod to be created")
-			podLookupKey := types.NamespacedName{
+			By("Waiting for Deployment to be created")
+			deploymentLookupKey := types.NamespacedName{
 				Name:      vmName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
-			var originalPod corev1.Pod
+			var originalDeployment appsv1.Deployment
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, podLookupKey, &originalPod)
+				err := k8sClient.Get(ctx, deploymentLookupKey, &originalDeployment)
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			originalPodUID := originalPod.UID
+			originalRestartedAt := ""
+			if originalDeployment.Spec.Template.Annotations != nil {
+				originalRestartedAt = originalDeployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
+			}
 
 			By("Updating the Secret with new credentials")
 			updatedSecret := &corev1.Secret{}
@@ -635,34 +641,22 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			}
 			Expect(k8sClient.Update(ctx, updatedSecret)).Should(Succeed())
 
-			By("Verifying that the old Pod is deleted")
+			By("Verifying the Deployment template gets a restart annotation")
+			var updatedDeployment appsv1.Deployment
 			Eventually(func() bool {
-				pod := &corev1.Pod{}
-				err := k8sClient.Get(ctx, podLookupKey, pod)
-				if err != nil {
-					return errors.IsNotFound(err)
-				}
-				// Check if it's a different pod (new UID)
-				return pod.UID != originalPodUID
-			}, timeout, interval).Should(BeTrue())
-
-			By("Verifying that a new Pod is created by the controller")
-			Eventually(func() bool {
-				pod := &corev1.Pod{}
-				err := k8sClient.Get(ctx, podLookupKey, pod)
-				if err != nil {
+				if err := k8sClient.Get(ctx, deploymentLookupKey, &updatedDeployment); err != nil {
 					return false
 				}
-				// Verify it's a new pod with different UID
-				return pod.UID != originalPodUID
+				if updatedDeployment.Spec.Template.Annotations == nil {
+					return false
+				}
+				restartedAt := updatedDeployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
+				return restartedAt != "" && restartedAt != originalRestartedAt
 			}, timeout, interval).Should(BeTrue())
 
-			By("Verifying the new Pod has correct labels and service account")
-			var newPod corev1.Pod
-			Expect(k8sClient.Get(ctx, podLookupKey, &newPod)).Should(Succeed())
-			Expect(newPod.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, bmcName))
-			Expect(newPod.Labels).To(HaveKeyWithValue(VMNameLabel, vmName))
-			Expect(newPod.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
+			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, bmcName))
+			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VMNameLabel, vmName))
+			Expect(updatedDeployment.Spec.Template.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
 		})
 
 		It("Should delete and recreate Pod and patch Service when enableIPMI is changed", func() {

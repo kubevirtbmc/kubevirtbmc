@@ -12,6 +12,7 @@ import (
 	kvclient "kubevirt.io/client-go/kubevirt"
 
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,7 +39,7 @@ const (
 	ipmitoolImage       = "kubevirtbmc/ipmitool:latest" // ipmitool v1.8.19
 	agentTestTimeout    = 60 * time.Second
 	agentTestInterval   = 250 * time.Millisecond
-	agentPodName        = "testvm-virtbmc"
+	agentDeploymentName = "testvm-virtbmc"
 	// suiteInitTimeout covers container disk image pull during suite setup.
 	suiteInitTimeout     = 180 * time.Second
 	vmPowerStatusTimeout = 120 * time.Second
@@ -87,7 +88,7 @@ func ensureAgentTestEnv(ctx context.Context, namespace string, k8sClient client.
 		return nil, err
 	}
 
-	waitForAgentPodReady(ctx, k8sClient, namespace, agentPodName)
+	waitForAgentDeploymentReady(ctx, k8sClient, namespace, agentDeploymentName)
 
 	return env, nil
 }
@@ -508,19 +509,26 @@ func (e *agentTestEnv) ensureBMCExists(ctx context.Context, k8sClient client.Cli
 	return k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, e.BMC)
 }
 
-func waitForAgentPodReady(ctx context.Context, k8sClient client.Client, namespace, podName string) {
+func waitForAgentDeploymentReady(ctx context.Context, k8sClient client.Client, namespace, deploymentName string) {
 	Eventually(func() bool {
-		var pod corev1.Pod
-		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, &pod); err != nil {
+		var deployment appsv1.Deployment
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, &deployment); err != nil {
 			return false
 		}
-		for _, c := range pod.Status.Conditions {
-			if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
-				return true
-			}
+
+		desiredReplicas := int32(1)
+		if deployment.Spec.Replicas != nil {
+			desiredReplicas = *deployment.Spec.Replicas
 		}
-		return false
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(), "agent pod %q should become ready", podName)
+
+		if deployment.Status.ObservedGeneration < deployment.Generation {
+			return false
+		}
+
+		return deployment.Status.UpdatedReplicas >= desiredReplicas &&
+			deployment.Status.ReadyReplicas >= desiredReplicas &&
+			deployment.Status.AvailableReplicas >= desiredReplicas
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(), "agent deployment %q should become ready", deploymentName)
 }
 
 func CreateRedfishClientPod(ctx context.Context, clientset *kubernetes.Clientset, namespace string) error {

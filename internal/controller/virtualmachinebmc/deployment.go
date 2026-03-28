@@ -1,0 +1,313 @@
+/*
+Copyright 2024.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package virtualmachinebmc
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"strconv"
+	"time"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
+)
+
+const (
+	defaultDesiredReplicas int32 = 1
+)
+
+func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC *bmcv1.VirtualMachineBMC) *appsv1.Deployment {
+
+	serviceAccountName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+	deploymentName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	var secretName string
+	if virtualMachineBMC.Spec.AuthSecretRef != nil {
+		secretName = virtualMachineBMC.Spec.AuthSecretRef.Name
+	}
+
+	labels := map[string]string{
+		VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
+		VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
+	}
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploymentName,
+			Namespace: virtualMachineBMC.Namespace,
+			Labels:    labels,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(defaultDesiredReplicas),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+					Annotations: map[string]string{
+						EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
+					},
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: serviceAccountName,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: ptr.To(true),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:  virtBMCContainerName,
+							Image: fmt.Sprintf("%s:%s", r.AgentImageName, r.AgentImageTag),
+							Args: func() []string {
+								args := []string{
+									"--address",
+									"0.0.0.0",
+									"--redfish-port",
+									strconv.Itoa(redfishPort),
+								}
+								if specIPMIEnabled(&virtualMachineBMC.Spec) {
+									args = append(args, "--enable-ipmi", "--ipmi-port", strconv.Itoa(ipmiPort))
+								}
+								args = append(args, virtualMachineBMC.Namespace, virtualMachineBMC.Spec.VirtualMachineRef.Name)
+								return args
+							}(),
+							Ports: func() []corev1.ContainerPort {
+								ports := []corev1.ContainerPort{
+									{
+										Name:          redfishPortName,
+										ContainerPort: redfishPort,
+										Protocol:      corev1.ProtocolTCP,
+									},
+								}
+								if specIPMIEnabled(&virtualMachineBMC.Spec) {
+									ports = append(ports, corev1.ContainerPort{
+										Name:          ipmiPortName,
+										ContainerPort: ipmiPort,
+										Protocol:      corev1.ProtocolUDP,
+									})
+								}
+								return ports
+							}(),
+							Env: []corev1.EnvVar{
+								{
+									Name: "BMC_USERNAME",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: secretName,
+											},
+											Key: bmcUserKey,
+										},
+									},
+								},
+								{
+									Name: "BMC_PASSWORD",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: secretName,
+											},
+											Key: bmcPasswordKey,
+										},
+									},
+								},
+								{
+									Name: "POD_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/redfish/v1",
+										Port: intstr.FromString(redfishPortName),
+									},
+								},
+								InitialDelaySeconds: 2,
+								PeriodSeconds:       10,
+							},
+							Resources: corev1.ResourceRequirements{
+								Requests: r.agentResourceRequests(),
+							},
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: ptr.To(false),
+								ReadOnlyRootFilesystem:   ptr.To(true),
+								RunAsNonRoot:             ptr.To(true),
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return deployment
+}
+
+func (r *VirtualMachineBMCReconciler) ensureVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	log := log.FromContext(ctx)
+
+	desiredDeployment := r.createVirtBMCDeployment(virtualMachineBMC)
+	if err := ctrl.SetControllerReference(virtualMachineBMC, desiredDeployment, r.Scheme); err != nil {
+		return err
+	}
+
+	if err := r.Create(ctx, desiredDeployment); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			existingDeployment, getErr := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
+			if getErr != nil {
+				return getErr
+			}
+			if existingDeployment == nil {
+				return nil
+			}
+
+			restartedAt := ""
+			if existingDeployment.Spec.Template.Annotations != nil {
+				restartedAt = existingDeployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
+			}
+
+			changed := false
+			if !reflect.DeepEqual(existingDeployment.Spec.Template.Spec, desiredDeployment.Spec.Template.Spec) {
+				existingDeployment.Spec.Template.Spec = desiredDeployment.Spec.Template.Spec
+				changed = true
+			}
+			if restartedAt != "" {
+				desiredAnnotations := map[string]string{
+					"kubectl.kubernetes.io/restartedAt": restartedAt,
+				}
+				if !reflect.DeepEqual(existingDeployment.Spec.Template.Annotations, desiredAnnotations) {
+					existingDeployment.Spec.Template.Annotations = desiredAnnotations
+					changed = true
+				}
+			} else {
+				if existingDeployment.Spec.Template.Annotations != nil {
+					existingDeployment.Spec.Template.Annotations = nil
+					changed = true
+				}
+			}
+
+			if !changed {
+				return nil
+			}
+
+			if err := r.Update(ctx, existingDeployment); err != nil {
+				log.Error(err, "unable to reconcile Deployment for VirtualMachineBMC", "deployment", existingDeployment.Name)
+				return err
+			}
+			log.V(1).Info("reconciled Deployment for VirtualMachineBMC", "deployment", existingDeployment.Name)
+			return nil
+		}
+		log.Error(err, "unable to create Deployment for VirtualMachineBMC", "deployment", desiredDeployment.Name)
+		return err
+	}
+
+	log.V(1).Info("created Deployment for VirtualMachineBMC", "deployment", desiredDeployment.Name)
+	return nil
+}
+
+func (r *VirtualMachineBMCReconciler) deleteVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	log := log.FromContext(ctx)
+	deployment, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
+	if err != nil {
+		return err
+	}
+
+	if deployment == nil {
+		return nil
+	}
+
+	if err := r.Delete(ctx, deployment); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		log.Error(err, "unable to delete virtBMC Deployment", "deployment", deployment)
+		return err
+	}
+
+	log.Info("deleted virtBMC Deployment", "deployment", deployment)
+	return nil
+}
+
+func (r *VirtualMachineBMCReconciler) rolloutRestartVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+
+	log := log.FromContext(ctx)
+	deployment, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
+	if err != nil {
+		return err
+	}
+
+	if deployment == nil {
+		return nil
+	}
+
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = map[string]string{}
+	}
+
+	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+
+	if err := r.Update(ctx, deployment); err != nil {
+		log.Error(err, "unable to rollout restart virtBMC Deployment", "deployment", appsv1.DeploymentAvailable)
+		return err
+	}
+
+	log.Info("triggered rollout restart for virtBMC Deployment", "deployment", deployment)
+	return nil
+}
+
+func (r *VirtualMachineBMCReconciler) getVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (*appsv1.Deployment, error) {
+	log := log.FromContext(ctx)
+	deploymentName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	deployment := &appsv1.Deployment{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      deploymentName,
+		Namespace: virtualMachineBMC.Namespace,
+	}, deployment); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		log.Error(err, "unable to get virtBMC Deployment", "deployment", deploymentName)
+		return nil, err
+	}
+
+	return deployment, nil
+}
+
+func int32Ptr(i int32) *int32 {
+	return &i
+}
