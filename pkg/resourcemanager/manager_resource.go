@@ -31,8 +31,13 @@ func NewManager(id, name string) *ManagerAdapter {
 		Status:       server.ResourceStatus{},
 		ManagerType:  "BMC",
 		Links:        server.ManagerV1190Links{},
-		Actions:      server.ManagerV1190Actions{},
-		DateTime:     util.Ptr(time.Now()),
+		Actions: server.ManagerV1190Actions{
+			ManagerReset: server.ManagerV1190Reset{
+				Target: fmt.Sprintf("/redfish/v1/Managers/%s/Actions/Manager.Reset", id),
+				Title:  "Reset",
+			},
+		},
+		DateTime: util.Ptr(time.Now()),
 		EthernetInterfaces: server.OdataV4IdRef{
 			OdataId: fmt.Sprintf("/redfish/v1/Managers/%s/EthernetInterfaces", id),
 		},

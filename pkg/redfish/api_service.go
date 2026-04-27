@@ -30556,25 +30556,7 @@ func (s *APIService) RedfishV1ManagersManagerIdActionsManagerModifyRedundancySet
 
 // RedfishV1ManagersManagerIdActionsManagerResetPost -
 func (s *APIService) RedfishV1ManagersManagerIdActionsManagerResetPost(ctx context.Context, managerId string, managerV1190ResetRequestBody server.ManagerV1190ResetRequestBody) (server.ImplResponse, error) {
-	// TODO - update RedfishV1ManagersManagerIdActionsManagerResetPost with the required logic for this service method.
-	// Add api_default_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
-
-	// TODO: Uncomment the next line to return response Response(200, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(200, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(201, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(201, RedfishError{}), nil
-
-	// TODO: Uncomment the next line to return response Response(202, TaskV173Task{}) or use other options such as http.Ok ...
-	// return Response(202, TaskV173Task{}), nil
-
-	// TODO: Uncomment the next line to return response Response(204, {}) or use other options such as http.Ok ...
-	// return Response(204, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(0, RedfishError{}) or use other options such as http.Ok ...
-	// return Response(0, RedfishError{}), nil
-
-	return server.Response(http.StatusNotImplemented, nil), errors.New("RedfishV1ManagersManagerIdActionsManagerResetPost method not implemented")
+	return server.Response(http.StatusNoContent, nil), nil
 }
 
 // RedfishV1ManagersManagerIdActionsManagerResetToDefaultsPost -
