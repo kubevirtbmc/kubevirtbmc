@@ -19,10 +19,21 @@ type VirtualMediaAdapter struct {
 }
 
 func NewVirtualMedia(id, name string) *VirtualMediaAdapter {
+	odataId := fmt.Sprintf("/redfish/v1/Managers/BMC/VirtualMedia/%s", id)
 	generatedVirtualMedia := &server.VirtualMediaV163VirtualMedia{
 		OdataContext: "/redfish/v1/$metadata#VirtualMedia.VirtualMedia",
-		OdataId:      fmt.Sprintf("/redfish/v1/Managers/BMC/VirtualMedia/%s", id),
+		OdataId:      odataId,
 		OdataType:    "#VirtualMedia.v1_6_3.VirtualMedia",
+		Actions: server.VirtualMediaV163Actions{
+			VirtualMediaEjectMedia: server.VirtualMediaV163EjectMedia{
+				Target: fmt.Sprintf("%s/Actions/VirtualMedia.EjectMedia", odataId),
+				Title:  "EjectMedia",
+			},
+			VirtualMediaInsertMedia: server.VirtualMediaV163InsertMedia{
+				Target: fmt.Sprintf("%s/Actions/VirtualMedia.InsertMedia", odataId),
+				Title:  "InsertMedia",
+			},
+		},
 		ConnectedVia: server.VIRTUALMEDIAV163CONNECTEDVIA_NOT_CONNECTED,
 		Description:  "Virtual Media",
 		Name:         name,
