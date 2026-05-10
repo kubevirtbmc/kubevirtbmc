@@ -50,6 +50,12 @@ func main() {
 				Destination: &options.RedfishPort,
 			},
 			&cli.BoolFlag{
+				Name:        "enable-ipmi",
+				Value:       false,
+				Usage:       "enable IPMI support",
+				Destination: &options.EnableIPMI,
+			},
+			&cli.BoolFlag{
 				Name:    "version",
 				Aliases: []string{"v"},
 				Usage:   "print the version",

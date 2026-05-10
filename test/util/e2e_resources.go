@@ -273,6 +273,7 @@ func E2EBMC(namespace string) *bmcv1.VirtualMachineBMC {
 		Spec: bmcv1.VirtualMachineBMCSpec{
 			VirtualMachineRef: &corev1.LocalObjectReference{Name: E2EVMName},
 			AuthSecretRef:     &corev1.LocalObjectReference{Name: E2ESecretName},
+			EnableIPMI:        true,
 		},
 	}
 }

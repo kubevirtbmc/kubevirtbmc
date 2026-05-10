@@ -35,6 +35,10 @@ type VirtualMachineBMCSpec struct {
 
 	// Reference to the Secret containing IPMI/Redfish credentials.
 	AuthSecretRef *corev1.LocalObjectReference `json:"authSecretRef,omitempty"`
+
+	// EnableIPMI enables IPMI support. Disabled by default for security reasons.
+	// +kubebuilder:default=false
+	EnableIPMI bool `json:"enableIPMI,omitempty"`
 }
 
 // VirtualMachineBMCStatus defines the observed state of VirtualMachineBMC.

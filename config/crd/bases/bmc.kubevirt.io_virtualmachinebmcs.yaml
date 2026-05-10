@@ -69,6 +69,11 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              enableIPMI:
+                default: false
+                description: EnableIPMI enables IPMI support. Disabled by default
+                  for security reasons.
+                type: boolean
               virtualMachineRef:
                 description: Reference to the VM to manage.
                 properties:

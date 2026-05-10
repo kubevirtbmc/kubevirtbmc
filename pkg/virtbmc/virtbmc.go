@@ -24,6 +24,7 @@ type Options struct {
 	RedfishPort    int
 	BMCUser        string
 	BMCPassword    string
+	EnableIPMI     bool
 }
 
 type VirtBMC struct {
@@ -41,12 +42,19 @@ type VirtBMC struct {
 
 	ipmiSimulator   *ipmi.Simulator
 	redfishEmulator *redfish.Emulator
+	enableIPMI      bool
 }
 
 func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC, error) {
 	virtClient := NewVirtClient(options)
 	cdiClient := NewCdiClient(options)
 	resourceManager := resourcemanager.NewVirtualMachineResourceManager(ctx, virtClient, cdiClient)
+
+	var ipmiSimulator *ipmi.Simulator
+	if options.EnableIPMI {
+		ipmiSimulator = ipmi.NewSimulator(options.Address, options.IPMIPort, resourceManager)
+	}
+
 	return &VirtBMC{
 		context:         ctx,
 		address:         options.Address,
@@ -57,8 +65,9 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 		virtClient:      virtClient,
 		cdiClient:       cdiClient,
 		resourceManager: resourceManager,
-		ipmiSimulator:   ipmi.NewSimulator(options.Address, options.IPMIPort, resourceManager),
+		ipmiSimulator:   ipmiSimulator,
 		redfishEmulator: redfish.NewEmulator(ctx, options.RedfishPort, options.BMCUser, options.BMCPassword, resourceManager),
+		enableIPMI:      options.EnableIPMI,
 	}, nil
 }
 
@@ -69,11 +78,13 @@ func (b *VirtBMC) Run() error {
 		return fmt.Errorf("unable to initialize the resource manager: %v", err)
 	}
 
-	// Start the IPMI simulator
-	if err := b.ipmiSimulator.Run(); err != nil {
-		return fmt.Errorf("unable to run the ipmi simulator: %v", err)
+	// Start the IPMI simulator if enabled
+	if b.enableIPMI && b.ipmiSimulator != nil {
+		if err := b.ipmiSimulator.Run(); err != nil {
+			return fmt.Errorf("unable to run the ipmi simulator: %v", err)
+		}
+		logrus.Infof("IPMI service listens on %s:%d", b.address, b.ipmiPort)
 	}
-	logrus.Infof("IPMI service listens on %s:%d", b.address, b.ipmiPort)
 
 	// Start the Redfish emulator
 	if err := b.redfishEmulator.Run(); err != nil {
@@ -83,7 +94,9 @@ func (b *VirtBMC) Run() error {
 
 	<-b.context.Done()
 	logrus.Info("Gracefully shutting down the VirtBMC agent...")
-	b.ipmiSimulator.Stop()
+	if b.ipmiSimulator != nil {
+		b.ipmiSimulator.Stop()
+	}
 	b.redfishEmulator.Stop()
 
 	return nil

@@ -155,28 +155,36 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 				{
 					Name:  virtBMCContainerName,
 					Image: fmt.Sprintf("%s:%s", r.AgentImageName, r.AgentImageTag),
-					Args: []string{
-						"--address",
-						"0.0.0.0",
-						"--ipmi-port",
-						strconv.Itoa(ipmiPort),
-						"--redfish-port",
-						strconv.Itoa(redfishPort),
-						virtualMachineBMC.Namespace,
-						virtualMachineBMC.Spec.VirtualMachineRef.Name,
-					},
-					Ports: []corev1.ContainerPort{
-						{
-							Name:          ipmiPortName,
-							ContainerPort: ipmiPort,
-							Protocol:      corev1.ProtocolUDP,
-						},
-						{
-							Name:          redfishPortName,
-							ContainerPort: redfishPort,
-							Protocol:      corev1.ProtocolTCP,
-						},
-					},
+					Args: func() []string {
+						args := []string{
+							"--address",
+							"0.0.0.0",
+							"--redfish-port",
+							strconv.Itoa(redfishPort),
+						}
+						if virtualMachineBMC.Spec.EnableIPMI {
+							args = append(args, "--enable-ipmi", "--ipmi-port", strconv.Itoa(ipmiPort))
+						}
+						args = append(args, virtualMachineBMC.Namespace, virtualMachineBMC.Spec.VirtualMachineRef.Name)
+						return args
+					}(),
+					Ports: func() []corev1.ContainerPort {
+						ports := []corev1.ContainerPort{
+							{
+								Name:          redfishPortName,
+								ContainerPort: redfishPort,
+								Protocol:      corev1.ProtocolTCP,
+							},
+						}
+						if virtualMachineBMC.Spec.EnableIPMI {
+							ports = append(ports, corev1.ContainerPort{
+								Name:          ipmiPortName,
+								ContainerPort: ipmiPort,
+								Protocol:      corev1.ProtocolUDP,
+							})
+						}
+						return ports
+					}(),
 					Env: []corev1.EnvVar{
 						{
 							Name: "BMC_USERNAME",
@@ -225,20 +233,25 @@ func (r *VirtualMachineBMCReconciler) constructServiceFromVirtualMachineBMC(virt
 			Selector: map[string]string{
 				VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
 			},
-			Ports: []corev1.ServicePort{
-				{
-					Name:       ipmiPortName,
-					Protocol:   corev1.ProtocolUDP,
-					TargetPort: intstr.FromString(ipmiPortName),
-					Port:       IPMISvcPort,
-				},
-				{
-					Name:       redfishPortName,
-					Protocol:   corev1.ProtocolTCP,
-					TargetPort: intstr.FromString(redfishPortName),
-					Port:       RedfishSvcPort,
-				},
-			},
+			Ports: func() []corev1.ServicePort {
+				ports := []corev1.ServicePort{
+					{
+						Name:       redfishPortName,
+						Protocol:   corev1.ProtocolTCP,
+						TargetPort: intstr.FromString(redfishPortName),
+						Port:       RedfishSvcPort,
+					},
+				}
+				if virtualMachineBMC.Spec.EnableIPMI {
+					ports = append(ports, corev1.ServicePort{
+						Name:       ipmiPortName,
+						Protocol:   corev1.ProtocolUDP,
+						TargetPort: intstr.FromString(ipmiPortName),
+						Port:       IPMISvcPort,
+					})
+				}
+				return ports
+			}(),
 		},
 	}
 
