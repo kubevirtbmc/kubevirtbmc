@@ -165,7 +165,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(createdSvc.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
 			Expect(createdSvc.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
 			Expect(createdSvc.Spec.Selector).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
-			Expect(createdSvc.Spec.Ports).To(HaveLen(2))
+			Expect(createdSvc.Spec.Ports).To(HaveLen(1))
 		})
 
 		It("Should set correct status conditions when VirtualMachine and Secret exist", func() {
@@ -636,6 +636,76 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(newPod.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, bmcName))
 			Expect(newPod.Labels).To(HaveKeyWithValue(VMNameLabel, vmName))
 			Expect(newPod.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
+		})
+
+		It("Should delete and recreate Pod and Service when enableIPMI is changed", func() {
+			ctx := context.Background()
+
+			By("Getting VirtualMachine and Secret from the first test")
+			podLookupKey := types.NamespacedName{
+				Name:      testVMName + "-virtbmc",
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+			svcLookupKey := types.NamespacedName{
+				Name:      testVMName + "-virtbmc",
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+			bmcLookupKey := types.NamespacedName{
+				Name:      testVirtualMachineBMCName,
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+
+			var originalPod corev1.Pod
+			var originalSvc corev1.Service
+			Eventually(func() bool {
+				err1 := k8sClient.Get(ctx, podLookupKey, &originalPod)
+				err2 := k8sClient.Get(ctx, svcLookupKey, &originalSvc)
+				return err1 == nil && err2 == nil
+			}, timeout, interval).Should(BeTrue())
+
+			originalPodUID := originalPod.UID
+			originalSvcUID := originalSvc.UID
+
+			Expect(originalPod.Spec.Containers[0].Ports).To(HaveLen(1))
+			Expect(originalPod.Spec.Containers[0].Ports[0].Name).To(Equal(redfishPortName))
+
+			Expect(originalSvc.Spec.Ports).To(HaveLen(1))
+			Expect(originalSvc.Spec.Ports[0].Name).To(Equal(redfishPortName))
+
+			By("Updating the existing VirtualMachineBMC to enableIPMI=true")
+			updatedBMC := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, bmcLookupKey, updatedBMC)).Should(Succeed())
+			updatedBMC.Spec.EnableIPMI = true
+			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
+
+			By("Verifying that new Pod and Service are created with IPMI ports and different UIDs")
+			var newPod corev1.Pod
+			var newSvc corev1.Service
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, podLookupKey, &newPod); err != nil {
+					return false
+				}
+				if err := k8sClient.Get(ctx, svcLookupKey, &newSvc); err != nil {
+					return false
+				}
+				if newPod.UID == originalPodUID || newSvc.UID == originalSvcUID {
+					return false
+				}
+				if len(newPod.Spec.Containers[0].Ports) < 2 || len(newSvc.Spec.Ports) < 2 {
+					return false
+				}
+				return true
+			}, timeout, interval).Should(BeTrue())
+
+			Expect(newPod.Spec.Containers[0].Ports).To(HaveLen(2))
+			portNames := []string{newPod.Spec.Containers[0].Ports[0].Name, newPod.Spec.Containers[0].Ports[1].Name}
+			Expect(portNames).To(ContainElement(redfishPortName))
+			Expect(portNames).To(ContainElement(ipmiPortName))
+
+			Expect(newSvc.Spec.Ports).To(HaveLen(2))
+			svcPortNames := []string{newSvc.Spec.Ports[0].Name, newSvc.Spec.Ports[1].Name}
+			Expect(svcPortNames).To(ContainElement(redfishPortName))
+			Expect(svcPortNames).To(ContainElement(ipmiPortName))
 		})
 
 	})

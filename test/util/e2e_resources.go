@@ -85,6 +85,27 @@ func PodRunningAndReady(ctx context.Context, k8sClient client.Client, namespace 
 	}
 }
 
+func PodRunningAndReadyWithNewUID(ctx context.Context, k8sClient client.Client, namespace string, oldUID types.UID) func() bool {
+	return func() bool {
+		pod := &corev1.Pod{}
+		if err := k8sClient.Get(ctx, AgentPodKey(namespace), pod); err != nil {
+			return false
+		}
+		if pod.UID == oldUID {
+			return false
+		}
+		if pod.Status.Phase != corev1.PodRunning {
+			return false
+		}
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 func VMIPhase(ctx context.Context, k8sClient client.Client, name, namespace string, phase kubevirtv1.VirtualMachineInstancePhase) func() bool {
 	return func() bool {
 		vmi := &kubevirtv1.VirtualMachineInstance{}
@@ -273,7 +294,6 @@ func E2EBMC(namespace string) *bmcv1.VirtualMachineBMC {
 		Spec: bmcv1.VirtualMachineBMCSpec{
 			VirtualMachineRef: &corev1.LocalObjectReference{Name: E2EVMName},
 			AuthSecretRef:     &corev1.LocalObjectReference{Name: E2ESecretName},
-			EnableIPMI:        true,
 		},
 	}
 }

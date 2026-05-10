@@ -286,4 +286,47 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			Eventually(util.PodRunningAndReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Pod should become Running and Ready")
 		})
 	})
+
+	Context("when enableIPMI is toggled from default (disabled)", func() {
+		It("should recreate Pod and Service with IPMI ports", func() {
+			By("recording the current Pod and verifying it has no IPMI port")
+			var podBefore corev1.Pod
+			Expect(k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &podBefore)).To(Succeed())
+			Expect(podBefore.Spec.Containers).To(HaveLen(1))
+			Expect(podBefore.Spec.Containers[0].Ports).To(HaveLen(1))
+			Expect(podBefore.Spec.Containers[0].Ports[0].Name).To(Equal("redfish"))
+
+			By("recording the current Service and verifying it has no IPMI port")
+			var svcBefore corev1.Service
+			Expect(k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &svcBefore)).To(Succeed())
+			Expect(svcBefore.Spec.Ports).To(HaveLen(1))
+			Expect(svcBefore.Spec.Ports[0].Name).To(Equal("redfish"))
+
+			By("patching the VirtualMachineBMC to enableIPMI=true")
+			bmc := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), bmc)).To(Succeed())
+			bmc.Spec.EnableIPMI = true
+			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
+
+			By("waiting for the Pod to be recreated with new UID and IPMI port")
+			Eventually(func() bool {
+				var pod corev1.Pod
+				if err := k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &pod); err != nil {
+					return false
+				}
+				return pod.UID != podBefore.UID &&
+					len(pod.Spec.Containers) == 1 &&
+					len(pod.Spec.Containers[0].Ports) == 2
+			}, timeout, interval).Should(BeTrue(), "Pod should be recreated with IPMI port")
+
+			By("waiting for the Service to be recreated with new UID and IPMI port")
+			Eventually(func() bool {
+				var svc corev1.Service
+				if err := k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &svc); err != nil {
+					return false
+				}
+				return svc.UID != svcBefore.UID && len(svc.Spec.Ports) == 2
+			}, timeout, interval).Should(BeTrue(), "Service should be recreated with IPMI port")
+		})
+	})
 })

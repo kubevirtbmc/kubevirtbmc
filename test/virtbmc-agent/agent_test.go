@@ -6,8 +6,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/test/util"
 )
 
@@ -19,12 +22,12 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		ctx       context.Context
 		ns        string
 		authToken string
+		err       error
 	)
 
 	BeforeAll(func() {
 		ctx = context.Background()
 		ns = agentNamespace
-		var err error
 		env, err = ensureAgentTestEnv(ctx, ns, k8sClient)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -32,10 +35,6 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(CreateIPMIToolPod(ctx, clientset, ns)).To(Succeed())
 		Expect(CreateRedfishClientPod(ctx, clientset, ns)).To(Succeed())
-
-		authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(authToken).NotTo(BeEmpty())
 	})
 
 	ipmiReq := func(args ...string) IPMIRequest {
@@ -57,6 +56,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		}
 	}
 	redfishSession := func(method, path, body string) RedfishRequest {
+		authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(authToken).NotTo(BeEmpty())
 		return RedfishRequest{
 			BaseURL:    env.RedfishBaseURL,
 			Method:     method,
@@ -65,6 +67,27 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			XAuthToken: authToken,
 		}
 	}
+
+	Context("IPMI enable/disable toggle", func() {
+		It("should start with IPMI disabled by default, verify failure, then enable", func() {
+			By("verifying IPMI commands fail when disabled by default")
+			_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
+			Expect(err).To(HaveOccurred(), "IPMI command should fail when IPMI is disabled")
+
+			By("recording the current pod UID before enabling IPMI")
+			var podBefore corev1.Pod
+			Expect(k8sClient.Get(ctx, util.AgentPodKey(ns), &podBefore)).To(Succeed())
+
+			By("enabling IPMI on the VirtualMachineBMC")
+			bmc := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
+			bmc.Spec.EnableIPMI = true
+			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
+
+			By("waiting for new agent pod to be recreated and ready")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
+		})
+	})
 
 	Context("IPMI operations", func() {
 		Context("Power management", func() {
