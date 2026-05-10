@@ -372,6 +372,93 @@ func (r *VirtualMachineBMCReconciler) validateSecretExists(ctx context.Context, 
 	return true, nil
 }
 
+func (r *VirtualMachineBMCReconciler) getVirtBMCPod(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (*corev1.Pod, error) {
+	podName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	pod := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: virtualMachineBMC.Namespace}, pod); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return pod, nil
+}
+
+func (r *VirtualMachineBMCReconciler) deleteVirtBMCService(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	log := log.FromContext(ctx)
+	svcName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      svcName,
+			Namespace: virtualMachineBMC.Namespace,
+		},
+	}
+
+	if err := r.Delete(ctx, svc); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	log.V(1).Info("deleted virtBMC Service", "svc", svcName)
+	return nil
+}
+
+func podHasIPMIPort(pod *corev1.Pod) bool {
+	for _, c := range pod.Spec.Containers {
+		if c.Name == virtBMCContainerName {
+			for _, p := range c.Ports {
+				if p.Name == ipmiPortName {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// reconcileIPMIChange detects a mismatch between the spec's enableIPMI flag and
+// the ports that the existing pod was created with. When a mismatch is found it
+// deletes the stale pod and service so the main reconcile loop recreates them
+// correctly.
+func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (deleted bool, err error) {
+	log := log.FromContext(ctx)
+
+	pod, err := r.getVirtBMCPod(ctx, virtualMachineBMC)
+	if err != nil {
+		return false, err
+	}
+
+	if pod == nil {
+		return false, nil
+	}
+
+	currentHasIPMI := podHasIPMIPort(pod)
+	desiredHasIPMI := virtualMachineBMC.Spec.EnableIPMI
+
+	if currentHasIPMI == desiredHasIPMI {
+		return false, nil
+	}
+
+	log.Info("enableIPMI changed, deleting stale pod and service",
+		"currentHasIPMI", currentHasIPMI,
+		"desiredHasIPMI", desiredHasIPMI)
+
+	if err := r.deleteVirtBMCPod(ctx, virtualMachineBMC); err != nil {
+		return false, err
+	}
+
+	if err := r.deleteVirtBMCService(ctx, virtualMachineBMC); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachineinstances,verbs=get;list;watch;delete
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs,verbs=get;list;watch;create;update;patch;delete
@@ -426,6 +513,14 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			"secretExists", secretExists,
 			"authSecretRefSet", virtualMachineBMC.Spec.AuthSecretRef != nil)
 		return ctrl.Result{}, nil
+	}
+
+	deleted, err := r.reconcileIPMIChange(ctx, &virtualMachineBMC)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if deleted {
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if err := r.ensureRBACResources(ctx, &virtualMachineBMC); err != nil {
