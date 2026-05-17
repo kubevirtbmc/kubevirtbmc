@@ -56,9 +56,6 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		}
 	}
 	redfishSession := func(method, path, body string) RedfishRequest {
-		authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(authToken).NotTo(BeEmpty())
 		return RedfishRequest{
 			BaseURL:    env.RedfishBaseURL,
 			Method:     method,
@@ -86,6 +83,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 			By("waiting for new agent pod to be recreated and ready")
 			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
+
+			By("creating a new Redfish session for the restarted pod")
+			authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(authToken).NotTo(BeEmpty())
 		})
 	})
 

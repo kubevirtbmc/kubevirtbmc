@@ -63,8 +63,6 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-          - --agent-image-name=anish60/agent
-          - --agent-image-tag=v0.8.2
         image: controller:latest
         name: manager
         ports: []

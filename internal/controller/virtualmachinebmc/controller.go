@@ -389,28 +389,6 @@ func (r *VirtualMachineBMCReconciler) getVirtBMCPod(ctx context.Context, virtual
 	return pod, nil
 }
 
-func (r *VirtualMachineBMCReconciler) deleteVirtBMCService(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
-	log := log.FromContext(ctx)
-	svcName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
-
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      svcName,
-			Namespace: virtualMachineBMC.Namespace,
-		},
-	}
-
-	if err := r.Delete(ctx, svc); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	log.V(1).Info("deleted virtBMC Service", "svc", svcName)
-	return nil
-}
-
 func podIPMIEnabled(pod *corev1.Pod) bool {
 	val, ok := pod.Annotations[EnableIPMIAnnotation]
 	if !ok {
