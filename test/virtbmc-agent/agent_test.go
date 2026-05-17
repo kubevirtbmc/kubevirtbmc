@@ -85,8 +85,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
 
 			By("creating a new Redfish session for the restarted pod")
-			authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
-			Expect(err).NotTo(HaveOccurred())
+			Eventually(func() error {
+				authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
+				return err
+			}, agentTestTimeout, agentTestInterval).Should(Succeed())
 			Expect(authToken).NotTo(BeEmpty())
 		})
 	})
