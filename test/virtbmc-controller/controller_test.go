@@ -288,7 +288,7 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 	})
 
 	Context("when enableIPMI is toggled from default (disabled)", func() {
-		It("should recreate Pod and Service with IPMI ports", func() {
+		It("should recreate Pod and patch Service with IPMI ports", func() {
 			By("recording the current Pod and verifying it has no IPMI port")
 			var podBefore corev1.Pod
 			Expect(k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &podBefore)).To(Succeed())
@@ -301,6 +301,7 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			Expect(k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &svcBefore)).To(Succeed())
 			Expect(svcBefore.Spec.Ports).To(HaveLen(1))
 			Expect(svcBefore.Spec.Ports[0].Name).To(Equal("redfish"))
+			svcBeforeClusterIP := svcBefore.Spec.ClusterIP
 
 			By("patching the VirtualMachineBMC to enableIPMI=true")
 			bmc := &bmcv1.VirtualMachineBMC{}
@@ -319,14 +320,16 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 					len(pod.Spec.Containers[0].Ports) == 2
 			}, timeout, interval).Should(BeTrue(), "Pod should be recreated with IPMI port")
 
-			By("waiting for the Service to be recreated with new UID and IPMI port")
+			By("waiting for the Service to be patched with same UID, same ClusterIP, and IPMI port")
 			Eventually(func() bool {
 				var svc corev1.Service
 				if err := k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &svc); err != nil {
 					return false
 				}
-				return svc.UID != svcBefore.UID && len(svc.Spec.Ports) == 2
-			}, timeout, interval).Should(BeTrue(), "Service should be recreated with IPMI port")
+				return svc.UID == svcBefore.UID &&
+					svc.Spec.ClusterIP == svcBeforeClusterIP &&
+					len(svc.Spec.Ports) == 2
+			}, timeout, interval).Should(BeTrue(), "Service should be patched with IPMI port, preserving ClusterIP")
 		})
 	})
 })

@@ -14,4 +14,5 @@ const (
 	VirtualMachineBMCNameLabel = "kubevirt.io/virtualmachinebmc-name"
 	VMNameLabel                = "kubevirt.io/vm-name"
 	VirtualMachineBMCNamespace = "kubevirtbmc-system"
+	EnableIPMIAnnotation       = "bmc.kubevirt.io/enable-ipmi"
 )

@@ -146,6 +146,9 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 				VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
 				VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
 			},
+			Annotations: map[string]string{
+				EnableIPMIAnnotation: strconv.FormatBool(virtualMachineBMC.Spec.EnableIPMI),
+			},
 			Name:      name,
 			Namespace: virtualMachineBMC.Namespace,
 		},
@@ -408,24 +411,56 @@ func (r *VirtualMachineBMCReconciler) deleteVirtBMCService(ctx context.Context, 
 	return nil
 }
 
-func podHasIPMIPort(pod *corev1.Pod) bool {
-	for _, c := range pod.Spec.Containers {
-		if c.Name == virtBMCContainerName {
-			for _, p := range c.Ports {
-				if p.Name == ipmiPortName {
-					return true
-				}
-			}
-		}
+func podIPMIEnabled(pod *corev1.Pod) bool {
+	val, ok := pod.Annotations[EnableIPMIAnnotation]
+	if !ok {
+		return false
 	}
-	return false
+	enabled, err := strconv.ParseBool(val)
+	if err != nil {
+		return false
+	}
+	return enabled
+}
+
+func (r *VirtualMachineBMCReconciler) patchVirtBMCServicePorts(
+	ctx context.Context,
+	virtualMachineBMC *bmcv1.VirtualMachineBMC,
+) error {
+	log := log.FromContext(ctx)
+	svcName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	existing := &corev1.Service{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      svcName,
+		Namespace: virtualMachineBMC.Namespace,
+	}, existing); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	desired := r.constructServiceFromVirtualMachineBMC(virtualMachineBMC)
+
+	patch := client.MergeFrom(existing.DeepCopy())
+	existing.Spec.Ports = desired.Spec.Ports
+
+	if err := r.Patch(ctx, existing, patch); err != nil {
+		log.Error(err, "unable to patch Service ports", "svc", svcName)
+		return err
+	}
+
+	log.V(1).Info("patched Service ports in-place", "svc", svcName,
+		"ports", existing.Spec.Ports)
+	return nil
 }
 
 // reconcileIPMIChange detects a mismatch between the spec's enableIPMI flag and
-// the ports that the existing pod was created with. When a mismatch is found it
-// deletes the stale pod and service so the main reconcile loop recreates them
-// correctly.
-func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (deleted bool, err error) {
+// the stamped annotation on the existing pod. When a mismatch is found it
+// deletes the stale pod (ports are immutable) and patches the Service in-place
+// (preserving ClusterIP), then requeues so the main loop recreates the pod.
+func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (requeue bool, err error) {
 	log := log.FromContext(ctx)
 
 	pod, err := r.getVirtBMCPod(ctx, virtualMachineBMC)
@@ -437,14 +472,14 @@ func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, v
 		return false, nil
 	}
 
-	currentHasIPMI := podHasIPMIPort(pod)
+	currentHasIPMI := podIPMIEnabled(pod)
 	desiredHasIPMI := virtualMachineBMC.Spec.EnableIPMI
 
 	if currentHasIPMI == desiredHasIPMI {
 		return false, nil
 	}
 
-	log.Info("enableIPMI changed, deleting stale pod and service",
+	log.Info("enableIPMI changed, replacing pod and patching service",
 		"currentHasIPMI", currentHasIPMI,
 		"desiredHasIPMI", desiredHasIPMI)
 
@@ -452,7 +487,7 @@ func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, v
 		return false, err
 	}
 
-	if err := r.deleteVirtBMCService(ctx, virtualMachineBMC); err != nil {
+	if err := r.patchVirtBMCServicePorts(ctx, virtualMachineBMC); err != nil {
 		return false, err
 	}
 
