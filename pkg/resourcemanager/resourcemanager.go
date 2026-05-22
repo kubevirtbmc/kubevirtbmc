@@ -5,6 +5,7 @@ type BootDevice string
 const (
 	BootDevicePxe BootDevice = "Pxe"
 	BootDeviceHdd BootDevice = "Hdd"
+	BootDeviceCd  BootDevice = "Cd"
 )
 
 type ResourceManager interface {

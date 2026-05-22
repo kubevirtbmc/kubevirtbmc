@@ -217,6 +217,8 @@ func (h *handler) PatchComputerSystem(computerSystemPatch *server.ComputerSystem
 			bootDevice = resourcemanager.BootDevicePxe
 		case server.COMPUTERSYSTEMBOOTSOURCE_HDD:
 			bootDevice = resourcemanager.BootDeviceHdd
+		case server.COMPUTERSYSTEMBOOTSOURCE_CD:
+			bootDevice = resourcemanager.BootDeviceCd
 		default:
 			return nil
 		}

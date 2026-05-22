@@ -32,6 +32,7 @@ var (
 	bootSourceMap = map[BootDevice]server.ComputerSystemBootSource{
 		BootDevicePxe: server.COMPUTERSYSTEMBOOTSOURCE_PXE,
 		BootDeviceHdd: server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+		BootDeviceCd:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
 	}
 )
 
@@ -342,6 +343,18 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) err
 		}
 		vm.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder = &firstOrder
 		logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Disks[0])
+	case BootDeviceCd:
+		cdromDisk, err := util.GetCdromDisk(vm.Spec.Template.Spec.Domain.Devices.Disks)
+		if err != nil {
+			return fmt.Errorf("no cdrom found: %w", err)
+		}
+		for i, disk := range vm.Spec.Template.Spec.Domain.Devices.Disks {
+			if disk.Name == cdromDisk.Name {
+				vm.Spec.Template.Spec.Domain.Devices.Disks[i].BootOrder = &firstOrder
+				logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Disks[i])
+				break
+			}
+		}
 	}
 
 	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
