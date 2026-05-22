@@ -237,6 +237,39 @@ func TestPatchComputerSystem(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "valid boot source override target to Cd (once)",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
+				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "valid boot source override target to Cd (continuous)",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
+				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "failed to set Cd boot device",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
+				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(assert.AnError)
+			},
+			expectError: true,
+		},
 	}
 
 	for _, tc := range testCases {

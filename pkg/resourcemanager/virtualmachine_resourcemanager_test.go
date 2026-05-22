@@ -906,6 +906,65 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 		// 		AddInterface("test-interface", util.Ptr[uint](1)).Build(),
 		// 	shouldError: false,
 		// },
+		{
+			name: "Set boot device to Cd for a virtual machine with single cdrom should succeed",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithCDRomDisk("test-cdrom", nil).Build(),
+			bootDevice: BootDeviceCd,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "Set boot device to Cd for a virtual machine with disk and cdrom should succeed",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", nil).
+				WithCDRomDisk("test-cdrom", nil).Build(),
+			bootDevice: BootDeviceCd,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", nil).
+				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "Set boot device to Cd for a virtual machine with disk, interface and cdrom should succeed and clear other boot orders",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", util.Ptr[uint](1)).
+				WithInterface("test-interface", nil).
+				WithCDRomDisk("test-cdrom", nil).Build(),
+			bootDevice: BootDeviceCd,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", nil).
+				WithInterface("test-interface", nil).
+				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "Set boot device to Cd for a virtual machine with no cdrom should fail",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", nil).Build(),
+			bootDevice:  BootDeviceCd,
+			shouldError: true,
+		},
+		{
+			name: "Set boot device to Cd for a virtual machine with no disks should fail",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			bootDevice:  BootDeviceCd,
+			shouldError: true,
+		},
+		{
+			name: "Set boot device to Cd for a virtual machine with disk, interface and cdrom with existing boot order should succeed",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", nil).
+				WithInterface("test-interface", util.Ptr[uint](1)).
+				WithCDRomDisk("test-cdrom", nil).Build(),
+			bootDevice: BootDeviceCd,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("test-disk", nil).
+				WithInterface("test-interface", nil).
+				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
