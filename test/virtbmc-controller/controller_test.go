@@ -306,7 +306,8 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			By("patching the VirtualMachineBMC to enableIPMI=true")
 			bmc := &bmcv1.VirtualMachineBMC{}
 			Expect(k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), bmc)).To(Succeed())
-			bmc.Spec.EnableIPMI = true
+			enabled := true
+			bmc.Spec.IPMI = &bmcv1.IPMISpec{Enabled: &enabled}
 			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
 
 			By("waiting for the Pod to be recreated with new UID and IPMI port")

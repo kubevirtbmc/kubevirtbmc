@@ -147,7 +147,7 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 				VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
 			},
 			Annotations: map[string]string{
-				EnableIPMIAnnotation: strconv.FormatBool(virtualMachineBMC.Spec.EnableIPMI),
+				EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
 			},
 			Name:      name,
 			Namespace: virtualMachineBMC.Namespace,
@@ -165,7 +165,7 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 							"--redfish-port",
 							strconv.Itoa(redfishPort),
 						}
-						if virtualMachineBMC.Spec.EnableIPMI {
+						if specIPMIEnabled(&virtualMachineBMC.Spec) {
 							args = append(args, "--enable-ipmi", "--ipmi-port", strconv.Itoa(ipmiPort))
 						}
 						args = append(args, virtualMachineBMC.Namespace, virtualMachineBMC.Spec.VirtualMachineRef.Name)
@@ -179,7 +179,7 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 								Protocol:      corev1.ProtocolTCP,
 							},
 						}
-						if virtualMachineBMC.Spec.EnableIPMI {
+						if specIPMIEnabled(&virtualMachineBMC.Spec) {
 							ports = append(ports, corev1.ContainerPort{
 								Name:          ipmiPortName,
 								ContainerPort: ipmiPort,
@@ -245,7 +245,7 @@ func (r *VirtualMachineBMCReconciler) constructServiceFromVirtualMachineBMC(virt
 						Port:       RedfishSvcPort,
 					},
 				}
-				if virtualMachineBMC.Spec.EnableIPMI {
+				if specIPMIEnabled(&virtualMachineBMC.Spec) {
 					ports = append(ports, corev1.ServicePort{
 						Name:       ipmiPortName,
 						Protocol:   corev1.ProtocolUDP,
@@ -389,6 +389,10 @@ func (r *VirtualMachineBMCReconciler) getVirtBMCPod(ctx context.Context, virtual
 	return pod, nil
 }
 
+func specIPMIEnabled(spec *bmcv1.VirtualMachineBMCSpec) bool {
+	return spec.IPMI != nil && spec.IPMI.Enabled != nil && *spec.IPMI.Enabled
+}
+
 func podIPMIEnabled(pod *corev1.Pod) bool {
 	val, ok := pod.Annotations[EnableIPMIAnnotation]
 	if !ok {
@@ -451,7 +455,7 @@ func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, v
 	}
 
 	currentHasIPMI := podIPMIEnabled(pod)
-	desiredHasIPMI := virtualMachineBMC.Spec.EnableIPMI
+	desiredHasIPMI := specIPMIEnabled(&virtualMachineBMC.Spec)
 
 	if currentHasIPMI == desiredHasIPMI {
 		return false, nil

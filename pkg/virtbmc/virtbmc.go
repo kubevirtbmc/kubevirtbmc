@@ -78,8 +78,8 @@ func (b *VirtBMC) Run() error {
 		return fmt.Errorf("unable to initialize the resource manager: %v", err)
 	}
 
-	// Start the IPMI simulator if enabled
-	if b.enableIPMI && b.ipmiSimulator != nil {
+	// Start the IPMI simulator
+	if b.ipmiSimulator != nil {
 		if err := b.ipmiSimulator.Run(); err != nil {
 			return fmt.Errorf("unable to run the ipmi simulator: %v", err)
 		}

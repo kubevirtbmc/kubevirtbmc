@@ -676,7 +676,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			By("Updating the existing VirtualMachineBMC to enableIPMI=true")
 			updatedBMC := &bmcv1.VirtualMachineBMC{}
 			Expect(k8sClient.Get(ctx, bmcLookupKey, updatedBMC)).Should(Succeed())
-			updatedBMC.Spec.EnableIPMI = true
+			updatedBMC.Spec.IPMI = &bmcv1.IPMISpec{Enabled: boolPtr(true)}
 			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
 
 			By("Verifying that Pod is recreated (new UID) and Service is patched (same UID) with IPMI ports")

@@ -78,7 +78,8 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			By("enabling IPMI on the VirtualMachineBMC")
 			bmc := &bmcv1.VirtualMachineBMC{}
 			Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
-			bmc.Spec.EnableIPMI = true
+			enabled := true
+			bmc.Spec.IPMI = &bmcv1.IPMISpec{Enabled: &enabled}
 			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
 
 			By("waiting for new agent pod to be recreated and ready")
