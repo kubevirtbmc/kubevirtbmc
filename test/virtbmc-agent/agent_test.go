@@ -116,6 +116,16 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					Equal(""),
 				))
 			})
+
+			It("should set boot device to cdrom", func() {
+				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "cdrom"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("Set Boot Device"),
+					ContainSubstring("Boot"),
+					Equal(""),
+				))
+			})
 		})
 	})
 

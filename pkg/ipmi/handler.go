@@ -91,6 +91,9 @@ func (h *handler) setSystemBootOptionsHandler(m *goipmi.Message) goipmi.Response
 	case uint8(goipmi.BootDeviceDisk):
 		logrus.Infof("set bootdev disk")
 		device = resourcemanager.BootDeviceHdd
+	case uint8(goipmi.BootDeviceCdrom):
+		logrus.Infof("set bootdev cdrom")
+		device = resourcemanager.BootDeviceCd
 	}
 
 	err := h.rm.SetBootDevice(device)

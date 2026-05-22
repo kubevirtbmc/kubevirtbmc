@@ -192,6 +192,22 @@ func TestSetSystemBootOptionsHandler(t *testing.T) {
 			},
 			expectedCode: goipmi.ErrUnspecified,
 		},
+		{
+			name:       "SetSystemBootOptions with cdrom success",
+			bootDevice: goipmi.BootDeviceCdrom,
+			expectedCall: func() {
+				mockRM.EXPECT().SetBootDevice(gomock.Any()).Return(nil)
+			},
+			expectedCode: goipmi.CommandCompleted,
+		},
+		{
+			name:       "SetSystemBootOptions with cdrom failed",
+			bootDevice: goipmi.BootDeviceCdrom,
+			expectedCall: func() {
+				mockRM.EXPECT().SetBootDevice(gomock.Any()).Return(fmt.Errorf("error"))
+			},
+			expectedCode: goipmi.ErrUnspecified,
+		},
 	}
 
 	for _, tc := range testCases {
