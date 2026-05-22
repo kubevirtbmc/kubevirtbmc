@@ -222,6 +222,16 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				))
 			})
 
+			It("should set boot to Cd", func() {
+				body := `{"Boot":{"BootSourceOverrideTarget":"Cd","BootSourceOverrideEnabled":"Once"}}`
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(SatisfyAny(
+					ContainSubstring("200"),
+					ContainSubstring("204"),
+				))
+			})
+
 			It("should set boot mode to UEFI", func() {
 				body := `{"Boot":{"BootSourceOverrideMode":"UEFI"}}`
 				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))

@@ -947,7 +947,7 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 			shouldError: true,
 		},
 		{
-			name: "Set boot device to Cd for a virtual machine with no disks should fail",
+			name:        "Set boot device to Cd for a virtual machine with no disks should fail",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
 			bootDevice:  BootDeviceCd,
 			shouldError: true,
