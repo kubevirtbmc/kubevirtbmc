@@ -133,6 +133,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("Boot"),
 					Equal(""),
 				))
+				// PXE: interfaces first, then regular disks, then cdroms
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 2, 1: 3}, // disks: regular=2, cdrom=3
+					map[int]uint{0: 1},       // interface=1
+				)
 			})
 
 			It("should set boot device to disk", func() {
@@ -143,6 +148,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("Boot"),
 					Equal(""),
 				))
+				// HDD: regular disks first, then interfaces, then cdroms
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 1, 1: 3}, // disks: regular=1, cdrom=3
+					map[int]uint{0: 2},       // interface=2
+				)
 			})
 
 			It("should set boot device to cdrom", func() {
@@ -153,6 +163,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("Boot"),
 					Equal(""),
 				))
+				// CD: cdroms first, then regular disks, then interfaces
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 2, 1: 1}, // disks: regular=2, cdrom=1
+					map[int]uint{0: 3},       // interface=3
+				)
 			})
 		})
 	})
@@ -238,6 +253,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("200"),
 					ContainSubstring("204"),
 				))
+				// PXE: interfaces first, then regular disks, then cdroms
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 2, 1: 3}, // disks: regular=2, cdrom=3
+					map[int]uint{0: 1},       // interface=1
+				)
 			})
 
 			It("should set boot to PXE continuous", func() {
@@ -248,6 +268,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("200"),
 					ContainSubstring("204"),
 				))
+				// PXE: interfaces first, then regular disks, then cdroms
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 2, 1: 3}, // disks: regular=2, cdrom=3
+					map[int]uint{0: 1},       // interface=1
+				)
 			})
 
 			It("should set boot to disk", func() {
@@ -258,6 +283,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("200"),
 					ContainSubstring("204"),
 				))
+				// HDD: regular disks first, then interfaces, then cdroms
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 1, 1: 3}, // disks: regular=1, cdrom=3
+					map[int]uint{0: 2},       // interface=2
+				)
 			})
 
 			It("should set boot to Cd", func() {
@@ -268,6 +298,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("200"),
 					ContainSubstring("204"),
 				))
+				// CD: cdroms first, then regular disks, then interfaces
+				verifyVMBootOrder(ctx, k8sClient, ns,
+					map[int]uint{0: 2, 1: 1}, // disks: regular=2, cdrom=1
+					map[int]uint{0: 3},       // interface=3
+				)
 			})
 
 			It("should set boot mode to UEFI", func() {

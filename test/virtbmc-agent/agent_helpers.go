@@ -142,6 +142,38 @@ func waitForVMIPowerCycle(ctx context.Context, k8sClient client.Client, namespac
 		"VMI %s/%s should be recreated with a new UID and reach Running phase", namespace, agentVMName)
 }
 
+// verifyVMBootOrder fetches the test VM and checks that bootOrder values on
+// disks and interfaces match the expected maps. It retries until the timeout
+// because the update goes through agent → resourcemanager → KubeVirt API.
+func verifyVMBootOrder(ctx context.Context, k8sClient client.Client, namespace string, expectedDisks, expectedIfaces map[int]uint) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+
+		disks := vm.Spec.Template.Spec.Domain.Devices.Disks
+		ifaces := vm.Spec.Template.Spec.Domain.Devices.Interfaces
+
+		for idx, expectedOrder := range expectedDisks {
+			if idx >= len(disks) || disks[idx].BootOrder == nil || *disks[idx].BootOrder != expectedOrder {
+				return false
+			}
+		}
+		for idx, expectedOrder := range expectedIfaces {
+			if idx >= len(ifaces) || ifaces[idx].BootOrder == nil || *ifaces[idx].BootOrder != expectedOrder {
+				return false
+			}
+		}
+		return true
+	}, vmPowerStatusTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s boot order should match: disks=%v ifaces=%v",
+		namespace, agentVMName, expectedDisks, expectedIfaces)
+}
+
 func (e *agentTestEnv) ensureSecretExists(ctx context.Context, k8sClient client.Client, namespace string) error {
 	secret := &corev1.Secret{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentSecretName}, secret); err != nil {

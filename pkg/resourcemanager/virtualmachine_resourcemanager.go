@@ -2,6 +2,7 @@ package resourcemanager
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
 	kvclient "kubevirt.io/client-go/kubevirt"
@@ -291,7 +293,10 @@ func (m *VirtualMachineResourceManager) PowerCycle() error {
 }
 
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {
-	logrus.Info("SetBootDevice")
+	logrus.Infof("SetBootDevice: %s", bootDevice)
+
+	// Fetch the VM only to discover device indices for patch paths.
+	// The actual mutation is done via JSON Patch to avoid full-UPDATE races.
 	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
 		Get(m.ctx, m.name, metav1.GetOptions{})
 	if err != nil {
@@ -302,47 +307,75 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) err
 		return fmt.Errorf("no template found")
 	}
 
-	for i, intf := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-		logrus.Infof("interface: %+v", intf)
-		vm.Spec.Template.Spec.Domain.Devices.Interfaces[i].BootOrder = nil
-	}
-	for i, dev := range vm.Spec.Template.Spec.Domain.Devices.Disks {
-		logrus.Infof("disk: %+v", dev)
-		vm.Spec.Template.Spec.Domain.Devices.Disks[i].BootOrder = nil
+	disks := vm.Spec.Template.Spec.Domain.Devices.Disks
+	ifaces := vm.Spec.Template.Spec.Domain.Devices.Interfaces
+	if len(disks) == 0 && len(ifaces) == 0 {
+		return fmt.Errorf("no bootable devices found")
 	}
 
-	var firstOrder uint = 1
+	// Classify disks: CDROM vs regular (Disk, LUN, Floppy)
+	var cdromIndices, regularDiskIndices []int
+	for i, d := range disks {
+		if d.CDRom != nil {
+			cdromIndices = append(cdromIndices, i)
+		} else {
+			regularDiskIndices = append(regularDiskIndices, i)
+		}
+	}
+
+	// Collect interface indices; no classification needed.
+	ifaceIndices := make([]int, len(ifaces))
+	for i := range ifaceIndices {
+		ifaceIndices[i] = i
+	}
+
+	// Order device groups by boot device preference
+	var ordered []deviceGroup
 	switch bootDevice {
 	case BootDevicePxe:
-		if vm.Spec.Template.Spec.Domain.Devices.Interfaces == nil {
-			return fmt.Errorf("no interfaces found")
+		if len(ifaces) == 0 {
+			return fmt.Errorf("no interfaces found for PXE boot")
 		}
-		vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].BootOrder = &firstOrder
-		logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Interfaces[0])
+		ordered = []deviceGroup{
+			{"interface", "/spec/template/spec/domain/devices/interfaces", ifaceIndices},
+			{"disk", "/spec/template/spec/domain/devices/disks", regularDiskIndices},
+			{"disk", "/spec/template/spec/domain/devices/disks", cdromIndices},
+		}
 	case BootDeviceHdd:
-		if vm.Spec.Template.Spec.Domain.Devices.Disks == nil {
-			return fmt.Errorf("no disks found")
+		if len(regularDiskIndices) == 0 {
+			return fmt.Errorf("no regular disks found for HDD boot")
 		}
-		vm.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder = &firstOrder
-		logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Disks[0])
+		ordered = []deviceGroup{
+			{"disk", "/spec/template/spec/domain/devices/disks", regularDiskIndices},
+			{"interface", "/spec/template/spec/domain/devices/interfaces", ifaceIndices},
+			{"disk", "/spec/template/spec/domain/devices/disks", cdromIndices},
+		}
 	case BootDeviceCd:
-		cdromDisk, err := util.GetCdromDisk(vm.Spec.Template.Spec.Domain.Devices.Disks)
-		if err != nil {
-			return fmt.Errorf("no cdrom found: %w", err)
+		if len(cdromIndices) == 0 {
+			return fmt.Errorf("no CD-ROM found for CD boot")
 		}
-		for i, disk := range vm.Spec.Template.Spec.Domain.Devices.Disks {
-			if disk.Name == cdromDisk.Name {
-				vm.Spec.Template.Spec.Domain.Devices.Disks[i].BootOrder = &firstOrder
-				logrus.Infof("To be updated vm: %+v", vm.Spec.Template.Spec.Domain.Devices.Disks[i])
-				break
-			}
+		ordered = []deviceGroup{
+			{"disk", "/spec/template/spec/domain/devices/disks", cdromIndices},
+			{"disk", "/spec/template/spec/domain/devices/disks", regularDiskIndices},
+			{"interface", "/spec/template/spec/domain/devices/interfaces", ifaceIndices},
 		}
+	default:
+		return nil
 	}
 
-	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Update(m.ctx, vm, metav1.UpdateOptions{}); err != nil {
-		logrus.Errorf("update vm error: %v", err)
-		return err
+	patchOps := buildBootOrderPatch(ordered)
+
+	if len(patchOps) > 0 {
+		patchData, err := json.Marshal(patchOps)
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON patch: %w", err)
+		}
+
+		if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Patch(m.ctx, m.name, types.JSONPatchType, patchData, metav1.PatchOptions{}); err != nil {
+			logrus.WithError(err).Error("patch vm error")
+			return err
+		}
 	}
 
 	if m.computerSystem == nil {
@@ -352,4 +385,34 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) err
 	m.computerSystem.SetBootOverride(bootSourceMap[bootDevice])
 
 	return nil
+}
+
+// deviceGroup represents a group of devices of the same type that share a
+// common JSON Patch base path, used to order boot device priorities.
+type deviceGroup struct {
+	devType  string
+	basePath string
+	indices  []int
+}
+
+// buildBootOrderPatch creates JSON Patch operations that assign sequential
+// bootOrder values (starting from 1) to every device index across the ordered
+// groups. It uses "add" rather than "replace" because bootOrder may not exist
+// yet on the target resource — JSON Patch "add" handles both creation and
+// replacement.
+func buildBootOrderPatch(ordered []deviceGroup) []map[string]any {
+	patchOps := make([]map[string]any, 0)
+	var order uint = 1
+	for _, grp := range ordered {
+		for _, idx := range grp.indices {
+			op := map[string]any{
+				"op":    "add",
+				"path":  fmt.Sprintf("%s/%d/bootOrder", grp.basePath, idx),
+				"value": order,
+			}
+			patchOps = append(patchOps, op)
+			order++
+		}
+	}
+	return patchOps
 }

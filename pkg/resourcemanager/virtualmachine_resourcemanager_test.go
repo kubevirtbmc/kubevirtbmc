@@ -607,6 +607,84 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 	}
 }
 
+func TestBuildBootOrderPatch(t *testing.T) {
+	testCases := []struct {
+		name     string
+		ordered  []deviceGroup
+		expected []map[string]any
+	}{
+		{
+			name:     "empty groups → no operations",
+			ordered:  []deviceGroup{},
+			expected: []map[string]any{},
+		},
+		{
+			name: "single group, single device → one op with bootOrder=1",
+			ordered: []deviceGroup{
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{0}},
+			},
+			expected: []map[string]any{
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/0/bootOrder", "value": uint(1)},
+			},
+		},
+		{
+			name: "single group, multiple devices → sequential orders",
+			ordered: []deviceGroup{
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{0, 2}},
+			},
+			expected: []map[string]any{
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/0/bootOrder", "value": uint(1)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/2/bootOrder", "value": uint(2)},
+			},
+		},
+		{
+			name: "multiple groups → sequential orders across groups",
+			ordered: []deviceGroup{
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{0, 1}},
+				{"interface", "/spec/template/spec/domain/devices/interfaces", []int{0}},
+			},
+			expected: []map[string]any{
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/0/bootOrder", "value": uint(1)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/1/bootOrder", "value": uint(2)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/interfaces/0/bootOrder", "value": uint(3)},
+			},
+		},
+		{
+			name: "group with empty indices → skipped (no ops)",
+			ordered: []deviceGroup{
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{0}},
+				{"interface", "/spec/template/spec/domain/devices/interfaces", []int{}},
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{1}},
+			},
+			expected: []map[string]any{
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/0/bootOrder", "value": uint(1)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/1/bootOrder", "value": uint(2)},
+			},
+		},
+		{
+			name: "PXE boot order: interfaces first, then disks, then cdroms",
+			ordered: []deviceGroup{
+				{"interface", "/spec/template/spec/domain/devices/interfaces", []int{0, 1}},
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{0}},
+				{"disk", "/spec/template/spec/domain/devices/disks", []int{1}},
+			},
+			expected: []map[string]any{
+				{"op": "add", "path": "/spec/template/spec/domain/devices/interfaces/0/bootOrder", "value": uint(1)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/interfaces/1/bootOrder", "value": uint(2)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/0/bootOrder", "value": uint(3)},
+				{"op": "add", "path": "/spec/template/spec/domain/devices/disks/1/bootOrder", "value": uint(4)},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := buildBootOrderPatch(tc.ordered)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
 func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -615,320 +693,190 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 		expectedVM  *kubevirtv1.VirtualMachine
 		shouldError bool
 	}{
+		// --- HDD boot ---
 		{
-			name: "Set boot device to HDD for a virtual machine with single disk should succeed",
+			name:        "HDD: single disk → bootOrder 1",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk", nil).Build(),
+			bootDevice:  BootDeviceHdd,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
+		{
+			name:        "HDD: multiple disks → sequential orders, disk first",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk-1", nil).WithDisk("disk-2", nil).Build(),
+			bootDevice:  BootDeviceHdd,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk-1", util.Ptr[uint](1)).WithDisk("disk-2", util.Ptr[uint](2)).Build(),
+			shouldError: false,
+		},
+		{
+			name:        "HDD: disk + interface → disk=1, iface=2",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk", nil).WithInterface("iface", nil).Build(),
+			bootDevice:  BootDeviceHdd,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk", util.Ptr[uint](1)).WithInterface("iface", util.Ptr[uint](2)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "HDD: disk + cdrom + iface → disk=1, iface=2, cdrom=3 (disks first, then NICs, then CDROMs)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).Build(),
+				WithDisk("disk", nil).WithCDRomDisk("cd", nil).WithInterface("iface", nil).Build(),
 			bootDevice: BootDeviceHdd,
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).Build(),
+				WithDisk("disk", util.Ptr[uint](1)).WithCDRomDisk("cd", util.Ptr[uint](3)).WithInterface("iface", util.Ptr[uint](2)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to HDD for a virtual machine with single disk whose boot order is already set to 1 should have no effect",
+			name: "HDD: pre-existing boot orders overwritten (disk=2, iface=1 → disk=1, iface=2)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).Build(),
+				WithDisk("disk", util.Ptr[uint](2)).WithInterface("iface", util.Ptr[uint](1)).Build(),
 			bootDevice: BootDeviceHdd,
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).Build(),
+				WithDisk("disk", util.Ptr[uint](1)).WithInterface("iface", util.Ptr[uint](2)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to HDD for a virtual machine with single disk whose boot order is already set to 2 should bring it to 1",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](2)).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to HDD for a virtual machine with multiple disks should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk-1", nil).
-				WithDisk("test-disk-2", nil).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk-1", util.Ptr[uint](1)).
-				WithDisk("test-disk-2", nil).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to HDD for a virtual machine with multiple disks whose boot order is already set to 1 should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk-1", util.Ptr[uint](1)).
-				WithDisk("test-disk-2", nil).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk-1", util.Ptr[uint](1)).
-				WithDisk("test-disk-2", nil).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to HDD for a virtual machine with multiple disks whose boot order is already set to 1 should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk-1", nil).
-				WithDisk("test-disk-2", util.Ptr[uint](1)).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk-1", util.Ptr[uint](1)).
-				WithDisk("test-disk-2", nil).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to PXE for a virtual machine with single interface should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", nil).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to PXE for a virtual machine with single interface whose boot order is already set to 1 should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to PXE for a virtual machine with single interface whose boot order is already set to 2 should bring it to 1",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", util.Ptr[uint](2)).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to PXE for a virtual machine with multiple interfaces should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface-1", nil).
-				WithInterface("test-interface-2", nil).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface-1", util.Ptr[uint](1)).
-				WithInterface("test-interface-2", nil).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to PXE for a virtual machine with multiple interfaces whose boot order is already set to 1 should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface-1", util.Ptr[uint](1)).
-				WithInterface("test-interface-2", nil).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface-1", util.Ptr[uint](1)).
-				WithInterface("test-interface-2", nil).Build(),
-			shouldError: false,
-		},
-		{
-			name: "Set boot device to PXE for a virtual machine with multiple interfaces whose boot order is already set to 1 should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface-1", nil).
-				WithInterface("test-interface-2", util.Ptr[uint](1)).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface-1", util.Ptr[uint](1)).
-				WithInterface("test-interface-2", nil).Build(),
-			shouldError: false,
-		},
-		{
-			name:        "Set boot device to HDD for a virtual machine with no disks and interfaces should fail",
+			name:        "HDD: no bootable devices → error",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
 			bootDevice:  BootDeviceHdd,
 			shouldError: true,
 		},
 		{
-			name: "Set boot device to HDD for a virtual machine with no disks but interfaces should fail",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithInterface("test-interface", nil).Build(),
+			name:        "HDD: only CDROMs → error (no regular disks)",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithCDRomDisk("cd", nil).Build(),
 			bootDevice:  BootDeviceHdd,
 			shouldError: true,
 		},
 		{
-			name:        "Set boot device to PXE for a virtual machine with no disks and interfaces should fail",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			name:        "HDD: only interfaces → error (no disks)",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface", nil).Build(),
+			bootDevice:  BootDeviceHdd,
+			shouldError: true,
+		},
+		// --- PXE boot ---
+		{
+			name:        "PXE: single interface → bootOrder 1",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface", nil).Build(),
+			bootDevice:  BootDevicePxe,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
+		{
+			name:        "PXE: multiple interfaces → sequential orders",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface-1", nil).WithInterface("iface-2", nil).Build(),
+			bootDevice:  BootDevicePxe,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface-1", util.Ptr[uint](1)).WithInterface("iface-2", util.Ptr[uint](2)).Build(),
+			shouldError: false,
+		},
+		{
+			name:        "PXE: iface + disk → iface=1, disk=2",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface", nil).WithDisk("disk", nil).Build(),
+			bootDevice:  BootDevicePxe,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithInterface("iface", util.Ptr[uint](1)).WithDisk("disk", util.Ptr[uint](2)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "PXE: iface + disk + cdrom → iface=1, disk=2, cdrom=3",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("iface", nil).WithDisk("disk", nil).WithCDRomDisk("cd", nil).Build(),
+			bootDevice: BootDevicePxe,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("iface", util.Ptr[uint](1)).WithDisk("disk", util.Ptr[uint](2)).WithCDRomDisk("cd", util.Ptr[uint](3)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "PXE: pre-existing boot orders overwritten (iface=2, disk=1 → iface=1, disk=2)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("iface", util.Ptr[uint](2)).WithDisk("disk", util.Ptr[uint](1)).Build(),
+			bootDevice: BootDevicePxe,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("iface", util.Ptr[uint](1)).WithDisk("disk", util.Ptr[uint](2)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "PXE: iface + cdrom only (no regular disks) → iface=1, cdrom=2",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("iface", nil).WithCDRomDisk("cd", nil).Build(),
+			bootDevice: BootDevicePxe,
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithInterface("iface", util.Ptr[uint](1)).WithCDRomDisk("cd", util.Ptr[uint](2)).Build(),
+			shouldError: false,
+		},
+		{
+			name:        "PXE: no interfaces → error",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk", nil).Build(),
 			bootDevice:  BootDevicePxe,
 			shouldError: true,
 		},
 		{
-			name: "Set boot device to PXE for a virtual machine with no interfaces but disks should fail",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).Build(),
+			name:        "PXE: no devices → error",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
 			bootDevice:  BootDevicePxe,
 			shouldError: true,
 		},
+		// --- CD-ROM boot ---
 		{
-			name: "Set boot device to HDD for a virtual machine with disks and interfaces but no boot order specified should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", nil).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).
-				WithInterface("test-interface", nil).Build(),
+			name:        "CD: single cdrom → bootOrder 1",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithCDRomDisk("cd", nil).Build(),
+			bootDevice:  BootDeviceCd,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithCDRomDisk("cd", util.Ptr[uint](1)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to HDD for a virtual machine with disks and interfaces and with first boot order set to disk should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).
-				WithInterface("test-interface", nil).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).
-				WithInterface("test-interface", nil).Build(),
-			shouldError: false,
-		},
-		// {
-		// 	name: "Set boot device to HDD for a virtual machine with disks and interfaces and with first boot order set to disk should have no effect",
-		// 	vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](1)).
-		// 		AddInterface("test-interface", util.Ptr[uint](2)).Build(),
-		// 	bootDevice: BootDeviceHdd,
-		// 	expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](1)).
-		// 		AddInterface("test-interface", util.Ptr[uint](2)).Build(),
-		// 	shouldError: false,
-		// },
-		{
-			name: "Set boot device to HDD for a virtual machine with disks and interfaces and with first boot order set to interface should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			bootDevice: BootDeviceHdd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).
-				WithInterface("test-interface", nil).Build(),
-			shouldError: false,
-		},
-		// {
-		// 	name: "Set boot device to HDD for a virtual machine with disks and interfaces and with first boot order set to interface should succeed",
-		// 	vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](2)).
-		// 		AddInterface("test-interface", util.Ptr[uint](1)).Build(),
-		// 	bootDevice: BootDeviceHdd,
-		// 	expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](1)).
-		// 		AddInterface("test-interface", util.Ptr[uint](2)).Build(),
-		// 	shouldError: false,
-		// },
-		{
-			name: "Set boot device to PXE for a virtual machine with disks and interfaces but no boot order specified should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", nil).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
+			name:        "CD: cdrom + disk → cdrom=1, disk=2",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithCDRomDisk("cd", nil).WithDisk("disk", nil).Build(),
+			bootDevice:  BootDeviceCd,
+			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithCDRomDisk("cd", util.Ptr[uint](1)).WithDisk("disk", util.Ptr[uint](2)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to PXE for a virtual machine with disks and interfaces and with first boot order set to disk should succeed",
+			name: "CD: cdrom + disk + iface → cdrom=1, disk=2, iface=3",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).
-				WithInterface("test-interface", nil).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			shouldError: false,
-		},
-		// {
-		// 	name: "Set boot device to PXE for a virtual machine with disks and interfaces and with first boot order set to disk should succeed",
-		// 	vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](1)).
-		// 		AddInterface("test-interface", util.Ptr[uint](2)).Build(),
-		// 	bootDevice: BootDevicePxe,
-		// 	expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](2)).
-		// 		AddInterface("test-interface", util.Ptr[uint](1)).Build(),
-		// 	shouldError: false,
-		// },
-		{
-			name: "Set boot device to PXE for a virtual machine with disks and interfaces and with first boot order set to interface should have no effect",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			bootDevice: BootDevicePxe,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", util.Ptr[uint](1)).Build(),
-			shouldError: false,
-		},
-		// {
-		// 	name: "Set boot device to PXE for a virtual machine with disks and interfaces and with first boot order set to interface should have no effect",
-		// 	vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](2)).
-		// 		AddInterface("test-interface", util.Ptr[uint](1)).Build(),
-		// 	bootDevice: BootDevicePxe,
-		// 	expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-		// 		AddDisk("test-disk", util.Ptr[uint](2)).
-		// 		AddInterface("test-interface", util.Ptr[uint](1)).Build(),
-		// 	shouldError: false,
-		// },
-		{
-			name: "Set boot device to Cd for a virtual machine with single cdrom should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithCDRomDisk("test-cdrom", nil).Build(),
+				WithCDRomDisk("cd", nil).WithDisk("disk", nil).WithInterface("iface", nil).Build(),
 			bootDevice: BootDeviceCd,
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+				WithCDRomDisk("cd", util.Ptr[uint](1)).WithDisk("disk", util.Ptr[uint](2)).WithInterface("iface", util.Ptr[uint](3)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to Cd for a virtual machine with disk and cdrom should succeed",
+			name: "CD: pre-existing boot orders overwritten (disk=1, cdrom=nil → cdrom=1, disk=2)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithCDRomDisk("test-cdrom", nil).Build(),
+				WithDisk("disk", util.Ptr[uint](1)).WithCDRomDisk("cd", nil).Build(),
+			bootDevice: BootDeviceCd,
+			// Device order is unchanged by Patch; only bootOrder values change.
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithDisk("disk", util.Ptr[uint](2)).WithCDRomDisk("cd", util.Ptr[uint](1)).Build(),
+			shouldError: false,
+		},
+		{
+			name: "CD: multiple cdroms + disk + iface → cdrom1=1, cdrom2=2, disk=3, iface=4",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithCDRomDisk("cd1", nil).WithCDRomDisk("cd2", nil).
+				WithDisk("disk", nil).WithInterface("iface", nil).Build(),
 			bootDevice: BootDeviceCd,
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+				WithCDRomDisk("cd1", util.Ptr[uint](1)).WithCDRomDisk("cd2", util.Ptr[uint](2)).
+				WithDisk("disk", util.Ptr[uint](3)).WithInterface("iface", util.Ptr[uint](4)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to Cd for a virtual machine with disk, interface and cdrom should succeed and clear other boot orders",
+			name: "CD: cdrom + iface only (no regular disks) → cdrom=1, iface=2",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", util.Ptr[uint](1)).
-				WithInterface("test-interface", nil).
-				WithCDRomDisk("test-cdrom", nil).Build(),
+				WithCDRomDisk("cd", nil).WithInterface("iface", nil).Build(),
 			bootDevice: BootDeviceCd,
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", nil).
-				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
+				WithCDRomDisk("cd", util.Ptr[uint](1)).WithInterface("iface", util.Ptr[uint](2)).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Set boot device to Cd for a virtual machine with no cdrom should fail",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).Build(),
+			name:        "CD: no cdrom → error",
+			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithDisk("disk", nil).Build(),
 			bootDevice:  BootDeviceCd,
 			shouldError: true,
 		},
 		{
-			name:        "Set boot device to Cd for a virtual machine with no disks should fail",
+			name:        "CD: no devices → error",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
 			bootDevice:  BootDeviceCd,
 			shouldError: true,
-		},
-		{
-			name: "Set boot device to Cd for a virtual machine with disk, interface and cdrom with existing boot order should succeed",
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", util.Ptr[uint](1)).
-				WithCDRomDisk("test-cdrom", nil).Build(),
-			bootDevice: BootDeviceCd,
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithDisk("test-disk", nil).
-				WithInterface("test-interface", nil).
-				WithCDRomDisk("test-cdrom", util.Ptr[uint](1)).Build(),
-			shouldError: false,
 		},
 	}
 	for _, tc := range testCases {
