@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
@@ -252,31 +253,44 @@ func (m *VirtualMachineResourceManager) GetPowerStatus() (bool, error) {
 }
 
 func (m *VirtualMachineResourceManager) PowerOn() error {
-	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
+	exists, err := m.isVMIExists()
 	if err != nil {
-		// The VM is already running — the operation succeeded.
-		if strings.Contains(err.Error(), "already running") {
-			logrus.WithError(err).Info("VM is already running")
-			return nil
-		}
-		return err
+		return err // propagate transient API errors
 	}
-	return nil
+	if exists {
+		logrus.Info("VM is already running, skipping Start")
+		return nil
+	}
+	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
 }
 
 func (m *VirtualMachineResourceManager) PowerOff() error {
-	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
+	exists, err := m.isVMIExists()
 	if err != nil {
-		// The VM is already stopped — the operation succeeded.
-		if strings.Contains(err.Error(), "already stopped") {
-			logrus.WithError(err).Info("VM is already stopped")
-			return nil
-		}
-		return err
+		return err // propagate transient API errors
 	}
-	return nil
+	if !exists {
+		logrus.Info("VM is already stopped, skipping Stop")
+		return nil
+	}
+	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
+}
+
+// isVMIExists checks whether a VirtualMachineInstance exists for this VM.
+// Returns (true, nil) if the VMI exists, (false, nil) if it doesn't,
+// or (false, error) if the API call failed for any other reason.
+func (m *VirtualMachineResourceManager) isVMIExists() (bool, error) {
+	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (m *VirtualMachineResourceManager) PowerCycle() error {
