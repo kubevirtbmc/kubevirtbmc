@@ -252,46 +252,28 @@ func (m *VirtualMachineResourceManager) GetPowerStatus() (bool, error) {
 }
 
 func (m *VirtualMachineResourceManager) PowerOn() error {
-	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Get(m.ctx, m.name, metav1.GetOptions{})
+	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
 	if err != nil {
-		return err
-	}
-	if vm.Spec.RunStrategy == nil {
-		running := func(b bool) *bool { return &b }(true)
-		vm.Spec.Running = running
-	} else {
-		runStrategy := func(
-			rs kubevirtv1.VirtualMachineRunStrategy,
-		) *kubevirtv1.VirtualMachineRunStrategy {
-			return &rs
-		}(kubevirtv1.RunStrategyRerunOnFailure)
-		vm.Spec.RunStrategy = runStrategy
-	}
-	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Update(m.ctx, vm, metav1.UpdateOptions{}); err != nil {
+		// The VM is already running — the operation succeeded.
+		if strings.Contains(err.Error(), "already running") {
+			logrus.WithError(err).Info("VM is already running")
+			return nil
+		}
 		return err
 	}
 	return nil
 }
 
 func (m *VirtualMachineResourceManager) PowerOff() error {
-	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Get(m.ctx, m.name, metav1.GetOptions{})
+	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
 	if err != nil {
-		return err
-	}
-	if vm.Spec.RunStrategy == nil {
-		running := func(b bool) *bool { return &b }(false)
-		vm.Spec.Running = running
-	} else {
-		runStrategy := func(rs kubevirtv1.VirtualMachineRunStrategy) *kubevirtv1.VirtualMachineRunStrategy {
-			return &rs
-		}(kubevirtv1.RunStrategyHalted)
-		vm.Spec.RunStrategy = runStrategy
-	}
-	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Update(m.ctx, vm, metav1.UpdateOptions{}); err != nil {
+		// The VM is already stopped — the operation succeeded.
+		if strings.Contains(err.Error(), "already stopped") {
+			logrus.WithError(err).Info("VM is already stopped")
+			return nil
+		}
 		return err
 	}
 	return nil
@@ -305,7 +287,8 @@ func (m *VirtualMachineResourceManager) PowerCycle() error {
 	if !isUp {
 		return m.PowerOn()
 	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
+	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
 }
 
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {

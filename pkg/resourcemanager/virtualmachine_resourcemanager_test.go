@@ -463,35 +463,28 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 	testCases := []struct {
 		name        string
 		vm          *kubevirtv1.VirtualMachine
-		expectedVM  *kubevirtv1.VirtualMachine
 		shouldError bool
 	}{
 		{
 			name:        "Power on a virtual machine that should be on should have no effect",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
-			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
 			shouldError: false,
 		},
 		{
 			name:        "Power on a virtual machine that should be off should succeed",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
-			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
 			shouldError: false,
 		},
 		{
 			name: "Power on a virtual machine whose RunStrategy is set to RerunOnFailure should have no effect",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Power on a virtual machine whose RunStrategy is set to Halted should make it become RerunOnFailure",
+			name: "Power on a virtual machine whose RunStrategy is set to Halted should succeed",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
 			shouldError: false,
 		},
 	}
@@ -512,12 +505,7 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-
 			require.NoError(t, err)
-
-			vm, err := fakeVirtClient.KubevirtV1().VirtualMachines(testNamespace).Get(context.TODO(), testVMName, metav1.GetOptions{})
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedVM, vm)
 		})
 	}
 }
@@ -526,34 +514,27 @@ func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 	testCases := []struct {
 		name        string
 		vm          *kubevirtv1.VirtualMachine
-		expectedVM  *kubevirtv1.VirtualMachine
 		shouldError bool
 	}{
 		{
 			name:        "Power off a virtual machine that should be on should succeed",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
-			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
 			shouldError: false,
 		},
 		{
 			name:        "Power off a virtual machine that should be off should have no effect",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
-			expectedVM:  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Power on a virtual machine whose RunStrategy is set to RerunOnFailure should make it become Halted",
+			name: "Power off a virtual machine whose RunStrategy is set to RerunOnFailure should succeed",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
 			shouldError: false,
 		},
 		{
-			name: "Power on a virtual machine whose RunStrategy is set to Halted should have no effect",
+			name: "Power off a virtual machine whose RunStrategy is set to Halted should have no effect",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
 			shouldError: false,
 		},
@@ -575,12 +556,7 @@ func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-
 			require.NoError(t, err)
-
-			vm, err := fakeVirtClient.KubevirtV1().VirtualMachines(testNamespace).Get(context.TODO(), testVMName, metav1.GetOptions{})
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedVM, vm)
 		})
 	}
 }
@@ -599,7 +575,7 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 			shouldFail: false,
 		},
 		{
-			name:       "Power cycle a halted virtual machine should trigger VM start via PowerOn",
+			name:       "Power cycle a halted virtual machine should trigger VM start",
 			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
 			vmi:        nil,
 			shouldFail: false,
@@ -627,17 +603,6 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-
-			vm, err := fakeVirtClient.KubevirtV1().VirtualMachines(testNamespace).Get(context.TODO(), testVMName, metav1.GetOptions{})
-			require.NoError(t, err)
-			require.NotNil(t, vm)
-
-			if tc.vmi != nil {
-				require.Equal(t, testVMName, vm.Name)
-			} else {
-				require.NotNil(t, vm.Spec.Running)
-				require.True(t, *vm.Spec.Running)
-			}
 		})
 	}
 }

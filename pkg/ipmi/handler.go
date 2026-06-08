@@ -38,6 +38,7 @@ func (h *handler) chassisControlHandler(m *goipmi.Message) goipmi.Response {
 	}
 
 	if err != nil {
+		logrus.WithError(err).Error("chassis control failed")
 		return &goipmi.ChassisControlResponse{
 			CompletionCode: goipmi.ErrInvalidState,
 		}
@@ -53,6 +54,7 @@ func (h *handler) chassisStatusHandler(*goipmi.Message) goipmi.Response {
 
 	isUp, err := h.rm.GetPowerStatus()
 	if err != nil {
+		logrus.WithError(err).Error("get power status failed")
 		return &goipmi.ChassisStatusResponse{
 			CompletionCode: goipmi.ErrInvalidState,
 		}
