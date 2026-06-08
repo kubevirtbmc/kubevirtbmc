@@ -253,44 +253,29 @@ func (m *VirtualMachineResourceManager) GetPowerStatus() (bool, error) {
 }
 
 func (m *VirtualMachineResourceManager) PowerOn() error {
-	exists, err := m.isVMIExists()
-	if err != nil {
-		return err // propagate transient API errors
-	}
-	if exists {
-		logrus.Info("VM is already running, skipping Start")
+	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if err == nil {
 		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
 	}
 	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
 		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
 }
 
 func (m *VirtualMachineResourceManager) PowerOff() error {
-	exists, err := m.isVMIExists()
-	if err != nil {
-		return err // propagate transient API errors
-	}
-	if !exists {
-		logrus.Info("VM is already stopped, skipping Stop")
+	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
 		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
 	}
 	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
 		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
-}
-
-// isVMIExists checks whether a VirtualMachineInstance exists for this VM.
-// Returns (true, nil) if the VMI exists, (false, nil) if it doesn't,
-// or (false, error) if the API call failed for any other reason.
-func (m *VirtualMachineResourceManager) isVMIExists() (bool, error) {
-	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
-		Get(m.ctx, m.name, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func (m *VirtualMachineResourceManager) PowerCycle() error {
