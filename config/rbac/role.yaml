@@ -73,14 +73,6 @@ rules:
   - update
   - watch
 - apiGroups:
-  - subresources.kubevirt.io
-  resources:
-  - virtualmachines/start
-  - virtualmachines/stop
-  - virtualmachines/restart
-  verbs:
-  - update
-- apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - clusterroles

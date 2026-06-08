@@ -202,6 +202,8 @@ rules:
 - apiGroups:
   - subresources.kubevirt.io
   resources:
+  - virtualmachines/start
+  - virtualmachines/stop
   - virtualmachines/restart
   verbs:
   - update
