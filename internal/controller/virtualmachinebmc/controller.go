@@ -212,6 +212,16 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 							},
 						},
 					},
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							HTTPGet: &corev1.HTTPGetAction{
+								Path: "/redfish/v1",
+								Port: intstr.FromString(redfishPortName),
+							},
+						},
+						InitialDelaySeconds: 2,
+						PeriodSeconds:       10,
+					},
 				},
 			},
 		},

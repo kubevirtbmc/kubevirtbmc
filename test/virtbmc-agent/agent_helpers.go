@@ -306,7 +306,7 @@ func runCurlRedfish(ctx context.Context, cfg *rest.Config, namespace string, r R
 	if r.Path != "" {
 		url = strings.TrimSuffix(r.BaseURL, "/") + r.Path
 	}
-	args := []string{"-i", "-L", "-X", r.Method}
+	args := []string{"--connect-timeout", "5", "--max-time", "15", "-i", "-L", "-X", r.Method}
 	if r.XAuthToken != "" {
 		args = append(args, "-H", "X-Auth-Token: "+r.XAuthToken)
 	} else if r.Username != "" && r.Password != "" {
