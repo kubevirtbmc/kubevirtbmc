@@ -351,23 +351,22 @@ type IPMIRequest struct {
 	Args        []string
 }
 
-func runIPMIInCluster(ctx context.Context, cfg *rest.Config, namespace string, r IPMIRequest) (string, error) {
+func runIPMIInCluster(ctx context.Context, cfg *rest.Config, namespace string, r IPMIRequest) (stdout, stderr string, err error) {
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return "", fmt.Errorf("building clientset: %w", err)
+		return "", "", fmt.Errorf("building clientset: %w", err)
 	}
 	if err := CreateIPMIToolPod(ctx, clientset, namespace); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	baseArgs := []string{"ipmitool", "-I", "lan", "-U", r.Username, "-P", r.Password, "-H", r.ServiceHost}
 	cmd := append(baseArgs, r.Args...)
 
-	stdout, _, err := execInPod(ctx, cfg, clientset, execOptions{
+	return execInPod(ctx, cfg, clientset, execOptions{
 		Namespace:     namespace,
 		PodName:       ipmitoolPodName,
 		ContainerName: "ipmitool",
 		Command:       cmd,
 	})
-	return stdout, err
 }

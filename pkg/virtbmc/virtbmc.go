@@ -52,7 +52,7 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 
 	var ipmiSimulator *ipmi.Simulator
 	if options.EnableIPMI {
-		ipmiSimulator = ipmi.NewSimulator(options.Address, options.IPMIPort, resourceManager)
+		ipmiSimulator = ipmi.NewSimulator(options.Address, options.IPMIPort, resourceManager, options.BMCUser, options.BMCPassword)
 	}
 
 	return &VirtBMC{

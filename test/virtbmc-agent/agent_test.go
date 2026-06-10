@@ -68,7 +68,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 	Context("IPMI enable/disable toggle", func() {
 		It("should start with IPMI disabled by default, verify failure, then enable", func() {
 			By("verifying IPMI commands fail when disabled by default")
-			_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
+			_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
 			Expect(err).To(HaveOccurred(), "IPMI command should fail when IPMI is disabled")
 
 			By("recording the current pod UID before enabling IPMI")
@@ -95,9 +95,40 @@ var _ = Describe("Agent e2e", Ordered, func() {
 	})
 
 	Context("IPMI operations", func() {
+		Context("Authentication", func() {
+			It("should accept commands with correct username and password", func() {
+				out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(SatisfyAny(
+					ContainSubstring("Chassis Power is on"),
+					ContainSubstring("Chassis Power is off"),
+				))
+			})
+
+			It("should reject commands with wrong password", func() {
+				wrongReq := ipmiReq("power", "status")
+				wrongReq.Password = "wrongpass"
+				_, stderr, err := runIPMIInCluster(ctx, config, ns, wrongReq)
+				Expect(err).To(HaveOccurred(), "IPMI command with wrong password should be rejected")
+				Expect(stderr).To(ContainSubstring("Unable to establish IPMI v1.5 / RMCP session"))
+			})
+
+			It("should reject commands with wrong username", func() {
+				wrongReq := ipmiReq("power", "status")
+				wrongReq.Username = "baduser"
+				_, stderr, err := runIPMIInCluster(ctx, config, ns, wrongReq)
+				Expect(err).To(HaveOccurred(), "IPMI command with wrong username should be rejected")
+				Expect(stderr).To(And(
+					ContainSubstring("Get Session Challenge command failed"),
+					ContainSubstring("Unable to establish IPMI v1.5 / RMCP session"),
+				))
+			})
+
+		})
+
 		Context("Power management", func() {
 			It("should report power status", func() {
-				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
+				out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(SatisfyAny(
 					ContainSubstring("Chassis Power is on"),
@@ -106,19 +137,19 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("should accept power off (graceful) and VM is actually off", func() {
-				_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
 				Expect(err).NotTo(HaveOccurred())
 				waitForVMIDeleted(ctx, k8sClient, ns)
 			})
 
 			It("should accept power on and VM is actually running", func() {
-				_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
 				Expect(err).NotTo(HaveOccurred())
 				waitForVMIRunning(ctx, k8sClient, ns)
 			})
 
 			It("should accept power cycle and VM is stopped then started again", func() {
-				_, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "cycle"))
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "cycle"))
 				Expect(err).NotTo(HaveOccurred())
 				waitForVMIPowerCycle(ctx, k8sClient, ns)
 			})
@@ -126,7 +157,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 		Context("Boot device configuration", func() {
 			It("should set boot device to PXE", func() {
-				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+				out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(SatisfyAny(
 					ContainSubstring("Set Boot Device"),
@@ -136,7 +167,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("should set boot device to disk", func() {
-				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk"))
+				out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(SatisfyAny(
 					ContainSubstring("Set Boot Device"),
@@ -146,7 +177,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("should set boot device to cdrom", func() {
-				out, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "cdrom"))
+				out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "cdrom"))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(SatisfyAny(
 					ContainSubstring("Set Boot Device"),
@@ -163,6 +194,36 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				out, err := runCurlRedfish(ctx, config, ns, redfishBasic("GET", "/Systems/1", ""))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(ContainSubstring(`"@odata.id":"/redfish/v1/Systems/1"`))
+			})
+
+			It("should reject access with wrong password", func() {
+				out, err := runCurlRedfish(ctx, config, ns, RedfishRequest{
+					BaseURL:  env.RedfishBaseURL,
+					Method:   "GET",
+					Path:     "/Systems/1",
+					Username: env.Username,
+					Password: "wrongpass",
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(And(
+					ContainSubstring("401"),
+					ContainSubstring("Unauthorized"),
+				))
+			})
+
+			It("should reject access with wrong username", func() {
+				out, err := runCurlRedfish(ctx, config, ns, RedfishRequest{
+					BaseURL:  env.RedfishBaseURL,
+					Method:   "GET",
+					Path:     "/Systems/1",
+					Username: "baduser",
+					Password: env.Password,
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(And(
+					ContainSubstring("401"),
+					ContainSubstring("Unauthorized"),
+				))
 			})
 		})
 
