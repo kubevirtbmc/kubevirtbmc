@@ -133,7 +133,7 @@ func InstallKubeVirt() error {
 		return fmt.Errorf("apply KubeVirt CR: %w", err)
 	}
 
-	// Enable emulation only when KVM is not available (e.g. in Kind).
+	// Enable emulation only when KVM is not available.
 	if !isKVMAvailable() {
 		fmt.Println("KVM not available, enabling KubeVirt useEmulation")
 		cmd = exec.Command("kubectl", "patch", "kubevirt", "kubevirt", "-n", "kubevirt", "--type=merge",
