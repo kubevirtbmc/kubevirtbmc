@@ -8,8 +8,8 @@ ifneq ($(shell git status --porcelain --untracked-files=no),)
 DIRTY := -dirty
 endif
 VERSION := $(VERSION)$(DIRTY)
-# Export the tag to be used in the e2e tests
-export TAG = $(VERSION)
+# Sanitize for Docker image tag: replace chars not in [a-zA-Z0-9_.-] with '-'
+export TAG = $(shell echo "$(VERSION)" | sed 's|[^a-zA-Z0-9_.-]|-|g')
 
 REPO ?= starbops
 
