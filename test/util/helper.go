@@ -128,6 +128,13 @@ func InstallKubeVirt() error {
 		return fmt.Errorf("apply KubeVirt CR: %w", err)
 	}
 
+	// Enable emulation so VMs can run without hardware virtualization (e.g. in Kind).
+	cmd = exec.Command("kubectl", "patch", "kubevirt", "kubevirt", "-n", "kubevirt", "--type=merge",
+		"-p", `{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}`)
+	if _, err := Run(cmd); err != nil {
+		return fmt.Errorf("patch KubeVirt CR for useEmulation: %w", err)
+	}
+
 	Eventually(func() (string, error) {
 		cmd := exec.Command("kubectl", "get", "kubevirt", "kubevirt", "-n", "kubevirt", "-o", "jsonpath={.status.phase}")
 		out, err := Run(cmd)
