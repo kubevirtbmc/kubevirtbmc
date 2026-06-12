@@ -69,6 +69,13 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              ipmi:
+                description: IPMI configures the IPMI simulator.
+                properties:
+                  enabled:
+                    description: Enabled toggles the IPMI simulator.
+                    type: boolean
+                type: object
               virtualMachineRef:
                 description: Reference to the VM to manage.
                 properties:
@@ -153,3 +160,4 @@ spec:
     storage: true
     subresources:
       status: {}
+      
