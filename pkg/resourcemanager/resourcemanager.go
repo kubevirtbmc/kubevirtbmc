@@ -18,6 +18,8 @@ type ResourceManager interface {
 	GetPowerStatus() (bool, error)
 	PowerOn() error
 	PowerOff() error
+	ForcePowerOff() error
 	PowerCycle() error
+	ForcePowerCycle() error
 	SetBootDevice(BootDevice) error
 }

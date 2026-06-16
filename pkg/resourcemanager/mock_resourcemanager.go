@@ -127,6 +127,34 @@ func (mr *MockResourceManagerMockRecorder) InsertMedia(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertMedia", reflect.TypeOf((*MockResourceManager)(nil).InsertMedia), arg0)
 }
 
+// ForcePowerOff mocks base method.
+func (m *MockResourceManager) ForcePowerOff() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ForcePowerOff")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ForcePowerOff indicates an expected call of ForcePowerOff.
+func (mr *MockResourceManagerMockRecorder) ForcePowerOff() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForcePowerOff", reflect.TypeOf((*MockResourceManager)(nil).ForcePowerOff))
+}
+
+// ForcePowerCycle mocks base method.
+func (m *MockResourceManager) ForcePowerCycle() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ForcePowerCycle")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ForcePowerCycle indicates an expected call of ForcePowerCycle.
+func (mr *MockResourceManagerMockRecorder) ForcePowerCycle() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForcePowerCycle", reflect.TypeOf((*MockResourceManager)(nil).ForcePowerCycle))
+}
+
 // PowerCycle mocks base method.
 func (m *MockResourceManager) PowerCycle() error {
 	m.ctrl.T.Helper()

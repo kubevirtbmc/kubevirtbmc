@@ -234,9 +234,9 @@ func (h *handler) ComputerSystemReset(resetType server.ResourceResetType) error 
 	powerActionMap := map[server.ResourceResetType]func() error{
 		server.RESOURCERESETTYPE_ON:                h.rm.PowerOn,
 		server.RESOURCERESETTYPE_GRACEFUL_SHUTDOWN: h.rm.PowerOff,
-		server.RESOURCERESETTYPE_FORCE_OFF:         h.rm.PowerOff,
+		server.RESOURCERESETTYPE_FORCE_OFF:         h.rm.ForcePowerOff,
 		server.RESOURCERESETTYPE_GRACEFUL_RESTART:  h.rm.PowerCycle,
-		server.RESOURCERESETTYPE_FORCE_RESTART:     h.rm.PowerCycle,
+		server.RESOURCERESETTYPE_FORCE_RESTART:     h.rm.ForcePowerCycle,
 	}
 
 	powerAction, ok := powerActionMap[resetType]

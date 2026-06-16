@@ -12,6 +12,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
+	kubevirttesting "kubevirt.io/client-go/testing"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	"kubevirt.io/kubevirtbmc/pkg/builder"
@@ -463,28 +464,36 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 	testCases := []struct {
 		name        string
 		vm          *kubevirtv1.VirtualMachine
+		vmi         *kubevirtv1.VirtualMachineInstance
+		expectStart bool
 		shouldError bool
 	}{
 		{
 			name:        "Power on a virtual machine that should be on should have no effect",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
+			vmi:         builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			expectStart: false,
 			shouldError: false,
 		},
 		{
 			name:        "Power on a virtual machine that should be off should succeed",
 			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
+			expectStart: true,
 			shouldError: false,
 		},
 		{
 			name: "Power on a virtual machine whose RunStrategy is set to RerunOnFailure should have no effect",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
+			vmi:         builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			expectStart: false,
 			shouldError: false,
 		},
 		{
 			name: "Power on a virtual machine whose RunStrategy is set to Halted should succeed",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
+			expectStart: true,
 			shouldError: false,
 		},
 	}
@@ -492,6 +501,10 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+			if tc.vmi != nil {
+				err := fakeVirtClient.Tracker().Add(tc.vmi)
+				require.NoError(t, err, "Mock resource should add into fake client tracker")
+			}
 
 			vmrm := &VirtualMachineResourceManager{
 				ctx:        context.TODO(),
@@ -506,6 +519,22 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+
+			var startOptions *kubevirtv1.StartOptions
+			for _, action := range fakeVirtClient.Actions() {
+				if action.GetVerb() == "put" && action.GetSubresource() == "start" {
+					startAction, ok := action.(kubevirttesting.PutAction[*kubevirtv1.StartOptions])
+					require.True(t, ok)
+					startOptions = startAction.GetOptions()
+				}
+			}
+
+			if tc.expectStart {
+				require.NotNil(t, startOptions)
+				require.False(t, startOptions.Paused)
+			} else {
+				require.Nil(t, startOptions)
+			}
 		})
 	}
 }
@@ -561,6 +590,32 @@ func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 	}
 }
 
+func TestVirtualMachineResourceManager_ForcePowerOff(t *testing.T) {
+	fakeVirtClient := kubevirtfake.NewSimpleClientset(
+		builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+	)
+
+	vmrm := &VirtualMachineResourceManager{
+		ctx:        context.TODO(),
+		virtClient: fakeVirtClient,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	err := vmrm.ForcePowerOff()
+	require.NoError(t, err)
+
+	actions := fakeVirtClient.Actions()
+	require.Len(t, actions, 1)
+	require.Equal(t, "put", actions[0].GetVerb())
+	require.Equal(t, "stop", actions[0].GetSubresource())
+
+	stopAction, ok := actions[0].(kubevirttesting.PutAction[*kubevirtv1.StopOptions])
+	require.True(t, ok)
+	require.NotNil(t, stopAction.GetOptions().GracePeriod)
+	require.Zero(t, *stopAction.GetOptions().GracePeriod)
+}
+
 func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -603,6 +658,64 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+
+			actions := fakeVirtClient.Actions()
+			require.NotEmpty(t, actions)
+			lastAction := actions[len(actions)-1]
+			require.Equal(t, "put", lastAction.GetVerb())
+			if tc.vmi != nil {
+				require.Equal(t, "restart", lastAction.GetSubresource())
+			} else {
+				require.Equal(t, "start", lastAction.GetSubresource())
+			}
+		})
+	}
+}
+
+func TestVirtualMachineResourceManager_ForcePowerCycle(t *testing.T) {
+	testCases := []struct {
+		name                string
+		vm                  *kubevirtv1.VirtualMachine
+		expectedSubresource string
+	}{
+		{
+			name:                "Force power cycle a running virtual machine should trigger immediate VM restart",
+			vm:                  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			expectedSubresource: "restart",
+		},
+		{
+			name:                "Force power cycle a halted virtual machine should trigger VM start",
+			vm:                  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			expectedSubresource: "start",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+
+			vmrm := &VirtualMachineResourceManager{
+				ctx:        context.TODO(),
+				virtClient: fakeVirtClient,
+				namespace:  testNamespace,
+				name:       testVMName,
+			}
+
+			err := vmrm.ForcePowerCycle()
+			require.NoError(t, err)
+
+			actions := fakeVirtClient.Actions()
+			require.NotEmpty(t, actions)
+			lastAction := actions[len(actions)-1]
+			require.Equal(t, "put", lastAction.GetVerb())
+			require.Equal(t, tc.expectedSubresource, lastAction.GetSubresource())
+
+			if tc.expectedSubresource == "restart" {
+				restartAction, ok := lastAction.(kubevirttesting.PutAction[*kubevirtv1.RestartOptions])
+				require.True(t, ok)
+				require.NotNil(t, restartAction.GetOptions().GracePeriodSeconds)
+				require.Zero(t, *restartAction.GetOptions().GracePeriodSeconds)
+			}
 		})
 	}
 }

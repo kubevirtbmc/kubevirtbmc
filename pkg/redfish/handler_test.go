@@ -319,6 +319,14 @@ func TestComputerSystemReset(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			name:      "force off reset",
+			resetType: server.RESOURCERESETTYPE_FORCE_OFF,
+			mockSetup: func() {
+				mockRM.EXPECT().ForcePowerOff().Return(nil)
+			},
+			expectedError: false,
+		},
+		{
 			name:      "graceful restart reset",
 			resetType: server.RESOURCERESETTYPE_GRACEFUL_RESTART,
 			mockSetup: func() {
@@ -330,7 +338,7 @@ func TestComputerSystemReset(t *testing.T) {
 			name:      "force restart reset",
 			resetType: server.RESOURCERESETTYPE_FORCE_RESTART,
 			mockSetup: func() {
-				mockRM.EXPECT().PowerCycle().Return(nil)
+				mockRM.EXPECT().ForcePowerCycle().Return(nil)
 			},
 			expectedError: false,
 		},

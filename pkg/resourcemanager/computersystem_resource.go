@@ -44,6 +44,13 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *C
 			ComputerSystemReset: server.ComputerSystemV1220Reset{
 				Target: fmt.Sprintf("/redfish/v1/Systems/%s/Actions/ComputerSystem.Reset", id),
 				Title:  "Reset",
+				ResetTypeRedfishAllowableValues: []server.ResourceResetType{
+					server.RESOURCERESETTYPE_ON,
+					server.RESOURCERESETTYPE_FORCE_OFF,
+					server.RESOURCERESETTYPE_GRACEFUL_SHUTDOWN,
+					server.RESOURCERESETTYPE_GRACEFUL_RESTART,
+					server.RESOURCERESETTYPE_FORCE_RESTART,
+				},
 			},
 		},
 		Boot: server.ComputerSystemV1220Boot{

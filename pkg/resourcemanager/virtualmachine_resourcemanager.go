@@ -280,6 +280,15 @@ func (m *VirtualMachineResourceManager) PowerOff() error {
 		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
 }
 
+func (m *VirtualMachineResourceManager) ForcePowerOff() error {
+	gracePeriod := int64(0)
+	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Stop(
+		m.ctx,
+		m.name,
+		&kubevirtv1.StopOptions{GracePeriod: &gracePeriod},
+	)
+}
+
 func (m *VirtualMachineResourceManager) PowerCycle() error {
 	isUp, err := m.GetPowerStatus()
 	if err != nil {
@@ -290,6 +299,23 @@ func (m *VirtualMachineResourceManager) PowerCycle() error {
 	}
 	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
 		Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
+}
+
+func (m *VirtualMachineResourceManager) ForcePowerCycle() error {
+	isUp, err := m.GetPowerStatus()
+	if err != nil {
+		return err
+	}
+	if !isUp {
+		return m.PowerOn()
+	}
+
+	gracePeriodSeconds := int64(0)
+	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Restart(
+		m.ctx,
+		m.name,
+		&kubevirtv1.RestartOptions{GracePeriodSeconds: &gracePeriodSeconds},
+	)
 }
 
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {
