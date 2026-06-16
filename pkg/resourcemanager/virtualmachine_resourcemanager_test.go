@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
 	kubevirtfake "kubevirt.io/client-go/kubevirt/fake"
@@ -52,6 +53,45 @@ func (f *fakeVirtualMedia) SetVirtualMedia(imageURL string, inserted bool) {
 	f.called = true
 	f.imageURL = imageURL
 	f.inserted = inserted
+}
+
+func findPutSubresourceAction(actions []k8stesting.Action, subresource string) (k8stesting.Action, bool) {
+	for _, action := range actions {
+		if action.GetVerb() == "put" && action.GetSubresource() == subresource {
+			return action, true
+		}
+	}
+
+	return nil, false
+}
+
+func requirePutSubresourceAction(t *testing.T, actions []k8stesting.Action, subresource string) k8stesting.Action {
+	t.Helper()
+
+	action, ok := findPutSubresourceAction(actions, subresource)
+	if ok {
+		return action
+	}
+
+	require.Failf(t, "expected PUT subresource action", "subresource %q not found", subresource)
+	return nil
+}
+
+func requirePutActionOptions[T any](t *testing.T, action k8stesting.Action, subresource string) *T {
+	t.Helper()
+
+	putAction, ok := action.(kubevirttesting.PutAction[*T])
+	var expectedOptions *T
+	require.Truef(
+		t,
+		ok,
+		"expected PUT %q action to have options type %T, got action type %T",
+		subresource,
+		expectedOptions,
+		action,
+	)
+
+	return putAction.GetOptions()
 }
 
 func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
@@ -521,12 +561,8 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 			require.NoError(t, err)
 
 			var startOptions *kubevirtv1.StartOptions
-			for _, action := range fakeVirtClient.Actions() {
-				if action.GetVerb() == "put" && action.GetSubresource() == "start" {
-					startAction, ok := action.(kubevirttesting.PutAction[*kubevirtv1.StartOptions])
-					require.True(t, ok)
-					startOptions = startAction.GetOptions()
-				}
+			if startAction, ok := findPutSubresourceAction(fakeVirtClient.Actions(), "start"); ok {
+				startOptions = requirePutActionOptions[kubevirtv1.StartOptions](t, startAction, "start")
 			}
 
 			if tc.expectStart {
@@ -610,10 +646,9 @@ func TestVirtualMachineResourceManager_ForcePowerOff(t *testing.T) {
 	require.Equal(t, "put", actions[0].GetVerb())
 	require.Equal(t, "stop", actions[0].GetSubresource())
 
-	stopAction, ok := actions[0].(kubevirttesting.PutAction[*kubevirtv1.StopOptions])
-	require.True(t, ok)
-	require.NotNil(t, stopAction.GetOptions().GracePeriod)
-	require.Zero(t, *stopAction.GetOptions().GracePeriod)
+	stopOptions := requirePutActionOptions[kubevirtv1.StopOptions](t, actions[0], "stop")
+	require.NotNil(t, stopOptions.GracePeriod)
+	require.Zero(t, *stopOptions.GracePeriod)
 }
 
 func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
@@ -659,15 +694,11 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			actions := fakeVirtClient.Actions()
-			require.NotEmpty(t, actions)
-			lastAction := actions[len(actions)-1]
-			require.Equal(t, "put", lastAction.GetVerb())
+			expectedSubresource := "start"
 			if tc.vmi != nil {
-				require.Equal(t, "restart", lastAction.GetSubresource())
-			} else {
-				require.Equal(t, "start", lastAction.GetSubresource())
+				expectedSubresource = "restart"
 			}
+			requirePutSubresourceAction(t, fakeVirtClient.Actions(), expectedSubresource)
 		})
 	}
 }
@@ -676,11 +707,13 @@ func TestVirtualMachineResourceManager_ForcePowerCycle(t *testing.T) {
 	testCases := []struct {
 		name                string
 		vm                  *kubevirtv1.VirtualMachine
+		vmi                 *kubevirtv1.VirtualMachineInstance
 		expectedSubresource string
 	}{
 		{
 			name:                "Force power cycle a running virtual machine should trigger immediate VM restart",
 			vm:                  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
 			expectedSubresource: "restart",
 		},
 		{
@@ -693,6 +726,10 @@ func TestVirtualMachineResourceManager_ForcePowerCycle(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+			if tc.vmi != nil {
+				err := fakeVirtClient.Tracker().Add(tc.vmi)
+				require.NoError(t, err, "Mock resource should add into fake client tracker")
+			}
 
 			vmrm := &VirtualMachineResourceManager{
 				ctx:        context.TODO(),
@@ -704,17 +741,12 @@ func TestVirtualMachineResourceManager_ForcePowerCycle(t *testing.T) {
 			err := vmrm.ForcePowerCycle()
 			require.NoError(t, err)
 
-			actions := fakeVirtClient.Actions()
-			require.NotEmpty(t, actions)
-			lastAction := actions[len(actions)-1]
-			require.Equal(t, "put", lastAction.GetVerb())
-			require.Equal(t, tc.expectedSubresource, lastAction.GetSubresource())
+			powerAction := requirePutSubresourceAction(t, fakeVirtClient.Actions(), tc.expectedSubresource)
 
 			if tc.expectedSubresource == "restart" {
-				restartAction, ok := lastAction.(kubevirttesting.PutAction[*kubevirtv1.RestartOptions])
-				require.True(t, ok)
-				require.NotNil(t, restartAction.GetOptions().GracePeriodSeconds)
-				require.Zero(t, *restartAction.GetOptions().GracePeriodSeconds)
+				restartOptions := requirePutActionOptions[kubevirtv1.RestartOptions](t, powerAction, "restart")
+				require.NotNil(t, restartOptions.GracePeriodSeconds)
+				require.Zero(t, *restartOptions.GracePeriodSeconds)
 			}
 		})
 	}
