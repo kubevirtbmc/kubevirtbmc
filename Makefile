@@ -146,12 +146,12 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 ##@ Build
 
-LINKFLAGS := "-X main.AppVersion=$(VERSION) -X main.GitCommit=$(COMMIT)"
+LINKFLAGS := "-s -w -X main.AppVersion=$(VERSION) -X main.GitCommit=$(COMMIT)"
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags $(LINKFLAGS) -o bin/manager cmd/controller/main.go
-	go build -ldflags $(LINKFLAGS) -o bin/virtbmc cmd/virtbmc/main.go
+	go build -trimpath -ldflags $(LINKFLAGS) -o bin/manager cmd/controller/main.go
+	go build -trimpath -ldflags $(LINKFLAGS) -o bin/virtbmc cmd/virtbmc/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
