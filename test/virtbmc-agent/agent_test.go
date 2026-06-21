@@ -201,6 +201,18 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("Off"),
 				))
 			})
+
+			It("should advertise supported reset action values", func() {
+				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(ContainSubstring(`"ResetType@Redfish.AllowableValues"`))
+				Expect(out).To(ContainSubstring(`"On"`))
+				Expect(out).To(ContainSubstring(`"ForceOff"`))
+				Expect(out).To(ContainSubstring(`"GracefulShutdown"`))
+				Expect(out).To(ContainSubstring(`"GracefulRestart"`))
+				Expect(out).To(ContainSubstring(`"ForceRestart"`))
+			})
+
 			It("should accept graceful shutdown action and VM is actually off", func() {
 				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"GracefulShutdown"}`))
 				Expect(err).NotTo(HaveOccurred())
