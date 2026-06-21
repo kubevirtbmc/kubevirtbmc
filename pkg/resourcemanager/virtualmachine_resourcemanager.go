@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
 	kvclient "kubevirt.io/client-go/kubevirt"
@@ -281,11 +282,10 @@ func (m *VirtualMachineResourceManager) PowerOff() error {
 }
 
 func (m *VirtualMachineResourceManager) ForcePowerOff() error {
-	gracePeriod := int64(0)
 	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Stop(
 		m.ctx,
 		m.name,
-		&kubevirtv1.StopOptions{GracePeriod: &gracePeriod},
+		&kubevirtv1.StopOptions{GracePeriod: ptr.To[int64](0)},
 	)
 }
 
@@ -310,11 +310,10 @@ func (m *VirtualMachineResourceManager) ForcePowerCycle() error {
 		return m.PowerOn()
 	}
 
-	gracePeriodSeconds := int64(0)
 	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Restart(
 		m.ctx,
 		m.name,
-		&kubevirtv1.RestartOptions{GracePeriodSeconds: &gracePeriodSeconds},
+		&kubevirtv1.RestartOptions{GracePeriodSeconds: ptr.To[int64](0)},
 	)
 }
 
