@@ -282,6 +282,14 @@ func (m *VirtualMachineResourceManager) PowerOff() error {
 }
 
 func (m *VirtualMachineResourceManager) ForcePowerOff() error {
+	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
+	}
 	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Stop(
 		m.ctx,
 		m.name,
