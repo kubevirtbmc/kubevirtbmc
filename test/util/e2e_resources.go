@@ -240,12 +240,14 @@ func EnsureTestVMSecretBMC(ctx context.Context, k8sClient client.Client, namespa
 func E2EVM(namespace string) *kubevirtv1.VirtualMachine {
 	runStrategy := kubevirtv1.RunStrategyAlways
 	guestMemory := resource.MustParse("256Mi")
+	terminationGracePeriodSeconds := int64(1)
 	return &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{Name: E2EVMName, Namespace: namespace},
 		Spec: kubevirtv1.VirtualMachineSpec{
 			RunStrategy: &runStrategy,
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					TerminationGracePeriodSeconds: &terminationGracePeriodSeconds,
 					Domain: kubevirtv1.DomainSpec{
 						Memory: &kubevirtv1.Memory{Guest: &guestMemory},
 						Resources: kubevirtv1.ResourceRequirements{
@@ -263,7 +265,10 @@ func E2EVM(namespace string) *kubevirtv1.VirtualMachine {
 					},
 					Volumes: []kubevirtv1.Volume{
 						{Name: "containerdisk", VolumeSource: kubevirtv1.VolumeSource{
-							ContainerDisk: &kubevirtv1.ContainerDiskSource{Image: "quay.io/kubevirt/cirros-container-disk-demo"},
+							ContainerDisk: &kubevirtv1.ContainerDiskSource{
+								Image:           "quay.io/kubevirt/cirros-container-disk-demo",
+								ImagePullPolicy: corev1.PullIfNotPresent,
+							},
 						}},
 						{Name: "cdrom", VolumeSource: kubevirtv1.VolumeSource{
 							EmptyDisk: &kubevirtv1.EmptyDiskSource{Capacity: resource.MustParse("1Gi")},
