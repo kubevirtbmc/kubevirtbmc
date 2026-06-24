@@ -630,6 +630,8 @@ func TestVirtualMachineResourceManager_ForcePowerOff(t *testing.T) {
 	fakeVirtClient := kubevirtfake.NewSimpleClientset(
 		builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
 	)
+	err := fakeVirtClient.Tracker().Add(builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build())
+	require.NoError(t, err, "Mock resource should add into fake client tracker")
 
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
@@ -638,15 +640,12 @@ func TestVirtualMachineResourceManager_ForcePowerOff(t *testing.T) {
 		name:       testVMName,
 	}
 
-	err := vmrm.ForcePowerOff()
+	err = vmrm.ForcePowerOff()
 	require.NoError(t, err)
 
-	actions := fakeVirtClient.Actions()
-	require.Len(t, actions, 1)
-	require.Equal(t, "put", actions[0].GetVerb())
-	require.Equal(t, "stop", actions[0].GetSubresource())
+	stopAction := requirePutSubresourceAction(t, fakeVirtClient.Actions(), "stop")
 
-	stopOptions := requirePutActionOptions[kubevirtv1.StopOptions](t, actions[0], "stop")
+	stopOptions := requirePutActionOptions[kubevirtv1.StopOptions](t, stopAction, "stop")
 	require.NotNil(t, stopOptions.GracePeriod)
 	require.Zero(t, *stopOptions.GracePeriod)
 }
