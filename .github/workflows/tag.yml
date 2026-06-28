@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: write
     env:
-      REPO: starbops
+      REPO: kubevirtbmc
       MANAGER: virtbmc-controller
       AGENT: virtbmc
       VERSION: ${{ github.ref_name }}

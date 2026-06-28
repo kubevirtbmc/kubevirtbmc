@@ -11,7 +11,7 @@ VERSION := $(VERSION)$(DIRTY)
 # Sanitize for Docker image tag: replace chars not in [a-zA-Z0-9_.-] with '-'
 export TAG = $(shell echo "$(VERSION)" | sed 's|[^a-zA-Z0-9_.-]|-|g')
 
-REPO ?= starbops
+export REPO ?= kubevirtbmc
 
 # Image URL to use all building/pushing image targets
 MGR_IMG ?= $(REPO)/virtbmc-controller:$(TAG)

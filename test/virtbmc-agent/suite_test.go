@@ -31,18 +31,20 @@ var (
 	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
 	isCertManagerAlreadyInstalled = false
 
-	controllerManagerImage = fmt.Sprintf("starbops/virtbmc-controller:%s", func() string {
-		if tag := os.Getenv("TAG"); tag != "" {
-			return tag
+	repo = func() string {
+		if r := os.Getenv("REPO"); r != "" {
+			return r
+		}
+		return "kubevirtbmc"
+	}()
+	tag = func() string {
+		if t := os.Getenv("TAG"); t != "" {
+			return t
 		}
 		return "dev"
-	}())
-	agentImage = fmt.Sprintf("starbops/virtbmc:%s", func() string {
-		if tag := os.Getenv("TAG"); tag != "" {
-			return tag
-		}
-		return "dev"
-	}())
+	}()
+	controllerManagerImage = fmt.Sprintf("%s/virtbmc-controller:%s", repo, tag)
+	agentImage             = fmt.Sprintf("%s/virtbmc:%s", repo, tag)
 
 	config    *rest.Config
 	k8sClient client.Client

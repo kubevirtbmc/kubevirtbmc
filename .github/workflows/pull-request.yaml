@@ -12,7 +12,7 @@ jobs:
     permissions:
       contents: read
     env:
-      REPO: starbops
+      REPO: kubevirtbmc
       MANAGER: virtbmc-controller
       AGENT: virtbmc
       VERSION: pr-${{ github.event.number }}-head
