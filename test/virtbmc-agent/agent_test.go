@@ -136,7 +136,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				))
 			})
 
-			It("should accept power off (graceful) and VM is actually off", func() {
+			It("should accept power off and VM is actually off", func() {
 				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
 				Expect(err).NotTo(HaveOccurred())
 				waitForVMIDeleted(ctx, k8sClient, ns)
@@ -150,6 +150,24 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 			It("should accept power cycle and VM is stopped then started again", func() {
 				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "cycle"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIPowerCycle(ctx, k8sClient, ns)
+			})
+
+			It("should accept power soft (graceful ACPI shutdown) and VM is actually off", func() {
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "soft"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+			})
+
+			It("should accept power on and VM is actually running", func() {
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+
+			It("should accept power reset (hard reset) and VM is stopped then started again", func() {
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "reset"))
 				Expect(err).NotTo(HaveOccurred())
 				waitForVMIPowerCycle(ctx, k8sClient, ns)
 			})

@@ -627,27 +627,50 @@ func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 }
 
 func TestVirtualMachineResourceManager_ForcePowerOff(t *testing.T) {
-	fakeVirtClient := kubevirtfake.NewSimpleClientset(
-		builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
-	)
-	err := fakeVirtClient.Tracker().Add(builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build())
-	require.NoError(t, err, "Mock resource should add into fake client tracker")
-
-	vmrm := &VirtualMachineResourceManager{
-		ctx:        context.TODO(),
-		virtClient: fakeVirtClient,
-		namespace:  testNamespace,
-		name:       testVMName,
+	testCases := []struct {
+		name       string
+		vm         *kubevirtv1.VirtualMachine
+		vmi        *kubevirtv1.VirtualMachineInstance
+		expectStop bool
+	}{
+		{
+			name:       "Force power off a running virtual machine should trigger immediate VM stop",
+			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			vmi:        builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			expectStop: true,
+		},
+		{
+			name:       "Force power off a halted virtual machine should be a no-op",
+			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			expectStop: false,
+		},
 	}
-
-	err = vmrm.ForcePowerOff()
-	require.NoError(t, err)
-
-	stopAction := requirePutSubresourceAction(t, fakeVirtClient.Actions(), "stop")
-
-	stopOptions := requirePutActionOptions[kubevirtv1.StopOptions](t, stopAction, "stop")
-	require.NotNil(t, stopOptions.GracePeriod)
-	require.Zero(t, *stopOptions.GracePeriod)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+			if tc.vmi != nil {
+				err := fakeVirtClient.Tracker().Add(tc.vmi)
+				require.NoError(t, err, "Mock resource should add into fake client tracker")
+			}
+			vmrm := &VirtualMachineResourceManager{
+				ctx:        context.TODO(),
+				virtClient: fakeVirtClient,
+				namespace:  testNamespace,
+				name:       testVMName,
+			}
+			err := vmrm.ForcePowerOff()
+			require.NoError(t, err)
+			stopAction, ok := findPutSubresourceAction(fakeVirtClient.Actions(), "stop")
+			if tc.expectStop {
+				require.True(t, ok)
+				stopOptions := requirePutActionOptions[kubevirtv1.StopOptions](t, stopAction, "stop")
+				require.NotNil(t, stopOptions.GracePeriod)
+				require.Zero(t, *stopOptions.GracePeriod)
+			} else {
+				require.False(t, ok)
+			}
+		})
+	}
 }
 
 func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {

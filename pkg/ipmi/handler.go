@@ -26,15 +26,25 @@ func (h *handler) chassisControlHandler(m *goipmi.Message) goipmi.Response {
 	var err error
 
 	switch r.ChassisControl {
-	case goipmi.ControlPowerDown, goipmi.ControlPowerAcpiSoft:
+	case goipmi.ControlPowerDown:
+		// Immediate power down (no OS notification), per IPMI spec §28.3.
+		logrus.Info("force power off")
+		err = h.rm.ForcePowerOff()
+	case goipmi.ControlPowerAcpiSoft:
+		// ACPI graceful shutdown, per IPMI spec §28.3.
 		logrus.Info("power off")
 		err = h.rm.PowerOff()
 	case goipmi.ControlPowerUp:
 		logrus.Info("power on")
 		err = h.rm.PowerOn()
-	case goipmi.ControlPowerCycle, goipmi.ControlPowerHardReset:
+	case goipmi.ControlPowerCycle:
+		// Graceful power cycle (OS-level), per IPMI spec §28.3.
 		logrus.Info("power cycle")
 		err = h.rm.PowerCycle()
+	case goipmi.ControlPowerHardReset:
+		// Hard reset (asserts system reset without power cycling), per IPMI spec §28.3.
+		logrus.Info("force power cycle")
+		err = h.rm.ForcePowerCycle()
 	}
 
 	if err != nil {

@@ -41,16 +41,32 @@ func TestChassisControlHandler(t *testing.T) {
 			expectedCode: goipmi.ErrInvalidState,
 		},
 		{
-			name:           "PowerOff success",
+			name:           "ForcePowerOff success",
 			chassisControl: goipmi.ControlPowerDown,
+			expectedCall: func() {
+				mockRM.EXPECT().ForcePowerOff().Return(nil)
+			},
+			expectedCode: goipmi.CommandCompleted,
+		},
+		{
+			name:           "ForcePowerOff failure",
+			chassisControl: goipmi.ControlPowerDown,
+			expectedCall: func() {
+				mockRM.EXPECT().ForcePowerOff().Return(fmt.Errorf("error"))
+			},
+			expectedCode: goipmi.ErrInvalidState,
+		},
+		{
+			name:           "PowerOff (ACPI soft) success",
+			chassisControl: goipmi.ControlPowerAcpiSoft,
 			expectedCall: func() {
 				mockRM.EXPECT().PowerOff().Return(nil)
 			},
 			expectedCode: goipmi.CommandCompleted,
 		},
 		{
-			name:           "PowerOff failure",
-			chassisControl: goipmi.ControlPowerDown,
+			name:           "PowerOff (ACPI soft) failure",
+			chassisControl: goipmi.ControlPowerAcpiSoft,
 			expectedCall: func() {
 				mockRM.EXPECT().PowerOff().Return(fmt.Errorf("error"))
 			},
@@ -69,6 +85,22 @@ func TestChassisControlHandler(t *testing.T) {
 			chassisControl: goipmi.ControlPowerCycle,
 			expectedCall: func() {
 				mockRM.EXPECT().PowerCycle().Return(fmt.Errorf("error"))
+			},
+			expectedCode: goipmi.ErrInvalidState,
+		},
+		{
+			name:           "ForcePowerCycle success",
+			chassisControl: goipmi.ControlPowerHardReset,
+			expectedCall: func() {
+				mockRM.EXPECT().ForcePowerCycle().Return(nil)
+			},
+			expectedCode: goipmi.CommandCompleted,
+		},
+		{
+			name:           "ForcePowerCycle failure",
+			chassisControl: goipmi.ControlPowerHardReset,
+			expectedCall: func() {
+				mockRM.EXPECT().ForcePowerCycle().Return(fmt.Errorf("error"))
 			},
 			expectedCode: goipmi.ErrInvalidState,
 		},
