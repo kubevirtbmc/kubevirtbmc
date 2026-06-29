@@ -240,7 +240,7 @@ func EnsureTestVMSecretBMC(ctx context.Context, k8sClient client.Client, namespa
 func E2EVM(namespace string) *kubevirtv1.VirtualMachine {
 	runStrategy := kubevirtv1.RunStrategyAlways
 	guestMemory := resource.MustParse("256Mi")
-	terminationGracePeriodSeconds := int64(1)
+	terminationGracePeriodSeconds := int64(3)
 	return &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{Name: E2EVMName, Namespace: namespace},
 		Spec: kubevirtv1.VirtualMachineSpec{

@@ -5,7 +5,7 @@ go 1.25.11
 replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b
 
 require (
-	github.com/bougou/go-ipmi v0.8.4-0.20260701115353-093eaccbe633
+	github.com/bougou/go-ipmi v0.8.4-0.20260722053906-e18b44d24c7a
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/onsi/ginkgo/v2 v2.22.0

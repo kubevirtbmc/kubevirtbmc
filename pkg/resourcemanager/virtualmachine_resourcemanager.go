@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -264,74 +263,195 @@ func (m *VirtualMachineResourceManager) GetPowerStatus() (bool, error) {
 	return vm.Status.Ready, nil
 }
 
+// vmDesiresRunning reports whether the run strategy (Always/RerunOnFailure/
+// Manual) intends the VM to be running.
+func vmDesiresRunning(vm *kubevirtv1.VirtualMachine) bool {
+	rs, err := vm.RunStrategy()
+	if err != nil {
+		return false
+	}
+	switch rs {
+	case kubevirtv1.RunStrategyAlways,
+		kubevirtv1.RunStrategyRerunOnFailure,
+		kubevirtv1.RunStrategyManual:
+		return true
+	default:
+		return false
+	}
+}
+
+// hasPendingStartRequest reports whether a Start request is queued but not
+// yet consumed by virt-controller.
+func hasPendingStartRequest(requests []kubevirtv1.VirtualMachineStateChangeRequest) bool {
+	for _, r := range requests {
+		if r.Action == kubevirtv1.StartRequest {
+			return true
+		}
+	}
+	return false
+}
+
+// hasPendingStopRequest reports whether a Stop request is queued but not
+// yet consumed by virt-controller.
+func hasPendingStopRequest(requests []kubevirtv1.VirtualMachineStateChangeRequest) bool {
+	for _, r := range requests {
+		if r.Action == kubevirtv1.StopRequest {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *VirtualMachineResourceManager) PowerOn() error {
-	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
-		Get(m.ctx, m.name, metav1.GetOptions{})
+	// Try-Then-Verify: call Start first, then check VM real state on
+	// failure, avoiding dependency on KubeVirt error strings.
+	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
 	if err == nil {
 		return nil
 	}
-	if !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
+	vm, getErr := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if getErr != nil {
+		return fmt.Errorf("start failed: %w; verify state also failed: %v", err, getErr)
 	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Start(m.ctx, m.name, &kubevirtv1.StartOptions{})
+	// Genuinely running: Ready + run intent + no pending stop. The stop
+	// check matters for Manual / RerunOnFailure, where Stop is queued via
+	// StateChangeRequests and runStrategy stays set while the VMI stops.
+	if vm.Status.Ready && vmDesiresRunning(vm) && !hasPendingStopRequest(vm.Status.StateChangeRequests) {
+		return nil
+	}
+	// A queued StartRequest (KubeVirt: "stop/start already underway") means
+	// the first power-on is still in flight — duplicate Start is idempotent.
+	if hasPendingStartRequest(vm.Status.StateChangeRequests) &&
+		!hasPendingStopRequest(vm.Status.StateChangeRequests) {
+		return nil
+	}
+	rs, rsErr := vm.RunStrategy()
+	// RunStrategyAlways: Stop flips the strategy to Halted before tearing
+	// down the VMI, so a Start failure with Always means the VMI is starting.
+	if rsErr == nil && rs == kubevirtv1.RunStrategyAlways {
+		return nil
+	}
+	// Manual / RerunOnFailure: the StartRequest may already be consumed
+	// while the VMI is still starting (Ready=false) — a non-final VMI means
+	// power-on is underway. A final VMI is not: RerunOnFailure rejects
+	// start-from-failed.
+	if rsErr == nil &&
+		(rs == kubevirtv1.RunStrategyManual || rs == kubevirtv1.RunStrategyRerunOnFailure) &&
+		!hasPendingStopRequest(vm.Status.StateChangeRequests) {
+		vmi, vmiErr := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+			Get(m.ctx, m.name, metav1.GetOptions{})
+		if vmiErr == nil && !vmi.IsFinal() {
+			return nil
+		}
+	}
+	// Anything else is transitional — let the protocol layer retry.
+	return &ErrRetryable{Err: err}
 }
 
 func (m *VirtualMachineResourceManager) PowerOff() error {
-	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
-		Get(m.ctx, m.name, metav1.GetOptions{})
-	if apierrors.IsNotFound(err) {
+	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
+	if err == nil {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
+	vm, getErr := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if getErr != nil {
+		return fmt.Errorf("stop failed: %w; verify state also failed: %v", err, getErr)
 	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{})
+	// Genuinely off: not Ready AND no pending start. runStrategy can't be
+	// trusted here — for Manual / RerunOnFailure it stays set after Stop,
+	// and the start check catches the inverse Start→Stop race.
+	if !vm.Status.Ready && !hasPendingStartRequest(vm.Status.StateChangeRequests) {
+		return nil
+	}
+	return &ErrRetryable{Err: err}
 }
 
 func (m *VirtualMachineResourceManager) ForcePowerOff() error {
-	_, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
-		Get(m.ctx, m.name, metav1.GetOptions{})
-	if apierrors.IsNotFound(err) {
+	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Stop(m.ctx, m.name, &kubevirtv1.StopOptions{GracePeriod: ptr.To[int64](0)})
+	if err == nil {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("failed to get VMI %s/%s: %w", m.namespace, m.name, err)
+	vm, getErr := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if getErr != nil {
+		return fmt.Errorf("force stop failed: %w; verify state also failed: %v", err, getErr)
 	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Stop(
-		m.ctx,
-		m.name,
-		&kubevirtv1.StopOptions{GracePeriod: ptr.To[int64](0)},
-	)
+	// Same idempotency check as PowerOff.
+	if !vm.Status.Ready && !hasPendingStartRequest(vm.Status.StateChangeRequests) {
+		return nil
+	}
+	return &ErrRetryable{Err: err}
 }
 
 func (m *VirtualMachineResourceManager) PowerCycle() error {
-	isUp, err := m.GetPowerStatus()
-	if err != nil {
-		return err
-	}
-	if !isUp {
-		return m.PowerOn()
-	}
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Restart(m.ctx, m.name, &kubevirtv1.RestartOptions{})
+	return m.powerCycle(false)
 }
 
 func (m *VirtualMachineResourceManager) ForcePowerCycle() error {
+	return m.powerCycle(true)
+}
+
+// powerCycle restarts whenever the VM is up or a non-final VMI is present;
+// only an absent/final VMI falls back to PowerOn (PowerOn with a live VMI
+// is a silent no-op under RunStrategyAlways). force sets GracePeriodSeconds=0.
+func (m *VirtualMachineResourceManager) powerCycle(force bool) error {
 	isUp, err := m.GetPowerStatus()
 	if err != nil {
 		return err
 	}
-	if !isUp {
-		return m.PowerOn()
+	opts := &kubevirtv1.RestartOptions{}
+	if force {
+		opts.GracePeriodSeconds = ptr.To[int64](0)
 	}
+	if isUp {
+		return m.restartOrVerify(opts)
+	}
+	vmi, vmiErr := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if vmiErr == nil && !vmi.IsFinal() {
+		logrus.Warnf("PowerCycle(force=%v): VM %s/%s not Ready but VMI present (phase=%s), issuing Restart",
+			force, m.namespace, m.name, vmi.Status.Phase)
+		return m.restartOrVerify(opts)
+	}
+	logrus.Warnf("PowerCycle(force=%v): VM %s/%s not Ready, falling back to PowerOn",
+		force, m.namespace, m.name)
+	return m.PowerOn()
+}
 
-	return m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Restart(
-		m.ctx,
-		m.name,
-		&kubevirtv1.RestartOptions{GracePeriodSeconds: ptr.To[int64](0)},
-	)
+// restartOrVerify issues Restart and, on failure, classifies the outcome via
+// the same Try-Then-Verify pattern as PowerOn/PowerOff.
+func (m *VirtualMachineResourceManager) restartOrVerify(opts *kubevirtv1.RestartOptions) error {
+	err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Restart(m.ctx, m.name, opts)
+	if err == nil {
+		return nil
+	}
+	vm, getErr := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if getErr != nil {
+		return fmt.Errorf("restart failed: %w; verify state also failed: %v", err, getErr)
+	}
+	scrs := vm.Status.StateChangeRequests
+	// Full restart already queued — repeated PowerCycle is idempotent.
+	if hasPendingStopRequest(scrs) && hasPendingStartRequest(scrs) {
+		return nil
+	}
+	// Partial SCR (soft-off / start in flight) — wait and retry.
+	if hasPendingStopRequest(scrs) || hasPendingStartRequest(scrs) {
+		return &ErrRetryable{Err: err}
+	}
+	vmi, vmiErr := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(m.ctx, m.name, metav1.GetOptions{})
+	if vmiErr == nil && !vmi.IsFinal() {
+		return &ErrRetryable{Err: err}
+	}
+	// VMI gone between GetPowerStatus and Restart: complete the cycle via PowerOn.
+	return m.PowerOn()
 }
 
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice) error {

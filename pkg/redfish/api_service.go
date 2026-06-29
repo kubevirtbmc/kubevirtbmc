@@ -59861,8 +59861,28 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdActionsComputerSystemResetP
 	}
 
 	if err := s.handler.ComputerSystemReset(computerSystemV1220ResetRequestBody.ResetType); err != nil {
+		var retryable *resourcemanager.ErrRetryable
+		if errors.As(err, &retryable) {
+			// Signal a retryable state the way iLO does: OpenStack sushy
+			// (Ironic's Redfish client) retries 5xx responses whose body
+			// contains both "iLO" and "InvalidOperationForSystemState":
+			//   https://github.com/openstack/sushy/blob/b11baf5f5cd64c01f3245e5efad21236bc0e0a48/sushy/connector.py#L96-L108
+			//   https://github.com/openstack/sushy/blob/b11baf5f5cd64c01f3245e5efad21236bc0e0a48/sushy/connector.py#L231-L242
+			return server.Response(http.StatusInternalServerError, server.RedfishError{
+				Error: server.RedfishErrorError{
+					Message: "iLO: InvalidOperationForSystemState - Power transition in progress. Retry later.",
+					MessageExtendedInfo: []server.MessageV120Message{
+						{
+							MessageId: "iLO.2.13.InvalidOperationForSystemState",
+							Message:   "InvalidOperationForSystemState: Power transition in progress",
+						},
+					},
+				},
+			}), nil
+		}
 		return server.Response(http.StatusInternalServerError, server.RedfishError{
 			Error: server.RedfishErrorError{
+				Message: err.Error(),
 				MessageExtendedInfo: []server.MessageV120Message{
 					{
 						MessageId: "Base.1.2.GeneralError",

@@ -124,6 +124,36 @@ func waitForVMIRunning(ctx context.Context, k8sClient client.Client, namespace s
 		"VMI %s/%s should reach Running phase", namespace, agentVMName)
 }
 
+// waitForVMIPresentBeforeReady waits for the soft→on startup race window:
+// a non-final VMI exists while VM.Status.Ready is still false. PowerCycle
+// used to fall back to PowerOn here and silently swallow reset/cycle.
+func waitForVMIPresentBeforeReady(ctx context.Context, k8sClient client.Client, namespace string) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
+			return false
+		}
+		if vm.Status.Ready {
+			return false
+		}
+		vmi := &kubevirtv1.VirtualMachineInstance{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vmi); err != nil {
+			return false
+		}
+		return !vmi.IsFinal()
+	}, vmPowerStatusTimeout, 50*time.Millisecond).Should(BeTrue(),
+		"expected VMI present while VM %s/%s is not Ready (startup race window)", namespace, agentVMName)
+}
+
+func setVMRunStrategy(ctx context.Context, k8sClient client.Client, namespace string, strategy kubevirtv1.VirtualMachineRunStrategy) {
+	vm := &kubevirtv1.VirtualMachine{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm)).To(Succeed())
+	orig := vm.DeepCopy()
+	vm.Spec.RunStrategy = &strategy
+	vm.Spec.Running = nil
+	Expect(k8sClient.Patch(ctx, vm, client.MergeFrom(orig))).To(Succeed())
+}
+
 func waitForVMIPowerCycle(ctx context.Context, k8sClient client.Client, namespace string) {
 	orig := &kubevirtv1.VirtualMachineInstance{}
 	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, orig)).To(Succeed(),

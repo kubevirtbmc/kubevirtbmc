@@ -112,6 +112,11 @@ func (b *VirtualMachineBuilder) Ready(ready bool) *VirtualMachineBuilder {
 	return b
 }
 
+func (b *VirtualMachineBuilder) WithStateChangeRequests(requests ...kubevirtv1.VirtualMachineStateChangeRequest) *VirtualMachineBuilder {
+	b.vm.Status.StateChangeRequests = append(b.vm.Status.StateChangeRequests, requests...)
+	return b
+}
+
 // VirtualMachineInstanceBuilder builds a VirtualMachineInstance object.
 type VirtualMachineInstanceBuilder struct {
 	vmi *kubevirtv1.VirtualMachineInstance
@@ -126,6 +131,11 @@ func NewVirtualMachineInstanceBuilder(namespace, name string) *VirtualMachineIns
 			},
 		},
 	}
+}
+
+func (b *VirtualMachineInstanceBuilder) Phase(phase kubevirtv1.VirtualMachineInstancePhase) *VirtualMachineInstanceBuilder {
+	b.vmi.Status.Phase = phase
+	return b
 }
 
 func (b *VirtualMachineInstanceBuilder) Build() *kubevirtv1.VirtualMachineInstance {

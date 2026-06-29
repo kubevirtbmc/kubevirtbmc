@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/test/util"
 )
@@ -79,8 +80,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			bmc := &bmcv1.VirtualMachineBMC{}
 			Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
 			enabled := true
+			orig := bmc.DeepCopy()
 			bmc.Spec.IPMI = &bmcv1.IPMISpec{Enabled: &enabled}
-			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
+			Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
 
 			By("waiting for new agent pod to be recreated and ready")
 			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
@@ -167,6 +169,115 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "reset"))
 				Expect(err).NotTo(HaveOccurred())
 				waitForVMIPowerCycle(ctx, k8sClient, ns)
+			})
+
+			It("should accept power reset while VMI exists but VM is not Ready yet", func() {
+				// Reproduce soft→on→reset race: after power-on, a VMI appears
+				// before VM.Status.Ready flips. Reset in that window must
+				// Restart, not fall back to PowerOn (Always would swallow it).
+				waitForVMIRunning(ctx, k8sClient, ns)
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "soft"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+
+				_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIPresentBeforeReady(ctx, k8sClient, ns)
+
+				_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "reset"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIPowerCycle(ctx, k8sClient, ns)
+			})
+
+			It("should return retryable error when power-on races with VMI cleanup", func() {
+				waitForVMIRunning(ctx, k8sClient, ns)
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "soft"))
+				Expect(err).NotTo(HaveOccurred())
+
+				// Power on again before VMI cleanup completes: while the VMI
+				// lingers the handler returns Node Busy (0xC0), and a retry
+				// succeeds once the VMI is gone.
+				var sawNodeBusy bool
+				Eventually(func() error {
+					_, stderr, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+					if err != nil {
+						sawNodeBusy = true
+						Expect(stderr).To(ContainSubstring("Node busy"),
+							"expected Node Busy retryable error, got stderr=%q", stderr)
+					}
+					return err
+				}, vmPowerStatusTimeout, agentTestInterval).Should(Succeed(),
+					"power on should eventually succeed after VMI cleanup")
+				Expect(sawNodeBusy).To(BeTrue(),
+					"expected at least one Node Busy retryable error before success")
+
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+
+			It("should treat repeated power-on as idempotent during VM startup", func() {
+				waitForVMIRunning(ctx, k8sClient, ns)
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "soft"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+
+				// The second power-on may arrive before the VMI is Ready;
+				// with RunStrategyAlways idempotency it must succeed, not
+				// return Node Busy.
+				_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred())
+				_, stderr, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred(),
+					"repeated power-on should succeed; stderr=%q", stderr)
+
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+
+			It("should treat repeated power-on as idempotent for Manual runStrategy", func() {
+				waitForVMIRunning(ctx, k8sClient, ns)
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "soft"))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+
+				// Manual VMs queue Start via StateChangeRequests; a second
+				// immediate power-on should succeed idempotently.
+				setVMRunStrategy(ctx, k8sClient, ns, kubevirtv1.RunStrategyManual)
+				defer setVMRunStrategy(ctx, k8sClient, ns, kubevirtv1.RunStrategyAlways)
+
+				_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred())
+				_, stderr, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred(),
+					"repeated Manual power-on should succeed; stderr=%q", stderr)
+
+				waitForVMIRunning(ctx, k8sClient, ns)
+			})
+
+			It("should treat repeated power-off as idempotent", func() {
+				waitForVMIRunning(ctx, k8sClient, ns)
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+				Expect(err).NotTo(HaveOccurred())
+
+				// Second power-off while VMI is being torn down should
+				// succeed idempotently.
+				_, stderr, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+				Expect(err).NotTo(HaveOccurred(),
+					"repeated power-off should succeed; stderr=%q", stderr)
+
+				waitForVMIDeleted(ctx, k8sClient, ns)
+			})
+
+			It("should accept power soft immediately after power on", func() {
+				// KubeVirt allows Stop to interrupt a pending/starting VMI, so this
+				// should succeed (unlike soft→on, which returns Node busy).
+				waitForVMIDeleted(ctx, k8sClient, ns)
+				_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+				Expect(err).NotTo(HaveOccurred())
+
+				_, stderr, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "soft"))
+				Expect(err).NotTo(HaveOccurred(),
+					"power soft after power on should succeed; stderr=%q", stderr)
+
+				waitForVMIDeleted(ctx, k8sClient, ns)
 			})
 		})
 

@@ -2,6 +2,7 @@ package resourcemanager
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
@@ -504,48 +506,161 @@ func TestVirtualMachineResourceManager_GetPowerStatus(t *testing.T) {
 
 func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 	testCases := []struct {
-		name        string
-		vm          *kubevirtv1.VirtualMachine
-		vmi         *kubevirtv1.VirtualMachineInstance
-		expectStart bool
-		shouldError bool
+		name          string
+		vm            *kubevirtv1.VirtualMachine
+		vmi           *kubevirtv1.VirtualMachineInstance // optional; present when StartRequest already consumed
+		startErr      string                             // if non-empty, inject error on "start" subresource
+		getErr        bool                               // if true, inject error on VM Get (verify step)
+		wantErr       bool
+		wantRetryable bool
+		wantStart     bool
 	}{
 		{
-			name:        "Power on a virtual machine that should be on should have no effect",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
-			vmi:         builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
-			expectStart: false,
-			shouldError: false,
+			name:      "Power on a not-ready VM: Start succeeds → nil",
+			vm:        builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			wantStart: true,
 		},
 		{
-			name:        "Power on a virtual machine that should be off should succeed",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
-			expectStart: true,
-			shouldError: false,
-		},
-		{
-			name: "Power on a virtual machine whose RunStrategy is set to RerunOnFailure should have no effect",
+			name: "Power on a Ready VM with Start error → nil (idempotent success)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
-			vmi:         builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
-			expectStart: false,
-			shouldError: false,
+				Ready(true).
+				RunStrategy(kubevirtv1.RunStrategyAlways).
+				Build(),
+			startErr:  "VM is already running",
+			wantStart: true,
 		},
 		{
-			name: "Power on a virtual machine whose RunStrategy is set to Halted should succeed",
+			name: "Power on a Ready VM with Start error and RunStrategy=Halted → ErrRetryable (Stop→Start race)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
-			expectStart: true,
-			shouldError: false,
+				Ready(true).
+				RunStrategy(kubevirtv1.RunStrategyHalted).
+				Build(),
+			startErr:      "VM is already running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStart:     true,
+		},
+		{
+			name:          "Power on a not-Ready VM with Start error → ErrRetryable (transitional state)",
+			vm:            builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(false).Build(),
+			startErr:      "VM is already running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStart:     true,
+		},
+		{
+			name:      "Power on when Get verify also fails → wrapped error, not retryable",
+			vm:        builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(false).Build(),
+			startErr:  "VM is already running",
+			getErr:    true,
+			wantErr:   true,
+			wantStart: true,
+		},
+		{
+			name: "Power on a not-Ready VM with Start error and RunStrategy=Always → nil (idempotent, VMI starting)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				Running(true).
+				Build(),
+			startErr:  "VM is already running",
+			wantStart: true,
+		},
+		{
+			name: "Power on a Ready Manual VM with pending StopRequest → ErrRetryable (stop in progress)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StopRequest}).
+				Build(),
+			startErr:      "VM is already running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStart:     true,
+		},
+		{
+			name: "Power on a not-Ready Manual VM with pending StartRequest → nil (on→on idempotent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest}).
+				Build(),
+			startErr:  "unable to complete request: stop/start already underway",
+			wantStart: true,
+		},
+		{
+			name: "Power on a Ready RerunOnFailure VM with pending StopRequest → ErrRetryable (stop in progress)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StopRequest}).
+				Build(),
+			startErr:      "VM is already running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStart:     true,
+		},
+		{
+			name: "Power on a not-Ready RerunOnFailure VM with pending StartRequest → nil (on→on idempotent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest}).
+				Build(),
+			startErr:  "unable to complete request: stop/start already underway",
+			wantStart: true,
+		},
+		{
+			name: "Power on a not-Ready Manual VM with starting VMI (StartRequest consumed) → nil (on→on idempotent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				Build(),
+			vmi: builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).
+				Phase(kubevirtv1.Scheduling).
+				Build(),
+			startErr:  "VM is already running",
+			wantStart: true,
+		},
+		{
+			name: "Power on a not-Ready RerunOnFailure VM with starting VMI (StartRequest consumed) → nil (on→on idempotent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				Build(),
+			vmi: builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).
+				Phase(kubevirtv1.Pending).
+				Build(),
+			startErr:  "VM is already running",
+			wantStart: true,
+		},
+		{
+			name: "Power on a RerunOnFailure VM with Failed VMI → ErrRetryable (not startable)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				Build(),
+			vmi: builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).
+				Phase(kubevirtv1.Failed).
+				Build(),
+			startErr:      "RerunOnFailure does not support starting VM from failed state",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStart:     true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+			objs := []runtime.Object{tc.vm}
 			if tc.vmi != nil {
-				err := fakeVirtClient.Tracker().Add(tc.vmi)
-				require.NoError(t, err, "Mock resource should add into fake client tracker")
+				objs = append(objs, tc.vmi)
+			}
+			fakeVirtClient := kubevirtfake.NewSimpleClientset(objs...)
+			if tc.startErr != "" {
+				injectSubresourceError(t, fakeVirtClient, "start", tc.startErr)
+			}
+			if tc.getErr {
+				injectGetError(t, fakeVirtClient, "virtualmachines")
 			}
 
 			vmrm := &VirtualMachineResourceManager{
@@ -556,60 +671,111 @@ func TestVirtualMachineResourceManager_PowerOn(t *testing.T) {
 			}
 
 			err := vmrm.PowerOn()
-			if tc.shouldError {
+			if tc.wantErr {
 				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-
-			var startOptions *kubevirtv1.StartOptions
-			if startAction, ok := findPutSubresourceAction(fakeVirtClient.Actions(), "start"); ok {
-				startOptions = requirePutActionOptions[kubevirtv1.StartOptions](t, startAction, "start")
-			}
-
-			if tc.expectStart {
-				require.NotNil(t, startOptions)
-				require.False(t, startOptions.Paused)
+				var retryable *ErrRetryable
+				require.Equal(t, tc.wantRetryable, errors.As(err, &retryable),
+					"retryable mismatch for err=%v", err)
 			} else {
-				require.Nil(t, startOptions)
+				require.NoError(t, err)
 			}
+
+			_, hasStart := findPutSubresourceAction(fakeVirtClient.Actions(), "start")
+			require.Equal(t, tc.wantStart, hasStart, "start subresource action expectation")
 		})
 	}
 }
 
 func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 	testCases := []struct {
-		name        string
-		vm          *kubevirtv1.VirtualMachine
-		shouldError bool
+		name          string
+		vm            *kubevirtv1.VirtualMachine
+		stopErr       string // if non-empty, inject error on "stop" subresource
+		getErr        bool   // if true, inject error on VM Get (verify step)
+		wantErr       bool
+		wantRetryable bool
+		wantStop      bool
 	}{
 		{
-			name:        "Power off a virtual machine that should be on should succeed",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(true).Build(),
-			shouldError: false,
+			name:     "Power off a Running VM: Stop succeeds → nil",
+			vm:       builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			wantStop: true,
 		},
 		{
-			name:        "Power off a virtual machine that should be off should have no effect",
-			vm:          builder.NewVirtualMachineBuilder(testNamespace, testVMName).Running(false).Build(),
-			shouldError: false,
+			name:     "Power off a not-Ready VM with Stop error → nil (idempotent success)",
+			vm:       builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(false).Build(),
+			stopErr:  "VM is not running",
+			wantStop: true,
 		},
 		{
-			name: "Power off a virtual machine whose RunStrategy is set to RerunOnFailure should succeed",
+			name:          "Power off a Ready VM with Stop error → ErrRetryable (transitional state)",
+			vm:            builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			stopErr:       "VM is not running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStop:      true,
+		},
+		{
+			name:     "Power off when Get verify also fails → wrapped error, not retryable",
+			vm:       builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			stopErr:  "VM is not running",
+			getErr:   true,
+			wantErr:  true,
+			wantStop: true,
+		},
+		{
+			name: "Power off a stopped Manual VM → nil (idempotent, no start intent)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).Build(),
-			shouldError: false,
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				Build(),
+			stopErr:  "VM is not running",
+			wantStop: true,
 		},
 		{
-			name: "Power off a virtual machine whose RunStrategy is set to Halted should have no effect",
+			name: "Power off a stopped Manual VM with pending StartRequest → ErrRetryable (start in progress)",
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				RunStrategy(kubevirtv1.RunStrategyHalted).Build(),
-			shouldError: false,
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest}).
+				Build(),
+			stopErr:       "VM is not running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStop:      true,
+		},
+		{
+			name: "Power off a stopped RerunOnFailure VM → nil (idempotent, no start intent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				Build(),
+			stopErr:  "VM is not running",
+			wantStop: true,
+		},
+		{
+			name: "Power off a stopped RerunOnFailure VM with pending StartRequest → ErrRetryable (start in progress)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest}).
+				Build(),
+			stopErr:       "VM is not running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStop:      true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
+			if tc.stopErr != "" {
+				injectSubresourceError(t, fakeVirtClient, "stop", tc.stopErr)
+			}
+			if tc.getErr {
+				injectGetError(t, fakeVirtClient, "virtualmachines")
+			}
 
 			vmrm := &VirtualMachineResourceManager{
 				ctx:        context.TODO(),
@@ -619,80 +785,231 @@ func TestVirtualMachineResourceManager_PowerOff(t *testing.T) {
 			}
 
 			err := vmrm.PowerOff()
-			if tc.shouldError {
+			if tc.wantErr {
 				require.Error(t, err)
-				return
+				var retryable *ErrRetryable
+				require.Equal(t, tc.wantRetryable, errors.As(err, &retryable),
+					"retryable mismatch for err=%v", err)
+			} else {
+				require.NoError(t, err)
 			}
-			require.NoError(t, err)
+
+			_, hasStop := findPutSubresourceAction(fakeVirtClient.Actions(), "stop")
+			require.Equal(t, tc.wantStop, hasStop, "stop subresource action expectation")
 		})
 	}
 }
 
 func TestVirtualMachineResourceManager_ForcePowerOff(t *testing.T) {
 	testCases := []struct {
-		name       string
-		vm         *kubevirtv1.VirtualMachine
-		vmi        *kubevirtv1.VirtualMachineInstance
-		expectStop bool
+		name          string
+		vm            *kubevirtv1.VirtualMachine
+		stopErr       string
+		wantErr       bool
+		wantRetryable bool
+		wantStop      bool
 	}{
 		{
-			name:       "Force power off a running virtual machine should trigger immediate VM stop",
-			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
-			vmi:        builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
-			expectStop: true,
+			name:     "Force power off a Ready VM: Stop succeeds → nil with gracePeriod=0",
+			vm:       builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			wantStop: true,
 		},
 		{
-			name:       "Force power off a halted virtual machine should be a no-op",
-			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
-			expectStop: false,
+			name:     "Force power off a not-Ready VM with Stop error → nil (idempotent success)",
+			vm:       builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(false).Build(),
+			stopErr:  "VM is not running",
+			wantStop: true,
+		},
+		{
+			name:          "Force power off a Ready VM with Stop error → ErrRetryable (transitional state)",
+			vm:            builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			stopErr:       "VM is not running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStop:      true,
+		},
+		{
+			name: "Force power off a stopped Manual VM → nil (idempotent, no start intent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				Build(),
+			stopErr:  "VM is not running",
+			wantStop: true,
+		},
+		{
+			name: "Force power off a stopped Manual VM with pending StartRequest → ErrRetryable (start in progress)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyManual).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest}).
+				Build(),
+			stopErr:       "VM is not running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStop:      true,
+		},
+		{
+			name: "Force power off a stopped RerunOnFailure VM → nil (idempotent, no start intent)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				Build(),
+			stopErr:  "VM is not running",
+			wantStop: true,
+		},
+		{
+			name: "Force power off a stopped RerunOnFailure VM with pending StartRequest → ErrRetryable (start in progress)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyRerunOnFailure).
+				WithStateChangeRequests(kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest}).
+				Build(),
+			stopErr:       "VM is not running",
+			wantErr:       true,
+			wantRetryable: true,
+			wantStop:      true,
 		},
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeVirtClient := kubevirtfake.NewSimpleClientset(tc.vm)
-			if tc.vmi != nil {
-				err := fakeVirtClient.Tracker().Add(tc.vmi)
-				require.NoError(t, err, "Mock resource should add into fake client tracker")
+			if tc.stopErr != "" {
+				injectSubresourceError(t, fakeVirtClient, "stop", tc.stopErr)
 			}
+
 			vmrm := &VirtualMachineResourceManager{
 				ctx:        context.TODO(),
 				virtClient: fakeVirtClient,
 				namespace:  testNamespace,
 				name:       testVMName,
 			}
+
 			err := vmrm.ForcePowerOff()
-			require.NoError(t, err)
-			stopAction, ok := findPutSubresourceAction(fakeVirtClient.Actions(), "stop")
-			if tc.expectStop {
-				require.True(t, ok)
+			if tc.wantErr {
+				require.Error(t, err)
+				var retryable *ErrRetryable
+				require.Equal(t, tc.wantRetryable, errors.As(err, &retryable),
+					"retryable mismatch for err=%v", err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			stopAction, hasStop := findPutSubresourceAction(fakeVirtClient.Actions(), "stop")
+			require.Equal(t, tc.wantStop, hasStop, "stop subresource action expectation")
+			if hasStop {
 				stopOptions := requirePutActionOptions[kubevirtv1.StopOptions](t, stopAction, "stop")
 				require.NotNil(t, stopOptions.GracePeriod)
-				require.Zero(t, *stopOptions.GracePeriod)
-			} else {
-				require.False(t, ok)
+				require.Zero(t, *stopOptions.GracePeriod, "ForcePowerOff should use gracePeriod=0")
 			}
 		})
 	}
 }
 
+// injectSubresourceError makes the fake client return errMsg for PUTs to the
+// given VM subresource (e.g. "start", "stop").
+func injectSubresourceError(t *testing.T, c *kubevirtfake.Clientset, subresource, errMsg string) {
+	t.Helper()
+	c.PrependReactor("put", "virtualmachines", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() == subresource {
+			return true, nil, errors.New(errMsg)
+		}
+		return false, nil, nil
+	})
+}
+
+// injectGetError prepends a reactor that fails VM Get calls, simulating a
+// verify-state failure after the primary operation has already errored.
+func injectGetError(t *testing.T, c *kubevirtfake.Clientset, resource string) {
+	t.Helper()
+	c.PrependReactor("get", resource, func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("verify get failed")
+	})
+}
+
 func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 	testCases := []struct {
-		name       string
-		vm         *kubevirtv1.VirtualMachine
-		vmi        *kubevirtv1.VirtualMachineInstance
-		shouldFail bool
+		name                string
+		vm                  *kubevirtv1.VirtualMachine
+		vmi                 *kubevirtv1.VirtualMachineInstance
+		restartErr          string
+		wantErr             bool
+		wantRetryable       bool
+		expectedSubresource string
 	}{
 		{
-			name:       "Power cycle a running virtual machine should trigger VM restart",
-			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
-			vmi:        builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
-			shouldFail: false,
+			name:                "Power cycle a running virtual machine should trigger VM restart",
+			vm:                  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			expectedSubresource: "restart",
 		},
 		{
-			name:       "Power cycle a halted virtual machine should trigger VM start",
-			vm:         builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
-			vmi:        nil,
-			shouldFail: false,
+			name: "Power cycle while VMI exists but Ready=false should still restart (startup race)",
+			// Soft→on→reset race: VMI is already present/starting while
+			// VM.Status.Ready is still false. Falling back to PowerOn is a
+			// silent no-op under RunStrategyAlways and swallows the reset.
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyAlways).
+				Build(),
+			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			expectedSubresource: "restart",
+		},
+		{
+			name:                "Power cycle a halted virtual machine should trigger VM start",
+			vm:                  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build(),
+			vmi:                 nil,
+			expectedSubresource: "start",
+		},
+		{
+			name: "Restart fails with Stop+Start queued → nil (idempotent restart underway)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).
+				WithStateChangeRequests(
+					kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StopRequest},
+					kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StartRequest},
+				).
+				Build(),
+			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			restartErr:          "unable to complete request: stop/start already underway",
+			expectedSubresource: "restart",
+		},
+		{
+			name: "Restart fails with only StopRequest → ErrRetryable (soft-off in progress)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).
+				WithStateChangeRequests(
+					kubevirtv1.VirtualMachineStateChangeRequest{Action: kubevirtv1.StopRequest},
+				).
+				Build(),
+			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			restartErr:          "unable to complete request: stop/start already underway",
+			wantErr:             true,
+			wantRetryable:       true,
+			expectedSubresource: "restart",
+		},
+		{
+			name: "Restart fails while non-final VMI present → ErrRetryable (transitional)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).
+				Build(),
+			vmi: builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).
+				Phase(kubevirtv1.Running).
+				Build(),
+			restartErr:          "conflict",
+			wantErr:             true,
+			wantRetryable:       true,
+			expectedSubresource: "restart",
+		},
+		{
+			name: "Restart fails after VMI gone → fall back to PowerOn",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(true).
+				Build(),
+			vmi:                 nil,
+			restartErr:          "VM is not running",
+			expectedSubresource: "start",
 		},
 	}
 
@@ -702,6 +1019,9 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 			if tc.vmi != nil {
 				err := fakeVirtClient.Tracker().Add(tc.vmi)
 				require.NoError(t, err, "Mock resource should add into fake client tracker")
+			}
+			if tc.restartErr != "" {
+				injectSubresourceError(t, fakeVirtClient, "restart", tc.restartErr)
 			}
 
 			vmrm := &VirtualMachineResourceManager{
@@ -712,17 +1032,14 @@ func TestVirtualMachineResourceManager_PowerCycle(t *testing.T) {
 			}
 
 			err := vmrm.PowerCycle()
-			if tc.shouldFail {
+			if tc.wantErr {
 				require.Error(t, err)
-				return
+				var retryable *ErrRetryable
+				require.Equal(t, tc.wantRetryable, errors.As(err, &retryable))
+			} else {
+				require.NoError(t, err)
 			}
-			require.NoError(t, err)
-
-			expectedSubresource := "start"
-			if tc.vmi != nil {
-				expectedSubresource = "restart"
-			}
-			requirePutSubresourceAction(t, fakeVirtClient.Actions(), expectedSubresource)
+			requirePutSubresourceAction(t, fakeVirtClient.Actions(), tc.expectedSubresource)
 		})
 	}
 }
@@ -737,6 +1054,15 @@ func TestVirtualMachineResourceManager_ForcePowerCycle(t *testing.T) {
 		{
 			name:                "Force power cycle a running virtual machine should trigger immediate VM restart",
 			vm:                  builder.NewVirtualMachineBuilder(testNamespace, testVMName).Ready(true).Build(),
+			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
+			expectedSubresource: "restart",
+		},
+		{
+			name: "Force power cycle while VMI exists but Ready=false should still restart (startup race)",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				Ready(false).
+				RunStrategy(kubevirtv1.RunStrategyAlways).
+				Build(),
 			vmi:                 builder.NewVirtualMachineInstanceBuilder(testNamespace, testVMName).Build(),
 			expectedSubresource: "restart",
 		},
