@@ -39,6 +39,10 @@ type VirtualMachineBMCSpec struct {
 	// IPMI configures the IPMI simulator.
 	// +optional
 	IPMI *IPMISpec `json:"ipmi,omitempty"`
+
+	// NetworkRef configures additional multus NAD to the virtualMachineBMC pod.
+	// +optional
+	NetworkRef string `json:"networkRef,omitempty"`
 }
 
 // IPMISpec defines the IPMI-specific configuration.

@@ -76,6 +76,10 @@ spec:
                     description: Enabled toggles the IPMI simulator.
                     type: boolean
                 type: object
+              networkRef:
+                description: NetworkRef configures additional multus NAD to the virtualMachineBMC
+                  pod.
+                type: string
               virtualMachineRef:
                 description: Reference to the VM to manage.
                 properties:
