@@ -110,7 +110,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				wrongReq.Password = "wrongpass"
 				_, stderr, err := runIPMIInCluster(ctx, config, ns, wrongReq)
 				Expect(err).To(HaveOccurred(), "IPMI command with wrong password should be rejected")
-				Expect(stderr).To(ContainSubstring("Unable to establish IPMI v1.5 / RMCP session"))
+				Expect(stderr).To(ContainSubstring("Unable to establish IPMI v2 / RMCP+ session"))
 			})
 
 			It("should reject commands with wrong username", func() {
@@ -118,10 +118,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				wrongReq.Username = "baduser"
 				_, stderr, err := runIPMIInCluster(ctx, config, ns, wrongReq)
 				Expect(err).To(HaveOccurred(), "IPMI command with wrong username should be rejected")
-				Expect(stderr).To(And(
-					ContainSubstring("Get Session Challenge command failed"),
-					ContainSubstring("Unable to establish IPMI v1.5 / RMCP session"),
-				))
+				Expect(stderr).To(ContainSubstring("Unable to establish IPMI v2 / RMCP+ session"))
 			})
 
 		})

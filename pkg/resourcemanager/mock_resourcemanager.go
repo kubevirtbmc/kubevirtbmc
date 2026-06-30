@@ -210,3 +210,18 @@ func (mr *MockResourceManagerMockRecorder) SetBootDevice(arg0 any) *gomock.Call 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBootDevice", reflect.TypeOf((*MockResourceManager)(nil).SetBootDevice), arg0)
 }
+
+// GetSystemUUID mocks base method.
+func (m *MockResourceManager) GetSystemUUID() (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSystemUUID")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSystemUUID indicates an expected call of GetSystemUUID.
+func (mr *MockResourceManagerMockRecorder) GetSystemUUID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSystemUUID", reflect.TypeOf((*MockResourceManager)(nil).GetSystemUUID))
+}

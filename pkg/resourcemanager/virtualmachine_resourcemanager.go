@@ -45,8 +45,9 @@ type VirtualMachineResourceManager struct {
 	virtClient kvclient.Interface
 	cdiClient  cdiclient.Interface
 
-	namespace string
-	name      string
+	namespace  string
+	name       string
+	systemUUID string
 
 	computerSystem ComputerSystemInterface
 	manager        ManagerInterface
@@ -73,6 +74,7 @@ func (m *VirtualMachineResourceManager) Initialize(namespace, name string) error
 
 	m.namespace = vm.Namespace
 	m.name = vm.Name
+	m.systemUUID = string(vm.UID)
 
 	// Initialize computer system
 	m.computerSystem = NewComputerSystem(
@@ -130,6 +132,13 @@ func (m *VirtualMachineResourceManager) GetManager() (ManagerInterface, error) {
 
 func (m *VirtualMachineResourceManager) GetVirtualMedia() (VirtualMediaInterface, error) {
 	return m.virtualMedia, nil
+}
+
+func (m *VirtualMachineResourceManager) GetSystemUUID() (string, error) {
+	if m.systemUUID == "" {
+		return "", fmt.Errorf("system UUID not initialized")
+	}
+	return m.systemUUID, nil
 }
 
 func (m *VirtualMachineResourceManager) EjectMedia() error {

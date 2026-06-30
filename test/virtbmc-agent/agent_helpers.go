@@ -392,7 +392,7 @@ func runIPMIInCluster(ctx context.Context, cfg *rest.Config, namespace string, r
 		return "", "", err
 	}
 
-	baseArgs := []string{"ipmitool", "-I", "lan", "-U", r.Username, "-P", r.Password, "-H", r.ServiceHost}
+	baseArgs := []string{"ipmitool", "-I", "lanplus", "-U", r.Username, "-P", r.Password, "-H", r.ServiceHost}
 	cmd := append(baseArgs, r.Args...)
 
 	return execInPod(ctx, cfg, clientset, execOptions{

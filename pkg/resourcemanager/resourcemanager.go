@@ -22,4 +22,5 @@ type ResourceManager interface {
 	PowerCycle() error
 	ForcePowerCycle() error
 	SetBootDevice(BootDevice) error
+	GetSystemUUID() (string, error)
 }
