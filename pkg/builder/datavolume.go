@@ -22,6 +22,14 @@ func NewDataVolumeBuilder(namespace, name string) *DataVolumeBuilder {
 	}
 }
 
+func (b *DataVolumeBuilder) WithAnnotation(key, value string) *DataVolumeBuilder {
+	if b.dv.Annotations == nil {
+		b.dv.Annotations = map[string]string{}
+	}
+	b.dv.Annotations[key] = value
+	return b
+}
+
 func (b *DataVolumeBuilder) Build() *cdiv1.DataVolume {
 	return b.dv
 }

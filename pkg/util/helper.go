@@ -13,6 +13,10 @@ import (
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
+// AnnStorageBindImmediateRequested is the DataVolume annotation that requests
+// immediate binding of the underlying PVC, bypassing WaitForFirstConsumer.
+const AnnStorageBindImmediateRequested = "cdi.kubevirt.io/storage.bind.immediate.requested"
+
 func Ptr[T any](value T) *T {
 	return &value
 }
@@ -54,6 +58,9 @@ func ConstructDataVolume(namespace, name, url string, size int64) *cdiv1.DataVol
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
+			Annotations: map[string]string{
+				AnnStorageBindImmediateRequested: "",
+			},
 		},
 		Spec: cdiv1.DataVolumeSpec{
 			Source: &cdiv1.DataVolumeSource{
