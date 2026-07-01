@@ -17,8 +17,10 @@ export REPO ?= kubevirtbmc
 MGR_IMG ?= $(REPO)/virtbmc-controller:$(TAG)
 AGT_IMG ?= $(REPO)/virtbmc:$(TAG)
 
-K8S_VERSION = 1.34.0
-KIND_K8S_VERSION = v$(shell echo $(K8S_VERSION))
+K8S_VERSION = 1.34.9
+# TODO: The inconsistency between k8s version and kind node image version is a temporary hack.
+KIND_K8S_VERSION = v1.34.8
+# KIND_K8S_VERSION = v$(shell echo $(K8S_VERSION))
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.34.x
 export CERT_MANAGER_VERSION = v1.14.2
@@ -37,7 +39,7 @@ endif
 CONTAINER_TOOL ?= docker
 
 # KUBEVIRT API version to use
-KUBEVIRT_API_VERSION = v1.2.0
+KUBEVIRT_API_VERSION = v1.8.4
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -76,11 +78,12 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 
 .PHONY: generate-kubevirt-crd
 generate-kubevirt-crd: controller-gen ## Clone KubeVirt API and generate CustomResourceDefinition objects for integration testing purposes.
+	set -euo pipefail; \
 	TMP_DIR=$$(mktemp -d -p /tmp/); \
+	trap 'rm -rf "$$TMP_DIR"' EXIT; \
 	KUBEVIRT_API_DIR=$$TMP_DIR/kubevirt-api; \
 	git clone --depth 1 --branch $(KUBEVIRT_API_VERSION) https://github.com/kubevirt/api $$KUBEVIRT_API_DIR; \
 	$(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="$$KUBEVIRT_API_DIR/core/v1/..." output:crd:artifacts:config=config/kubevirt-crd; \
-	rm -rvf $$TMP_DIR; \
 	rm -vf config/kubevirt-crd/kubevirt.io_datavolumetemplatespecs.yaml
 
 .PHONY: generate-mock
@@ -240,7 +243,7 @@ MOCKGEN ?= $(LOCALBIN)/mockgen
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.2.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
-KIND_VERSION ?= v0.29.0
+KIND_VERSION ?= v0.32.0
 MOCKGEN_VERSION ?= v0.6.0
 
 .PHONY: kustomize
@@ -264,9 +267,12 @@ $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: kind
-kind: $(KIND) ## Download kind locally if necessary.
-$(KIND): $(LOCALBIN)
-	test -s $(LOCALBIN)/kind || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/kind@$(KIND_VERSION)
+kind: $(LOCALBIN) ## Download kind locally if necessary. If wrong version is installed, it will be removed before downloading.
+	@if test -x "$(KIND)" && ! "$(KIND)" version | grep -q "$(KIND_VERSION)"; then \
+		echo "$(KIND) version is not expected $(KIND_VERSION). Removing it before installing."; \
+		rm -f "$(KIND)"; \
+	fi
+	test -s "$(KIND)" || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/kind@$(KIND_VERSION)
 
 .PHONY: mockgen
 mockgen: $(MOCKGEN) ## Download mockgen locally if necessary.

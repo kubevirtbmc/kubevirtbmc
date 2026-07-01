@@ -144,6 +144,7 @@ spec:
                       - source
                       type: object
                   type: object
+                maxItems: 256
                 type: array
                 x-kubernetes-list-type: atomic
               affinity:
@@ -200,11 +201,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 matchFields:
                                   description: A list of node selector requirements
                                     by node's fields.
@@ -232,11 +235,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                               type: object
                               x-kubernetes-map-type: atomic
                             weight:
@@ -249,6 +254,7 @@ spec:
                           - weight
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       requiredDuringSchedulingIgnoredDuringExecution:
                         description: |-
                           If the affinity requirements specified by this field are not met at
@@ -293,11 +299,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 matchFields:
                                   description: A list of node selector requirements
                                     by node's fields.
@@ -325,14 +333,17 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                               type: object
                               x-kubernetes-map-type: atomic
                             type: array
+                            x-kubernetes-list-type: atomic
                         required:
                         - nodeSelectorTerms
                         type: object
@@ -362,8 +373,9 @@ spec:
                                 with the corresponding weight.
                               properties:
                                 labelSelector:
-                                  description: A label query over a set of resources,
-                                    in this case pods.
+                                  description: |-
+                                    A label query over a set of resources, in this case pods.
+                                    If it's null, this PodAffinityTerm matches with no Pods.
                                   properties:
                                     matchExpressions:
                                       description: matchExpressions is a list of label
@@ -392,11 +404,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -407,6 +421,34 @@ spec:
                                       type: object
                                   type: object
                                   x-kubernetes-map-type: atomic
+                                matchLabelKeys:
+                                  description: |-
+                                    MatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                    Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                mismatchLabelKeys:
+                                  description: |-
+                                    MismatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                    Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
                                 namespaceSelector:
                                   description: |-
                                     A label query over the set of namespaces that the term applies to.
@@ -442,11 +484,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -466,6 +510,7 @@ spec:
                                   items:
                                     type: string
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 topologyKey:
                                   description: |-
                                     This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -488,6 +533,7 @@ spec:
                           - weight
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       requiredDuringSchedulingIgnoredDuringExecution:
                         description: |-
                           If the affinity requirements specified by this field are not met at
@@ -507,8 +553,9 @@ spec:
                             a pod of the set of pods is running
                           properties:
                             labelSelector:
-                              description: A label query over a set of resources,
-                                in this case pods.
+                              description: |-
+                                A label query over a set of resources, in this case pods.
+                                If it's null, this PodAffinityTerm matches with no Pods.
                               properties:
                                 matchExpressions:
                                   description: matchExpressions is a list of label
@@ -536,11 +583,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 matchLabels:
                                   additionalProperties:
                                     type: string
@@ -551,6 +600,34 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-map-type: atomic
+                            matchLabelKeys:
+                              description: |-
+                                MatchLabelKeys is a set of pod label keys to select which pods will
+                                be taken into consideration. The keys are used to lookup values from the
+                                incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                to select the group of existing pods which pods will be taken into consideration
+                                for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                pod labels will be ignored. The default value is empty.
+                                The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            mismatchLabelKeys:
+                              description: |-
+                                MismatchLabelKeys is a set of pod label keys to select which pods will
+                                be taken into consideration. The keys are used to lookup values from the
+                                incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                to select the group of existing pods which pods will be taken into consideration
+                                for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                pod labels will be ignored. The default value is empty.
+                                The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
                             namespaceSelector:
                               description: |-
                                 A label query over the set of namespaces that the term applies to.
@@ -585,11 +662,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 matchLabels:
                                   additionalProperties:
                                     type: string
@@ -609,6 +688,7 @@ spec:
                               items:
                                 type: string
                               type: array
+                              x-kubernetes-list-type: atomic
                             topologyKey:
                               description: |-
                                 This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -621,6 +701,7 @@ spec:
                           - topologyKey
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                     type: object
                   podAntiAffinity:
                     description: Describes pod anti-affinity scheduling rules (e.g.
@@ -635,8 +716,8 @@ spec:
                           most preferred is the one with the greatest sum of weights, i.e.
                           for each node that meets all of the scheduling requirements (resource
                           request, requiredDuringScheduling anti-affinity expressions, etc.),
-                          compute a sum by iterating through the elements of this field and adding
-                          "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+                          compute a sum by iterating through the elements of this field and subtracting
+                          "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
                           node(s) with the highest sum are the most preferred.
                         items:
                           description: The weights of all of the matched WeightedPodAffinityTerm
@@ -647,8 +728,9 @@ spec:
                                 with the corresponding weight.
                               properties:
                                 labelSelector:
-                                  description: A label query over a set of resources,
-                                    in this case pods.
+                                  description: |-
+                                    A label query over a set of resources, in this case pods.
+                                    If it's null, this PodAffinityTerm matches with no Pods.
                                   properties:
                                     matchExpressions:
                                       description: matchExpressions is a list of label
@@ -677,11 +759,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -692,6 +776,34 @@ spec:
                                       type: object
                                   type: object
                                   x-kubernetes-map-type: atomic
+                                matchLabelKeys:
+                                  description: |-
+                                    MatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                    Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
+                                mismatchLabelKeys:
+                                  description: |-
+                                    MismatchLabelKeys is a set of pod label keys to select which pods will
+                                    be taken into consideration. The keys are used to lookup values from the
+                                    incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                    to select the group of existing pods which pods will be taken into consideration
+                                    for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                    pod labels will be ignored. The default value is empty.
+                                    The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                    Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                                  items:
+                                    type: string
+                                  type: array
+                                  x-kubernetes-list-type: atomic
                                 namespaceSelector:
                                   description: |-
                                     A label query over the set of namespaces that the term applies to.
@@ -727,11 +839,13 @@ spec:
                                             items:
                                               type: string
                                             type: array
+                                            x-kubernetes-list-type: atomic
                                         required:
                                         - key
                                         - operator
                                         type: object
                                       type: array
+                                      x-kubernetes-list-type: atomic
                                     matchLabels:
                                       additionalProperties:
                                         type: string
@@ -751,6 +865,7 @@ spec:
                                   items:
                                     type: string
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 topologyKey:
                                   description: |-
                                     This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -773,6 +888,7 @@ spec:
                           - weight
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       requiredDuringSchedulingIgnoredDuringExecution:
                         description: |-
                           If the anti-affinity requirements specified by this field are not met at
@@ -792,8 +908,9 @@ spec:
                             a pod of the set of pods is running
                           properties:
                             labelSelector:
-                              description: A label query over a set of resources,
-                                in this case pods.
+                              description: |-
+                                A label query over a set of resources, in this case pods.
+                                If it's null, this PodAffinityTerm matches with no Pods.
                               properties:
                                 matchExpressions:
                                   description: matchExpressions is a list of label
@@ -821,11 +938,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 matchLabels:
                                   additionalProperties:
                                     type: string
@@ -836,6 +955,34 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-map-type: atomic
+                            matchLabelKeys:
+                              description: |-
+                                MatchLabelKeys is a set of pod label keys to select which pods will
+                                be taken into consideration. The keys are used to lookup values from the
+                                incoming pod labels, those key-value labels are merged with `labelSelector` as `key in (value)`
+                                to select the group of existing pods which pods will be taken into consideration
+                                for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                pod labels will be ignored. The default value is empty.
+                                The same key is forbidden to exist in both matchLabelKeys and labelSelector.
+                                Also, matchLabelKeys cannot be set when labelSelector isn't set.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            mismatchLabelKeys:
+                              description: |-
+                                MismatchLabelKeys is a set of pod label keys to select which pods will
+                                be taken into consideration. The keys are used to lookup values from the
+                                incoming pod labels, those key-value labels are merged with `labelSelector` as `key notin (value)`
+                                to select the group of existing pods which pods will be taken into consideration
+                                for the incoming pod's pod (anti) affinity. Keys that don't exist in the incoming
+                                pod labels will be ignored. The default value is empty.
+                                The same key is forbidden to exist in both mismatchLabelKeys and labelSelector.
+                                Also, mismatchLabelKeys cannot be set when labelSelector isn't set.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
                             namespaceSelector:
                               description: |-
                                 A label query over the set of namespaces that the term applies to.
@@ -870,11 +1017,13 @@ spec:
                                         items:
                                           type: string
                                         type: array
+                                        x-kubernetes-list-type: atomic
                                     required:
                                     - key
                                     - operator
                                     type: object
                                   type: array
+                                  x-kubernetes-list-type: atomic
                                 matchLabels:
                                   additionalProperties:
                                     type: string
@@ -894,6 +1043,7 @@ spec:
                               items:
                                 type: string
                               type: array
+                              x-kubernetes-list-type: atomic
                             topologyKey:
                               description: |-
                                 This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching
@@ -906,6 +1056,7 @@ spec:
                           - topologyKey
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                     type: object
                 type: object
               architecture:
@@ -926,6 +1077,7 @@ spec:
                     items:
                       type: string
                     type: array
+                    x-kubernetes-list-type: atomic
                   options:
                     description: |-
                       A list of DNS resolver options.
@@ -937,12 +1089,16 @@ spec:
                         of a pod.
                       properties:
                         name:
-                          description: Required.
+                          description: |-
+                            Name is this DNS resolver option's name.
+                            Required.
                           type: string
                         value:
+                          description: Value is this DNS resolver option's value.
                           type: string
                       type: object
                     type: array
+                    x-kubernetes-list-type: atomic
                   searches:
                     description: |-
                       A list of DNS search domains for host-name lookup.
@@ -951,6 +1107,7 @@ spec:
                     items:
                       type: string
                     type: array
+                    x-kubernetes-list-type: atomic
                 type: object
               dnsPolicy:
                 description: |-
@@ -1226,13 +1383,12 @@ spec:
                                   description: CustomBlockSize represents the desired
                                     logical and physical block size for a VM disk.
                                   properties:
+                                    discardGranularity:
+                                      type: integer
                                     logical:
                                       type: integer
                                     physical:
                                       type: integer
-                                  required:
-                                  - logical
-                                  - physical
                                   type: object
                                 matchVolume:
                                   description: Represents if a feature is enabled
@@ -1255,7 +1411,11 @@ spec:
                             cache:
                               description: |-
                                 Cache specifies which kvm disk cache mode should be used.
-                                Supported values are: CacheNone, CacheWriteThrough.
+                                Supported values are:
+                                none: Guest I/O not cached on the host, but may be kept in a disk cache.
+                                writethrough: Guest I/O cached on the host but written through to the physical medium. Slowest but with most guarantees.
+                                writeback: Guest I/O cached on the host.
+                                Defaults to none if the storage supports O_DIRECT, otherwise writethrough.
                               type: string
                             cdrom:
                               description: Attach a volume as a cdrom to the vmi.
@@ -1277,6 +1437,11 @@ spec:
                                     Defaults to closed.
                                   type: string
                               type: object
+                            changedBlockTracking:
+                              description: |-
+                                ChangedBlockTracking indicates this disk should have CBT option
+                                Defaults to false.
+                              type: boolean
                             dedicatedIOThread:
                               description: |-
                                 dedicatedIOThread indicates this disk should have an exclusive IO Thread.
@@ -1348,6 +1513,7 @@ spec:
                           required:
                           - name
                           type: object
+                        maxItems: 256
                         type: array
                       downwardMetrics:
                         description: DownwardMetrics creates a virtio serials for
@@ -1374,11 +1540,23 @@ spec:
                         description: Whether to attach a GPU device to the vmi.
                         items:
                           properties:
+                            claimName:
+                              description: |-
+                                ClaimName needs to be provided from the list vmi.spec.resourceClaims[].name where this
+                                device is allocated
+                              type: string
                             deviceName:
+                              description: DeviceName is the name of the device provisioned
+                                by device-plugins
                               type: string
                             name:
                               description: Name of the GPU device as exposed by a
                                 device plugin
+                              type: string
+                            requestName:
+                              description: |-
+                                RequestName needs to be provided from resourceClaim.spec.devices.requests[].name where this
+                                device is requested
                               type: string
                             tag:
                               description: If specified, the virtual network interface
@@ -1408,7 +1586,6 @@ spec:
                                   type: object
                               type: object
                           required:
-                          - deviceName
                           - name
                           type: object
                         type: array
@@ -1417,11 +1594,21 @@ spec:
                         description: Whether to attach a host device to the vmi.
                         items:
                           properties:
+                            claimName:
+                              description: |-
+                                ClaimName needs to be provided from the list vmi.spec.resourceClaims[].name where this
+                                device is allocated
+                              type: string
                             deviceName:
-                              description: DeviceName is the resource name of the
-                                host device exposed by a device plugin
+                              description: DeviceName is the name of the device provisioned
+                                by device-plugins
                               type: string
                             name:
+                              type: string
+                            requestName:
+                              description: |-
+                                RequestName needs to be provided from resourceClaim.spec.devices.requests[].name where this
+                                device is requested
                               type: string
                             tag:
                               description: If specified, the virtual network interface
@@ -1429,7 +1616,6 @@ spec:
                                 via config drive
                               type: string
                           required:
-                          - deviceName
                           - name
                           type: object
                         type: array
@@ -1538,8 +1724,10 @@ spec:
                                 or DE-AD-00-00-BE-AF.'
                               type: string
                             macvtap:
-                              description: Deprecated, please refer to Kubevirt user
-                                guide for alternatives.
+                              description: |-
+                                DeprecatedMacvtap is an alias to the deprecated Macvtap interface,
+                                please refer to Kubevirt user guide for alternatives.
+                                Deprecated: Removed in v1.3
                               type: object
                             masquerade:
                               description: InterfaceMasquerade connects to a given
@@ -1548,7 +1736,7 @@ spec:
                             model:
                               description: |-
                                 Interface model.
-                                One of: e1000, e1000e, ne2k_pci, pcnet, rtl8139, virtio.
+                                One of: e1000, e1000e, igb, ne2k_pci, pcnet, rtl8139, virtio.
                                 Defaults to virtio.
                               type: string
                             name:
@@ -1557,8 +1745,14 @@ spec:
                                 Must match the Name of a Network.
                               type: string
                             passt:
-                              description: Deprecated, please refer to Kubevirt user
-                                guide for alternatives.
+                              description: |-
+                                DeprecatedPasst is an alias to the deprecated Passt interface,
+                                please refer to Kubevirt user guide for alternatives.
+                                Deprecated: Removed in v1.3
+                              type: object
+                            passtBinding:
+                              description: InterfacePasstBinding connects to a given
+                                network using passt usermode networking.
                               type: object
                             pciAddress:
                               description: 'If specified, the virtual network interface
@@ -1596,8 +1790,9 @@ spec:
                                 type: object
                               type: array
                             slirp:
-                              description: InterfaceSlirp connects to a given network
-                                using QEMU user networking mode.
+                              description: |-
+                                DeprecatedSlirp is an alias to the deprecated Slirp interface
+                                Deprecated: Removed in v1.3
                               type: object
                             sriov:
                               description: InterfaceSRIOV connects to a given network
@@ -1606,7 +1801,11 @@ spec:
                             state:
                               description: |-
                                 State represents the requested operational state of the interface.
-                                The (only) value supported is `absent`, expressing a request to remove the interface.
+                                The supported values are:
+                                `absent`, expressing a request to remove the interface.
+                                `down`, expressing a request to set the link down.
+                                `up`, expressing a request to set the link up.
+                                Empty value functions as `up`.
                               type: string
                             tag:
                               description: If specified, the virtual network interface
@@ -1616,6 +1815,7 @@ spec:
                           required:
                           - name
                           type: object
+                        maxItems: 256
                         type: array
                       logSerialConsole:
                         description: |-
@@ -1631,6 +1831,19 @@ spec:
                           depends on additional factors of the VirtualMachineInstance,
                           like the number of guest CPUs.
                         type: boolean
+                      panicDevices:
+                        description: PanicDevices provides additional crash information
+                          when a guest crashes.
+                        items:
+                          properties:
+                            model:
+                              description: |-
+                                Model specifies what type of panic device is provided.
+                                The panic model used when this attribute is missing depends on the hypervisor and guest arch.
+                                One of: isa, hyperv, pvpanic.
+                              type: string
+                          type: object
+                        type: array
                       rng:
                         description: Whether to have random number generator from
                           host
@@ -1653,6 +1866,11 @@ spec:
                       tpm:
                         description: Whether to emulate a TPM device.
                         properties:
+                          enabled:
+                            description: |-
+                              Enabled allows a user to explicitly disable the vTPM even when one is enabled by a preference referenced by the VirtualMachine
+                              Defaults to True
+                            type: boolean
                           persistent:
                             description: |-
                               Persistent indicates the state of the TPM device should be kept accross reboots
@@ -1665,10 +1883,30 @@ spec:
                           This is helpful for old machines like CentOS6 or RHEL6 which
                           do not understand virtio_non_transitional (virtio 1.0).
                         type: boolean
+                      video:
+                        description: Video describes the video device configuration
+                          for the vmi.
+                        properties:
+                          type:
+                            description: |-
+                              Type specifies the video device type (e.g., virtio, vga, bochs, ramfb).
+                              If not specified, the default is architecture-dependent (VGA for BIOS-based VMs, Bochs for EFI-based VMs on AMD64; virtio for Arm and s390x).
+                            type: string
+                        type: object
                       watchdog:
                         description: Watchdog describes a watchdog device which can
                           be added to the vmi.
                         properties:
+                          diag288:
+                            description: diag288 watchdog device (specific to s390x
+                              architecture).
+                            properties:
+                              action:
+                                description: |-
+                                  The action to take. Valid values are poweroff, reset, shutdown.
+                                  Defaults to reset.
+                                type: string
+                            type: object
                           i6300esb:
                             description: i6300esb watchdog device.
                             properties:
@@ -1837,6 +2075,9 @@ spec:
                                     type: boolean
                                 type: object
                               enabled:
+                                description: |-
+                                  Enabled determines if the feature should be enabled or disabled on the guest.
+                                  Defaults to true.
                                 type: boolean
                             type: object
                           tlbflush:
@@ -1844,11 +2085,33 @@ spec:
                               TLBFlush improves performances in overcommited environments. Requires vpindex.
                               Defaults to the machine type setting.
                             properties:
+                              direct:
+                                description: |-
+                                  Direct allows sending the TLB flush command directly to the hypervisor.
+                                  It can be useful to optimize performance in nested virtualization cases, such as Windows VBS.
+                                properties:
+                                  enabled:
+                                    description: |-
+                                      Enabled determines if the feature should be enabled or disabled on the guest.
+                                      Defaults to true.
+                                    type: boolean
+                                type: object
                               enabled:
                                 description: |-
                                   Enabled determines if the feature should be enabled or disabled on the guest.
                                   Defaults to true.
                                 type: boolean
+                              extended:
+                                description: Extended allows the guest to execute
+                                  partial TLB flushes. It can be helpful for general
+                                  purpose workloads.
+                                properties:
+                                  enabled:
+                                    description: |-
+                                      Enabled determines if the feature should be enabled or disabled on the guest.
+                                      Defaults to true.
+                                    type: boolean
+                                type: object
                             type: object
                           vapic:
                             description: |-
@@ -1889,6 +2152,16 @@ spec:
                                 type: boolean
                             type: object
                         type: object
+                      hypervPassthrough:
+                        description: |-
+                          This enables all supported hyperv flags automatically.
+                          Bear in mind that if this enabled hyperV features cannot
+                          be enabled explicitly. In addition, a Virtual Machine
+                          using it will be non-migratable.
+                        properties:
+                          enabled:
+                            type: boolean
+                        type: object
                       kvm:
                         description: Configure how KVM presence is exposed to the
                           guest.
@@ -1928,6 +2201,11 @@ spec:
                       acpi:
                         description: Information that can be set in the ACPI table
                         properties:
+                          msdmNameRef:
+                            description: |-
+                              Similar to SlicNameRef, another ACPI entry that is used in more recent Windows versions.
+                              The above points to the spec of MSDM too.
+                            type: string
                           slicNameRef:
                             description: |-
                               SlicNameRef should match the volume name of a secret object. The data in the secret should
@@ -2011,11 +2289,20 @@ spec:
                           Defaults to a random generated uid.
                         type: string
                     type: object
+                  ioThreads:
+                    description: IOThreads specifies the IOThreads options.
+                    properties:
+                      supplementalPoolThreadCount:
+                        description: SupplementalPoolThreadCount specifies how many
+                          iothreads are allocated for the supplementalPool policy.
+                        format: int32
+                        type: integer
+                    type: object
                   ioThreadsPolicy:
                     description: |-
                       Controls whether or not disks will share IOThreads.
                       Omitting IOThreadsPolicy disables use of IOThreads.
-                      One of: shared, auto
+                      One of: shared, auto, supplementalPool
                     type: string
                   launchSecurity:
                     description: Launch Security setting of the vmi.
@@ -2045,6 +2332,12 @@ spec:
                           session:
                             description: Base64 encoded session blob.
                             type: string
+                        type: object
+                      snp:
+                        description: AMD SEV-SNP flags defined by the SEV-SNP specifications.
+                        type: object
+                      tdx:
+                        description: Intel Trust Domain Extensions (TDX).
                         type: object
                     type: object
                   machine:
@@ -2086,7 +2379,46 @@ spec:
                           The delta between MaxGuest and Guest is the amount of memory that can be hot(un)plugged.
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
+                      reservedOverhead:
+                        description: |-
+                          ReservedOverhead configures the memory overhead applied to a VM
+                          and its characteristics.
+                        properties:
+                          addedOverhead:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            description: |-
+                              AddedOverhead determines the memory overhead that will be reserved
+                              for the VM. It increases the virt-launcher pod memory limit.
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          memLock:
+                            description: |-
+                              RequiresLock determines whether the VM's and its overhead memory
+                              need to be locked or not. It is a common practice to enable this
+                              if vDPA, VFIO or any other specialized hardware that depends on
+                              DMA is being used by the VM.
+                              False - (Default) memory lock RLimits are not modified.
+                              True - Memory lock RLimits will be updated to consider VM memory
+                                     size and memory overhead
+                            enum:
+                            - NotRequired
+                            - Required
+                            type: string
+                        type: object
                     type: object
+                  rebootPolicy:
+                    description: |-
+                      RebootPolicy specifies how the guest should behave on reboot.
+                      Reboot (default): The guest is allowed to reboot silently.
+                      Terminate: The VMI will be terminated on guest reboot, allowing
+                      higher level controllers (such as the VM controller) to recreate
+                      the VMI with any updated configuration such as boot order changes.
+                    enum:
+                    - Reboot
+                    - Terminate
+                    type: string
                   resources:
                     description: Resources describes the Compute Resources required
                       by this vmi.
@@ -2130,7 +2462,7 @@ spec:
                   - "None": No action will be taken, according to the specified 'RunStrategy' the VirtualMachine will be restarted or shutdown.
                   - "LiveMigrate": the VirtualMachineInstance will be migrated instead of being shutdown.
                   - "LiveMigrateIfPossible": the same as "LiveMigrate" but only if the VirtualMachine is Live-Migratable, otherwise it will behave as "None".
-                  - "External": the VirtualMachineInstance will be protected by a PDB and `vmi.Status.EvacuationNodeName` will be set on eviction. This is mainly useful for cluster-api-provider-kubevirt (capk) which needs a way for VMI's to be blocked from eviction, yet signal capk that eviction has been called on the VMI so the capk controller can handle tearing the VMI down. Details can be found in the commit description https://github.com/kubevirt/kubevirt/commit/c1d77face705c8b126696bac9a3ee3825f27f1fa.
+                  - "External": the VirtualMachineInstance will be protected and `vmi.Status.EvacuationNodeName` will be set on eviction. This is mainly useful for cluster-api-provider-kubevirt (capk) which needs a way for VMI's to be blocked from eviction, yet signal capk that eviction has been called on the VMI so the capk controller can handle tearing the VMI down. Details can be found in the commit description https://github.com/kubevirt/kubevirt/commit/c1d77face705c8b126696bac9a3ee3825f27f1fa.
                 type: string
               hostname:
                 description: |-
@@ -2160,6 +2492,7 @@ spec:
                         items:
                           type: string
                         type: array
+                        x-kubernetes-list-type: atomic
                     type: object
                   failureThreshold:
                     description: |-
@@ -2168,8 +2501,14 @@ spec:
                     format: int32
                     type: integer
                   guestAgentPing:
-                    description: GuestAgentPing contacts the qemu-guest-agent for
-                      availability checks.
+                    description: |-
+                      GuestAgentPing contacts the qemu-guest-agent for availability checks.
+                      Probe failures are automatically suppressed when the guest agent is
+                      unreachable for a non-fault reason: during live migration (guest paused
+                      on one pod while memory is transferred) and whenever the VM is paused
+                      for an intentional or transient reason such as a user pause, snapshot,
+                      save, or dump. Failures are not suppressed when the VM is paused due to
+                      a fault (IO error, crash, or postcopy failure).
                     type: object
                   httpGet:
                     description: HTTPGet specifies the http request to perform.
@@ -2187,7 +2526,9 @@ spec:
                             used in HTTP probes
                           properties:
                             name:
-                              description: The header field name
+                              description: |-
+                                The header field name.
+                                This will be canonicalized upon output, so case-variant names will be understood as the same header.
                               type: string
                             value:
                               description: The header field value
@@ -2197,6 +2538,7 @@ spec:
                           - value
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       path:
                         description: Path to access on the HTTP server.
                         type: string
@@ -2315,6 +2657,7 @@ spec:
                   required:
                   - name
                   type: object
+                maxItems: 256
                 type: array
               nodeSelector:
                 additionalProperties:
@@ -2353,6 +2696,7 @@ spec:
                         items:
                           type: string
                         type: array
+                        x-kubernetes-list-type: atomic
                     type: object
                   failureThreshold:
                     description: |-
@@ -2361,8 +2705,14 @@ spec:
                     format: int32
                     type: integer
                   guestAgentPing:
-                    description: GuestAgentPing contacts the qemu-guest-agent for
-                      availability checks.
+                    description: |-
+                      GuestAgentPing contacts the qemu-guest-agent for availability checks.
+                      Probe failures are automatically suppressed when the guest agent is
+                      unreachable for a non-fault reason: during live migration (guest paused
+                      on one pod while memory is transferred) and whenever the VM is paused
+                      for an intentional or transient reason such as a user pause, snapshot,
+                      save, or dump. Failures are not suppressed when the VM is paused due to
+                      a fault (IO error, crash, or postcopy failure).
                     type: object
                   httpGet:
                     description: HTTPGet specifies the http request to perform.
@@ -2380,7 +2730,9 @@ spec:
                             used in HTTP probes
                           properties:
                             name:
-                              description: The header field name
+                              description: |-
+                                The header field name.
+                                This will be canonicalized upon output, so case-variant names will be understood as the same header.
                               type: string
                             value:
                               description: The header field value
@@ -2390,6 +2742,7 @@ spec:
                           - value
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       path:
                         description: Path to access on the HTTP server.
                         type: string
@@ -2461,6 +2814,65 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              resourceClaims:
+                description: |-
+                  ResourceClaims define which ResourceClaims must be allocated
+                  and reserved before the VMI, hence virt-launcher pod is allowed to start. The resources
+                  will be made available to the domain which consumes them
+                  by name.
+
+                  This is an alpha field and requires enabling the
+                  DynamicResourceAllocation feature gate in kubernetes
+                   https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/
+                  This field should only be configured if one of the feature-gates GPUsWithDRA or HostDevicesWithDRA is enabled.
+                  This feature is in alpha.
+                items:
+                  description: |-
+                    PodResourceClaim references exactly one ResourceClaim, either directly
+                    or by naming a ResourceClaimTemplate which is then turned into a ResourceClaim
+                    for the pod.
+
+                    It adds a name to it that uniquely identifies the ResourceClaim inside the Pod.
+                    Containers that need access to the ResourceClaim reference it with this name.
+                  properties:
+                    name:
+                      description: |-
+                        Name uniquely identifies this resource claim inside the pod.
+                        This must be a DNS_LABEL.
+                      type: string
+                    resourceClaimName:
+                      description: |-
+                        ResourceClaimName is the name of a ResourceClaim object in the same
+                        namespace as this pod.
+
+                        Exactly one of ResourceClaimName and ResourceClaimTemplateName must
+                        be set.
+                      type: string
+                    resourceClaimTemplateName:
+                      description: |-
+                        ResourceClaimTemplateName is the name of a ResourceClaimTemplate
+                        object in the same namespace as this pod.
+
+                        The template will be used to create a new ResourceClaim, which will
+                        be bound to this pod. When this pod is deleted, the ResourceClaim
+                        will also be deleted. The pod name and resource name, along with a
+                        generated component, will be used to form a unique name for the
+                        ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.
+
+                        This field is immutable and no changes will be made to the
+                        corresponding ResourceClaim by the control plane after creating the
+                        ResourceClaim.
+
+                        Exactly one of ResourceClaimName and ResourceClaimTemplateName must
+                        be set.
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               schedulerName:
                 description: |-
                   If specified, the VMI will be dispatched by specified scheduler.
@@ -2560,11 +2972,13 @@ spec:
                                 items:
                                   type: string
                                 type: array
+                                x-kubernetes-list-type: atomic
                             required:
                             - key
                             - operator
                             type: object
                           type: array
+                          x-kubernetes-list-type: atomic
                         matchLabels:
                           additionalProperties:
                             type: string
@@ -2633,8 +3047,6 @@ spec:
                         In this situation, new pod with the same labelSelector cannot be scheduled,
                         because computed skew will be 3(3 - 0) if new Pod is scheduled to any of the three zones,
                         it will violate MaxSkew.
-
-                        This is a beta field and requires the MinDomainsInPodTopologySpread feature gate to be enabled (enabled by default).
                       format: int32
                       type: integer
                     nodeAffinityPolicy:
@@ -2645,7 +3057,6 @@ spec:
                         - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                         If this value is nil, the behavior is equivalent to the Honor policy.
-                        This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                       type: string
                     nodeTaintsPolicy:
                       description: |-
@@ -2656,7 +3067,6 @@ spec:
                         - Ignore: node taints are ignored. All nodes are included.
 
                         If this value is nil, the behavior is equivalent to the Ignore policy.
-                        This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                       type: string
                     topologyKey:
                       description: |-
@@ -2702,6 +3112,40 @@ spec:
                 - topologyKey
                 - whenUnsatisfiable
                 x-kubernetes-list-type: map
+              utilityVolumes:
+                description: |-
+                  List of utility volumes that can be mounted to the vmi virt-launcher pod
+                  without having a matching disk in the domain.
+                  Used to collect data for various operational workflows.
+                items:
+                  properties:
+                    claimName:
+                      description: |-
+                        claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                        More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                      type: string
+                    name:
+                      description: |-
+                        UtilityVolume's name.
+                        Must be unique within the vmi, including regular Volumes.
+                      type: string
+                    readOnly:
+                      description: |-
+                        readOnly Will force the ReadOnly setting in VolumeMounts.
+                        Default false.
+                      type: boolean
+                    type:
+                      description: Type represents the type of the utility volume.
+                      type: string
+                  required:
+                  - claimName
+                  - name
+                  type: object
+                maxItems: 256
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               volumes:
                 description: List of volumes that can be mounted by disks belonging
                   to the vmi.
@@ -2727,8 +3171,12 @@ spec:
                             that contains config drive networkdata.
                           properties:
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                           type: object
@@ -2738,8 +3186,12 @@ spec:
                             contains config drive userdata.
                           properties:
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                           type: object
@@ -2772,8 +3224,12 @@ spec:
                             that contains NoCloud networkdata.
                           properties:
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                           type: object
@@ -2783,8 +3239,12 @@ spec:
                             contains NoCloud userdata.
                           properties:
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                           type: object
@@ -2804,8 +3264,12 @@ spec:
                         More info: https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/
                       properties:
                         name:
+                          default: ""
                           description: |-
                             Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
                             More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                           type: string
                         optional:
@@ -2848,6 +3312,34 @@ spec:
                       required:
                       - image
                       type: object
+                    containerPath:
+                      description: |-
+                        ContainerPath exposes a path from the virt-launcher container to the VM via virtiofs.
+                        The path must correspond to an existing volumeMount in the compute container.
+                      properties:
+                        path:
+                          description: |-
+                            Path is the absolute path within the virt-launcher container to expose to the VM.
+                            The path must correspond to an existing volumeMount in the compute container.
+                          maxLength: 4096
+                          type: string
+                          x-kubernetes-validations:
+                          - message: path must be absolute (start with '/')
+                            rule: self.startsWith('/')
+                          - message: path must not contain '..'
+                            rule: '!self.contains(''..'')'
+                        readOnly:
+                          default: true
+                          description: |-
+                            ReadOnly controls whether the volume is exposed as read-only to the VM.
+                            Defaults to true. Write access is not currently supported.
+                          type: boolean
+                          x-kubernetes-validations:
+                          - message: readOnly must be true, write access is not supported
+                            rule: self == true
+                      required:
+                      - path
+                      type: object
                     dataVolume:
                       description: |-
                         DataVolume represents the dynamic creation a PVC for this volume as well as
@@ -2858,9 +3350,8 @@ spec:
                             be hotplugged and hotunplugged.
                           type: boolean
                         name:
-                          description: |-
-                            Name of both the DataVolume and the PVC in the same namespace.
-                            After PVC population the DataVolume is garbage collected by default.
+                          description: Name of both the DataVolume and the PVC in
+                            the same namespace.
                           type: string
                       required:
                       - name
@@ -2877,8 +3368,8 @@ spec:
                             properties:
                               fieldRef:
                                 description: 'Required: Selects a field of the pod:
-                                  only annotations, labels, name and namespace are
-                                  supported.'
+                                  only annotations, labels, name, namespace and uid
+                                  are supported.'
                                 properties:
                                   apiVersion:
                                     description: Version of the schema the FieldPath
@@ -3108,8 +3599,12 @@ spec:
                             be attached as disk of CDROM type.
                           properties:
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                           type: object
@@ -3120,8 +3615,12 @@ spec:
                             be attached as disk of CDROM type.
                           properties:
                             name:
+                              default: ""
                               description: |-
                                 Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
                                 More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                               type: string
                           type: object
@@ -3130,6 +3629,7 @@ spec:
                   required:
                   - name
                   type: object
+                maxItems: 256
                 type: array
             required:
             - domain
@@ -3141,7 +3641,9 @@ spec:
               VSOCKCID:
                 description: VSOCKCID is used to track the allocated VSOCK CID in
                   the VM.
-                format: int32
+                format: int64
+                maximum: 4294967295
+                minimum: 0
                 type: integer
               activePods:
                 additionalProperties:
@@ -3149,6 +3651,77 @@ spec:
                 description: |-
                   ActivePods is a mapping of pod UID to node name.
                   It is possible for multiple pods to be running for a single VMI during migration.
+                type: object
+              changedBlockTracking:
+                description: ChangedBlockTracking represents the status of the changedBlockTracking
+                nullable: true
+                properties:
+                  backupStatus:
+                    description: BackupStatus represents the status of vmi backup
+                    nullable: true
+                    properties:
+                      backupMsg:
+                        description: |-
+                          BackupMsg resturns any relevant information like failure reason
+                          unfreeze failed etc...
+                        type: string
+                      backupName:
+                        description: BackupName is the name of the executed backup
+                        type: string
+                      checkpointName:
+                        description: CheckpointName is the name of the checkpoint
+                          created for the backup
+                        type: string
+                      completed:
+                        description: Completed indicates the backup completed
+                        type: boolean
+                      endTimestamp:
+                        description: EndTimestamp is the timestamp when the backup
+                          ended
+                        format: date-time
+                        type: string
+                      failed:
+                        description: Failed indicates that the backup failed
+                        type: boolean
+                      startTimestamp:
+                        description: StartTimestamp is the timestamp when the backup
+                          started
+                        format: date-time
+                        type: string
+                      volumes:
+                        description: Volumes lists the volumes included in the backup
+                        items:
+                          description: BackupVolumeInfo contains information about
+                            a volume included in a backup
+                          properties:
+                            dataEndpoint:
+                              description: DataEndpoint is the URL of the endpoint
+                                for read for pull mode
+                              type: string
+                            diskTarget:
+                              description: DiskTarget is the disk target device name
+                                at backup time
+                              type: string
+                            mapEndpoint:
+                              description: MapEndpoint is the URL of the endpoint
+                                for map for pull mode
+                              type: string
+                            volumeName:
+                              description: VolumeName is the volume name from VMI
+                                spec
+                              type: string
+                          required:
+                          - diskTarget
+                          - volumeName
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                    type: object
+                  state:
+                    description: State represents the current CBT state
+                    type: string
+                required:
+                - state
                 type: object
               conditions:
                 description: Conditions are specific points in VirtualMachineInstance's
@@ -3208,8 +3781,9 @@ spec:
                 type: string
               fsFreezeStatus:
                 description: |-
-                  FSFreezeStatus is the state of the fs of the guest
-                  it can be either frozen or thawed
+                  FSFreezeStatus indicates whether a freeze operation was requested for the guest filesystem.
+                  It will be set to "frozen" if the request was made, or unset otherwise.
+                  This does not reflect the actual state of the guest filesystem.
                 type: string
               guestOSInfo:
                 description: Guest OS Information
@@ -3261,12 +3835,20 @@ spec:
                       items:
                         type: string
                       type: array
+                    linkState:
+                      description: 'LinkState Reports the current operational link
+                        state`. values: up, down.'
+                      type: string
                     mac:
                       description: Hardware address of a Virtual Machine interface
                       type: string
                     name:
                       description: Name of the interface, corresponds to name of the
                         network assigned to the interface
+                      type: string
+                    podInterfaceName:
+                      description: PodInterfaceName represents the name of the pod
+                        network interface
                       type: string
                     queueCount:
                       description: Specifies how many queues are allocated by MultiQueue
@@ -3282,7 +3864,9 @@ spec:
                     properties:
                       checksum:
                         description: Checksum is the checksum of the initrd file
-                        format: int32
+                        format: int64
+                        maximum: 4294967295
+                        minimum: 0
                         type: integer
                     type: object
                   kernelInfo:
@@ -3290,7 +3874,9 @@ spec:
                     properties:
                       checksum:
                         description: Checksum is the checksum of the kernel image
-                        format: int32
+                        format: int64
+                        maximum: 4294967295
+                        minimum: 0
                         type: integer
                     type: object
                 type: object
@@ -3335,7 +3921,132 @@ spec:
                       (hotplug) for the VirtualMachine.
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
+                  memoryOverhead:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      MemoryOverhead specifies the memory overhead added by the virtualization infrastructure
+                      for the virt-launcher pod.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
                 type: object
+              migratedVolumes:
+                description: MigratedVolumes lists the source and destination volumes
+                  during the volume migration
+                items:
+                  description: StorageMigratedVolumeInfo tracks the information about
+                    the source and destination volumes during the volume migration
+                  properties:
+                    destinationPVCInfo:
+                      description: DestinationPVCInfo contains the information about
+                        the destination PVC
+                      properties:
+                        accessModes:
+                          description: |-
+                            AccessModes contains the desired access modes the volume should have.
+                            More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        capacity:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Capacity represents the capacity set on the
+                            corresponding PVC status
+                          type: object
+                        claimName:
+                          description: ClaimName is the name of the PVC
+                          type: string
+                        filesystemOverhead:
+                          description: Percentage of filesystem's size to be reserved
+                            when resizing the PVC
+                          pattern: ^(0(?:\.\d{1,3})?|1)$
+                          type: string
+                        preallocated:
+                          description: Preallocated indicates if the PVC's storage
+                            is preallocated or not
+                          type: boolean
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Requests represents the resources requested
+                            by the corresponding PVC spec
+                          type: object
+                        volumeMode:
+                          description: |-
+                            VolumeMode defines what type of volume is required by the claim.
+                            Value of Filesystem is implied when not included in claim spec.
+                          type: string
+                      type: object
+                    sourcePVCInfo:
+                      description: SourcePVCInfo contains the information about the
+                        source PVC
+                      properties:
+                        accessModes:
+                          description: |-
+                            AccessModes contains the desired access modes the volume should have.
+                            More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#access-modes-1
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        capacity:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Capacity represents the capacity set on the
+                            corresponding PVC status
+                          type: object
+                        claimName:
+                          description: ClaimName is the name of the PVC
+                          type: string
+                        filesystemOverhead:
+                          description: Percentage of filesystem's size to be reserved
+                            when resizing the PVC
+                          pattern: ^(0(?:\.\d{1,3})?|1)$
+                          type: string
+                        preallocated:
+                          description: Preallocated indicates if the PVC's storage
+                            is preallocated or not
+                          type: boolean
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Requests represents the resources requested
+                            by the corresponding PVC spec
+                          type: object
+                        volumeMode:
+                          description: |-
+                            VolumeMode defines what type of volume is required by the claim.
+                            Value of Filesystem is implied when not included in claim spec.
+                          type: string
+                      type: object
+                    volumeName:
+                      description: VolumeName is the name of the volume that is being
+                        migrated
+                      type: string
+                  required:
+                  - volumeName
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
               migrationMethod:
                 description: 'Represents the method using which the vmi can be migrated:
                   live migration or block migration'
@@ -3362,6 +4073,9 @@ spec:
                   failed:
                     description: Indicates that the migration failed
                     type: boolean
+                  failureReason:
+                    description: Contains the reason why the migration failed
+                    type: string
                   migrationConfiguration:
                     description: Migration configurations to apply
                     properties:
@@ -3377,6 +4091,13 @@ spec:
                           If set to true, migrations will still start in pre-copy, but switch to post-copy when
                           CompletionTimeoutPerGiB triggers. Defaults to false
                         type: boolean
+                      allowWorkloadDisruption:
+                        description: |-
+                          AllowWorkloadDisruption indicates that the migration shouldn't be
+                          canceled after acceptableCompletionTime is exceeded. Instead, if
+                          permitted, migration will be switched to post-copy or the VMI will be
+                          paused to allow the migration to complete
+                        type: boolean
                       bandwidthPerMigration:
                         anyOf:
                         - type: integer
@@ -3389,8 +4110,8 @@ spec:
                       completionTimeoutPerGiB:
                         description: |-
                           CompletionTimeoutPerGiB is the maximum number of seconds per GiB a migration is allowed to take.
-                          If a live-migration takes longer to migrate than this value multiplied by the size of the VMI,
-                          the migration will be cancelled, unless AllowPostCopy is true. Defaults to 800
+                          If the timeout is reached, the migration will be either paused, switched
+                          to post-copy or cancelled depending on other settings. Defaults to 150
                         format: int64
                         type: integer
                       disableTLS:
@@ -3439,7 +4160,17 @@ spec:
                           UnsafeMigrationOverride allows live migrations to occur even if the compatibility check
                           indicates the migration will be unsafe to the guest. Defaults to false
                         type: boolean
+                      utilityVolumesTimeout:
+                        description: |-
+                          UtilityVolumesTimeout is the maximum number of seconds a migration can wait in Pending state
+                          for utility volumes to be detached. If utility volumes are still present after this timeout,
+                          the migration will be marked as Failed. Defaults to 150
+                        format: int64
+                        type: integer
                     type: object
+                  migrationNetworkType:
+                    description: The type of migration network, either 'pod' or 'migration'
+                    type: string
                   migrationPolicyName:
                     description: Name of the migration policy. If string is empty,
                       no policy is matched
@@ -3455,6 +4186,57 @@ spec:
                   sourceNode:
                     description: The source node that the VMI originated on
                     type: string
+                  sourcePersistentStatePVCName:
+                    description: If the VMI being migrated uses persistent features
+                      (backend-storage), its source PVC name is saved here
+                    type: string
+                  sourcePod:
+                    type: string
+                  sourceState:
+                    description: SourceState contains migration state managed by the
+                      source virt handler
+                    properties:
+                      domainName:
+                        description: The name of the domain on the source libvirt
+                          domain
+                        type: string
+                      domainNamespace:
+                        description: Namespace used in the name of the source libvirt
+                          domain. Can be used to find and modify paths in the domain
+                        type: string
+                      migrationUID:
+                        description: The Source VirtualMachineInstanceMigration object
+                          associated with this migration
+                        type: string
+                      node:
+                        description: The source node that the VMI originated on
+                        type: string
+                      nodeSelectors:
+                        additionalProperties:
+                          type: string
+                        description: Node selectors needed by the target to start
+                          the receiving pod.
+                        type: object
+                      persistentStatePVCName:
+                        description: If the VMI being migrated uses persistent features
+                          (backend-storage), its source PVC name is saved here
+                        type: string
+                      pod:
+                        description: The source pod that the VMI is originated on
+                        type: string
+                      selinuxContext:
+                        description: SELinuxContext is the actual SELinux context
+                          of the pod
+                        type: string
+                      syncAddress:
+                        description: The ip address/fqdn:port combination to use to
+                          synchronize the VMI with the target.
+                        type: string
+                      virtualMachineInstanceUID:
+                        description: VirtualMachineInstanceUID is the UID of the target
+                          virtual machine instance
+                        type: string
+                    type: object
                   startTimestamp:
                     description: The time the migration action began
                     format: date-time
@@ -3478,6 +4260,14 @@ spec:
                     description: The list of ports opened for live migration on the
                       destination node
                     type: object
+                  targetMemoryOverhead:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: TargetMemoryOverhead is the memory overhead of the
+                      target virt-launcher pod
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
                   targetNode:
                     description: The target node that the VMI is moving to
                     type: string
@@ -3497,9 +4287,87 @@ spec:
                       If the VMI requires dedicated CPUs, this field will
                       hold the numa topology on the target node
                     type: string
+                  targetPersistentStatePVCName:
+                    description: If the VMI being migrated uses persistent features
+                      (backend-storage), its target PVC name is saved here
+                    type: string
                   targetPod:
                     description: The target pod that the VMI is moving to
                     type: string
+                  targetState:
+                    description: TargetState contains migration state managed by the
+                      target virt handler
+                    properties:
+                      attachmentPodUID:
+                        description: The UID of the target attachment pod for hotplug
+                          volumes
+                        type: string
+                      cpuSet:
+                        description: |-
+                          If the VMI requires dedicated CPUs, this field will
+                          hold the dedicated CPU set on the target node
+                        items:
+                          type: integer
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      directMigrationNodePorts:
+                        additionalProperties:
+                          type: integer
+                        description: The list of ports opened for live migration on
+                          the destination node
+                        type: object
+                      domainDetected:
+                        description: The Target Node has seen the Domain Start Event
+                        type: boolean
+                      domainName:
+                        description: The name of the domain on the source libvirt
+                          domain
+                        type: string
+                      domainNamespace:
+                        description: Namespace used in the name of the source libvirt
+                          domain. Can be used to find and modify paths in the domain
+                        type: string
+                      domainReadyTimestamp:
+                        description: The timestamp at which the target node detects
+                          the domain is active
+                        format: date-time
+                        type: string
+                      migrationUID:
+                        description: The Source VirtualMachineInstanceMigration object
+                          associated with this migration
+                        type: string
+                      node:
+                        description: The source node that the VMI originated on
+                        type: string
+                      nodeAddress:
+                        description: The address of the target node to use for the
+                          migration
+                        type: string
+                      nodeTopology:
+                        description: |-
+                          If the VMI requires dedicated CPUs, this field will
+                          hold the numa topology on the target node
+                        type: string
+                      persistentStatePVCName:
+                        description: If the VMI being migrated uses persistent features
+                          (backend-storage), its source PVC name is saved here
+                        type: string
+                      pod:
+                        description: The source pod that the VMI is originated on
+                        type: string
+                      selinuxContext:
+                        description: SELinuxContext is the actual SELinux context
+                          of the pod
+                        type: string
+                      syncAddress:
+                        description: The ip address/fqdn:port combination to use to
+                          synchronize the VMI with the target.
+                        type: string
+                      virtualMachineInstanceUID:
+                        description: VirtualMachineInstanceUID is the UID of the target
+                          virtual machine instance
+                        type: string
+                    type: object
                 type: object
               migrationTransport:
                 description: This represents the migration transport
@@ -3576,7 +4444,9 @@ spec:
                         checksum:
                           description: Checksum is the checksum of the rootdisk or
                             kernel artifacts inside the containerdisk
-                          format: int32
+                          format: int64
+                          maximum: 4294967295
+                          minimum: 0
                           type: integer
                       type: object
                     hotplugVolume:
@@ -3644,6 +4514,9 @@ spec:
                           description: Capacity represents the capacity set on the
                             corresponding PVC status
                           type: object
+                        claimName:
+                          description: ClaimName is the name of the PVC
+                          type: string
                         filesystemOverhead:
                           description: Percentage of filesystem's size to be reserved
                             when resizing the PVC
