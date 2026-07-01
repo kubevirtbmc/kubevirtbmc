@@ -38,13 +38,16 @@ func (h *handler) chassisControlHandler(m *goipmi.Message) goipmi.Response {
 		logrus.Info("power on")
 		err = h.rm.PowerOn()
 	case goipmi.ControlPowerCycle:
-		// Graceful power cycle (OS-level), per IPMI spec §28.3.
+		// Power cycle (turns system off then on), per IPMI spec §28.3.
+		// This is the most disruptive reset — it cuts power entirely,
+		// so we use the force variant.
 		logrus.Info("power cycle")
-		err = h.rm.PowerCycle()
+		err = h.rm.ForcePowerCycle()
 	case goipmi.ControlPowerHardReset:
 		// Hard reset (asserts system reset without power cycling), per IPMI spec §28.3.
-		logrus.Info("force power cycle")
-		err = h.rm.ForcePowerCycle()
+		// This is less disruptive than a full power cycle.
+		logrus.Info("hard reset")
+		err = h.rm.PowerCycle()
 	}
 
 	if err != nil {

@@ -73,34 +73,34 @@ func TestChassisControlHandler(t *testing.T) {
 			expectedCode: goipmi.ErrInvalidState,
 		},
 		{
-			name:           "PowerCycle success",
+			name:           "PowerCycle (force) success",
 			chassisControl: goipmi.ControlPowerCycle,
-			expectedCall: func() {
-				mockRM.EXPECT().PowerCycle().Return(nil)
-			},
-			expectedCode: goipmi.CommandCompleted,
-		},
-		{
-			name:           "PowerCycle failure",
-			chassisControl: goipmi.ControlPowerCycle,
-			expectedCall: func() {
-				mockRM.EXPECT().PowerCycle().Return(fmt.Errorf("error"))
-			},
-			expectedCode: goipmi.ErrInvalidState,
-		},
-		{
-			name:           "ForcePowerCycle success",
-			chassisControl: goipmi.ControlPowerHardReset,
 			expectedCall: func() {
 				mockRM.EXPECT().ForcePowerCycle().Return(nil)
 			},
 			expectedCode: goipmi.CommandCompleted,
 		},
 		{
-			name:           "ForcePowerCycle failure",
-			chassisControl: goipmi.ControlPowerHardReset,
+			name:           "PowerCycle (force) failure",
+			chassisControl: goipmi.ControlPowerCycle,
 			expectedCall: func() {
 				mockRM.EXPECT().ForcePowerCycle().Return(fmt.Errorf("error"))
+			},
+			expectedCode: goipmi.ErrInvalidState,
+		},
+		{
+			name:           "HardReset success",
+			chassisControl: goipmi.ControlPowerHardReset,
+			expectedCall: func() {
+				mockRM.EXPECT().PowerCycle().Return(nil)
+			},
+			expectedCode: goipmi.CommandCompleted,
+		},
+		{
+			name:           "HardReset failure",
+			chassisControl: goipmi.ControlPowerHardReset,
+			expectedCall: func() {
+				mockRM.EXPECT().PowerCycle().Return(fmt.Errorf("error"))
 			},
 			expectedCode: goipmi.ErrInvalidState,
 		},
