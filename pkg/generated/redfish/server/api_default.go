@@ -13,6 +13,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -83416,7 +83417,13 @@ func (c *DefaultAPIController) RedfishV1ManagersManagerIdVirtualMediaVirtualMedi
 	bodyParam := map[string]interface{}{}
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
-	if err := d.Decode(&bodyParam); err != nil {
+	// EjectMedia takes no required parameters. Per the Redfish spec, clients
+	// without any parameters should send an empty JSON object ("{}"), but some
+	// client implementations (e.g. older versions of sushy used by Ironic/Metal3)
+	// send a completely empty body instead. Treat io.EOF from an empty body as
+	// "no parameters supplied" rather than a parsing error, for the convenience
+	// of these client implementations.
+	if err := d.Decode(&bodyParam); err != nil && err != io.EOF {
 		c.errorHandler(w, r, &ParsingError{Err: err}, nil)
 		return
 	}
