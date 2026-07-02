@@ -507,7 +507,7 @@ func podNetworkRef(pod *corev1.Pod) string {
 // reconcileNetworkChange detects a mismatch between the spec's NetworkRef and
 // the annotation stamped on the existing pod. Since pod networking is immutable,
 // the pod must be recreated when the network attachment changes.
-func (r *VirtualMachineBMCReconciler) reconcileNetworkChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (requeue bool, err error) {
+func (r *VirtualMachineBMCReconciler) reconcileNetworkChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (deleted bool, err error) {
 
 	log := log.FromContext(ctx)
 
@@ -611,7 +611,7 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 	if deleted {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 
 	// Prepare the virtBMC Pod
