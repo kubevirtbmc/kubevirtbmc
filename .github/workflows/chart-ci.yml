@@ -50,7 +50,7 @@ jobs:
       if: steps.list-changed.outputs.changed == 'true'
       run: ct install --chart-dirs deploy/charts/ --charts deploy/charts/kubevirtbmc
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/v'))
     needs: lint-test
     # depending on default permission settings for your org (contents being read-only or read-write for workloads), you will have to add permissions
     # see: https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
