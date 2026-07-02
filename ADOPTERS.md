@@ -6,8 +6,9 @@ KubeVirtBMC maintains a list of organizations and projects that use it in produc
 
 ## Organizations
 
-| Name | Since | Website | Use-Case |
-| ---- | ----- | ------- | -------- |
-| *Add your organization via a PR* | | | |
+| Name                              | Since   | Website                     | Use-Case                     |
+| --------------------------------- | ------- | --------------------------- | ---------------------------- |
+| CESTC                             | 202606  | https://www.cestc.cn/       | R&D Environment Management   |
+| *Add your organization via a PR*  |         |                             |                              |
 
 *To add yourself: edit this file, add a row to the table above, and open a PR. We welcome all adopters.*
