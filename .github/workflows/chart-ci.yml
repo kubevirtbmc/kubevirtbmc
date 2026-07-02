@@ -8,6 +8,7 @@ on:
   push:
     branches:
     - main
+    - "v*"
 
 jobs:
   lint-test:
