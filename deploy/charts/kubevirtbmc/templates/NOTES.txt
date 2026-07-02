@@ -1,1 +1,0 @@
-KubeVirtBMC is installed successfully. You can now create virtual machines with BMC support.
