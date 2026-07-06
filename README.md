@@ -4,7 +4,7 @@
   <img src="docs/assets/images/kubevirtbmc_banner_tagline_transparent.png" alt="KubeVirtBMC"/>
 </div>
 
-[![main build and publish workflow](https://github.com/kubevirtbmc/kubevirtbmc/actions/workflows/main.yml/badge.svg)](https://github.com/starbops/kubevirtbmc/actions/workflows/main.yml)
+[![main build and publish workflow](https://github.com/kubevirtbmc/kubevirtbmc/actions/workflows/main.yml/badge.svg)](https://github.com/kubevirtbmc/kubevirtbmc/actions/workflows/main.yml)
 [![release](https://img.shields.io/github/v/release/kubevirtbmc/kubevirtbmc)](https://github.com/kubevirtbmc/kubevirtbmc/releases)
 [![Discord](https://img.shields.io/discord/1436578911613091850?style=flat&label=Discord&color=7289da)](https://discord.gg/k5hT9GDQkY)
 
