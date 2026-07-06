@@ -713,12 +713,13 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(svcPortNames).To(ContainElement(ipmiPortName))
 		})
 
-		It("Should create Pod with multus network annotation when networkRef is set", func() {
+		It("Should set Multus network annotation on Pod when NetworkRef is specified", func() {
 			ctx := context.Background()
-			vmName := "testvm-network-ref"
-			secretName := "secret-network-ref"
-			bmcName := "bmc-network-ref"
-			networkRef := "my-namespace/my-network"
+
+			vmName := "testvm-networkref"
+			secretName := "secret-networkref"
+			bmcName := "bmc-networkref"
+			networkRefValue := "mynetwork"
 
 			By("Creating the VirtualMachine and Secret")
 			vm := &kubevirtv1.VirtualMachine{
@@ -750,39 +751,58 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
 
-			By("Creating a VirtualMachineBMC with networkRef set")
+			By("Creating a VirtualMachineBMC with NetworkRef set")
 			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      bmcName,
 					Namespace: testVirtualMachineBMCNamespace,
 				},
 				Spec: bmcv1.VirtualMachineBMCSpec{
-					VirtualMachineRef: &corev1.LocalObjectReference{Name: vmName},
-					AuthSecretRef:     &corev1.LocalObjectReference{Name: secretName},
-					NetworkRef:        networkRef,
+					VirtualMachineRef: &corev1.LocalObjectReference{
+						Name: vmName,
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					NetworkRef: networkRefValue,
 				},
 			}
 			Expect(k8sClient.Create(ctx, virtualMachineBMC)).To(Succeed())
 
-			By("Checking that the Pod is created with the multus network annotation")
+			By("Verifying the Pod has the Multus network annotation")
 			podLookupKey := types.NamespacedName{
 				Name:      vmName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
-			createdPod := &corev1.Pod{}
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, podLookupKey, createdPod)
-				return err == nil
+				pod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, podLookupKey, pod); err != nil {
+					return false
+				}
+				val, ok := pod.Annotations[MultusNetworksAnnotation]
+				return ok && val == networkRefValue
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(createdPod.Annotations).To(HaveKeyWithValue(MultusNetworksAnnotation, networkRef))
+			By("Verifying the Pod does not have the annotation for empty NetworkRef")
+			// Look at the pod created without NetworkRef (from the first test) and
+			// ensure it does not have the Multus annotation.
+			firstPodLookupKey := types.NamespacedName{
+				Name:      testVMName + "-virtbmc",
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+			var firstPod corev1.Pod
+			Expect(k8sClient.Get(ctx, firstPodLookupKey, &firstPod)).Should(Succeed())
+			Expect(firstPod.Annotations).ToNot(HaveKey(MultusNetworksAnnotation))
 		})
 
-		It("Should delete and recreate Pod when networkRef is changed", func() {
+		It("Should delete and recreate Pod when NetworkRef is changed", func() {
 			ctx := context.Background()
-			vmName := "testvm-network-change"
-			secretName := "secret-network-change"
-			bmcName := "bmc-network-change"
+
+			vmName := "testvm-networkref-change"
+			secretName := "secret-networkref-change"
+			bmcName := "bmc-networkref-change"
+			initialNetworkRef := "network-a"
+			updatedNetworkRef := "network-b"
 
 			By("Creating the VirtualMachine and Secret")
 			vm := &kubevirtv1.VirtualMachine{
@@ -808,55 +828,248 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				},
 				Type: corev1.SecretTypeOpaque,
 				Data: map[string][]byte{
-					"username": []byte("newadmin"),
-					"password": []byte("newpassword456"),
+					"username": []byte("admin"),
+					"password": []byte("password123"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
 
-			By("Creating a VirtualMachineBMC without networkRef")
+			By("Creating a VirtualMachineBMC with initial NetworkRef")
 			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      bmcName,
 					Namespace: testVirtualMachineBMCNamespace,
 				},
 				Spec: bmcv1.VirtualMachineBMCSpec{
-					VirtualMachineRef: &corev1.LocalObjectReference{Name: vmName},
-					AuthSecretRef:     &corev1.LocalObjectReference{Name: secretName},
+					VirtualMachineRef: &corev1.LocalObjectReference{
+						Name: vmName,
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					NetworkRef: initialNetworkRef,
 				},
 			}
 			Expect(k8sClient.Create(ctx, virtualMachineBMC)).To(Succeed())
 
-			By("Waiting for the Pod to be created")
+			By("Waiting for initial Pod with original NetworkRef")
 			podLookupKey := types.NamespacedName{
 				Name:      vmName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
 			var originalPod corev1.Pod
 			Eventually(func() bool {
-				err := k8sClient.Get(ctx, podLookupKey, &originalPod)
-				return err == nil
-			}, timeout, interval).Should(BeTrue())
-			Expect(originalPod.Annotations).ToNot(HaveKey(MultusNetworksAnnotation))
-			originalPodUID := originalPod.UID
-
-			By("Setting networkRef on the VirtualMachineBMC")
-			bmcLookupKey := types.NamespacedName{Name: bmcName, Namespace: testVirtualMachineBMCNamespace}
-			updatedBMC := &bmcv1.VirtualMachineBMC{}
-			Expect(k8sClient.Get(ctx, bmcLookupKey, updatedBMC)).Should(Succeed())
-			updatedBMC.Spec.NetworkRef = "my-namespace/my-network"
-			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
-
-			By("Verifying that a new Pod is created carrying the network annotation")
-			var newPod corev1.Pod
-			Eventually(func() bool {
-				if err := k8sClient.Get(ctx, podLookupKey, &newPod); err != nil {
+				if err := k8sClient.Get(ctx, podLookupKey, &originalPod); err != nil {
 					return false
 				}
-				return newPod.UID != originalPodUID
+				val, ok := originalPod.Annotations[MultusNetworksAnnotation]
+				return ok && val == initialNetworkRef
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(newPod.Annotations).To(HaveKeyWithValue(MultusNetworksAnnotation, "my-namespace/my-network"))
+			originalPodUID := originalPod.UID
+
+			By("Updating the VirtualMachineBMC with a new NetworkRef")
+			updatedBMC := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: bmcName, Namespace: testVirtualMachineBMCNamespace}, updatedBMC)).Should(Succeed())
+			updatedBMC.Spec.NetworkRef = updatedNetworkRef
+			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
+
+			By("Verifying the old Pod is deleted or replaced with a new UID")
+			Eventually(func() bool {
+				pod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, podLookupKey, pod); err != nil {
+					return false
+				}
+				return pod.UID != originalPodUID
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying the new Pod has the updated NetworkRef annotation")
+			Eventually(func() bool {
+				pod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, podLookupKey, pod); err != nil {
+					return false
+				}
+				val, ok := pod.Annotations[MultusNetworksAnnotation]
+				return ok && val == updatedNetworkRef
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying the new Pod retains correct labels and service account")
+			var newPod corev1.Pod
+			Expect(k8sClient.Get(ctx, podLookupKey, &newPod)).Should(Succeed())
+			Expect(newPod.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, bmcName))
+			Expect(newPod.Labels).To(HaveKeyWithValue(VMNameLabel, vmName))
+			Expect(newPod.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
+		})
+
+		It("Should delete and recreate Pod when NetworkRef is removed", func() {
+			ctx := context.Background()
+
+			vmName := "testvm-networkref-remove"
+			secretName := "secret-networkref-remove"
+			bmcName := "bmc-networkref-remove"
+
+			By("Creating the VirtualMachine and Secret")
+			vm := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vmName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Running: boolPtr(false),
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirtv1.VirtualMachineInstanceSpec{
+							Domain: kubevirtv1.DomainSpec{},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, vm)).Should(Succeed())
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("password123"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+
+			By("Creating a VirtualMachineBMC with NetworkRef set")
+			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bmcName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Spec: bmcv1.VirtualMachineBMCSpec{
+					VirtualMachineRef: &corev1.LocalObjectReference{
+						Name: vmName,
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					NetworkRef: "network-to-remove",
+				},
+			}
+			Expect(k8sClient.Create(ctx, virtualMachineBMC)).To(Succeed())
+
+			By("Waiting for Pod with NetworkRef annotation to be created")
+			podLookupKey := types.NamespacedName{
+				Name:      vmName + "-virtbmc",
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+			var originalPod corev1.Pod
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, podLookupKey, &originalPod); err != nil {
+					return false
+				}
+				_, ok := originalPod.Annotations[MultusNetworksAnnotation]
+				return ok
+			}, timeout, interval).Should(BeTrue())
+
+			originalPodUID := originalPod.UID
+
+			By("Removing the NetworkRef from the VirtualMachineBMC")
+			updatedBMC := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: bmcName, Namespace: testVirtualMachineBMCNamespace}, updatedBMC)).Should(Succeed())
+			updatedBMC.Spec.NetworkRef = ""
+			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
+
+			By("Verifying the old Pod is replaced with a new UID")
+			Eventually(func() bool {
+				pod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, podLookupKey, pod); err != nil {
+					return false
+				}
+				return pod.UID != originalPodUID
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying the new Pod does not have the Multus network annotation")
+			Eventually(func() bool {
+				pod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, podLookupKey, pod); err != nil {
+					return false
+				}
+				_, ok := pod.Annotations[MultusNetworksAnnotation]
+				return !ok
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("Should set JSON-format Multus network annotation on Pod when NetworkRef is JSON", func() {
+			ctx := context.Background()
+
+			vmName := "testvm-networkref-json"
+			secretName := "secret-networkref-json"
+			bmcName := "bmc-networkref-json"
+			jsonNetworkRef := fmt.Sprintf(
+				`[{"name": "mynet", "namespace": "%s", "interface": "net1"}]`,
+				testVirtualMachineBMCNamespace,
+			)
+
+			By("Creating the VirtualMachine and Secret")
+			vm := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vmName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Running: boolPtr(false),
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirtv1.VirtualMachineInstanceSpec{
+							Domain: kubevirtv1.DomainSpec{},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, vm)).Should(Succeed())
+
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("password123"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+
+			By("Creating a VirtualMachineBMC with JSON-format NetworkRef")
+			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bmcName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Spec: bmcv1.VirtualMachineBMCSpec{
+					VirtualMachineRef: &corev1.LocalObjectReference{
+						Name: vmName,
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+					NetworkRef: jsonNetworkRef,
+				},
+			}
+			Expect(k8sClient.Create(ctx, virtualMachineBMC)).To(Succeed())
+
+			By("Verifying the Pod has the JSON-format Multus annotation")
+			podLookupKey := types.NamespacedName{
+				Name:      vmName + "-virtbmc",
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+			Eventually(func() bool {
+				pod := &corev1.Pod{}
+				if err := k8sClient.Get(ctx, podLookupKey, pod); err != nil {
+					return false
+				}
+				val, ok := pod.Annotations[MultusNetworksAnnotation]
+				return ok && val == jsonNetworkRef
+			}, timeout, interval).Should(BeTrue())
 		})
 
 	})

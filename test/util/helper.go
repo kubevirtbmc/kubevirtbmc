@@ -15,6 +15,49 @@ const (
 	kubeVirtStableVersion  = "https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt"
 	kubeVirtOperatorURLFmt = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-operator.yaml"
 	kubeVirtCRURLFmt       = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-cr.yaml"
+
+	// NADCRDYAML is the NetworkAttachmentDefinition CRD definition.
+	// We apply only the CRD (not the full Multus daemonset) so the
+	// k8s.v1.cni.cncf.io/networks pod annotation is pure metadata —
+	// no actual CNI plugin runs, the pod starts normally with kindnet.
+	NADCRDYAML = `apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: network-attachment-definitions.k8s.cni.cncf.io
+spec:
+  group: k8s.cni.cncf.io
+  scope: Namespaced
+  names:
+    plural: network-attachment-definitions
+    singular: network-attachment-definition
+    kind: NetworkAttachmentDefinition
+    shortNames:
+      - nad
+      - net-attach-def
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: 'NetworkAttachmentDefinition is a CRD schema specified by the Network Plumbing Working Group to express the intent for attaching pods to one or more logical or physical networks. More information available at: https://github.com/k8snetworkplumbingwg/multi-net-spec'
+          type: object
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: 'NetworkAttachmentDefinition spec defines the desired state of a network attachment'
+              type: object
+              properties:
+                config:
+                  description: 'NetworkAttachmentDefinition config is a JSON-formatted CNI configuration'
+                  type: string`
 )
 
 var (
@@ -98,6 +141,64 @@ func HasDeclarativeHotplugVolumesEnabled() bool {
 
 func VirtualMediaPrerequisitesMet() bool {
 	return IsCDIInstalled() && HasDeclarativeHotplugVolumesEnabled()
+}
+
+// IsNADCRDInstalled checks whether the NetworkAttachmentDefinition CRD is
+// already registered in the cluster.
+func IsNADCRDInstalled() bool {
+	cmd := exec.Command("kubectl", "get", "crd",
+		"network-attachment-definitions.k8s.cni.cncf.io",
+		"--no-headers", "-o", "name", "--ignore-not-found")
+	output, err := Run(cmd)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(output) == "customresourcedefinition.apiextensions.k8s.io/network-attachment-definitions.k8s.cni.cncf.io"
+}
+
+// ApplyNADCRD registers the NetworkAttachmentDefinition CRD in the cluster.
+// No Multus daemonset is installed — the k8s.v1.cni.cncf.io/networks annotation
+// on pods is pure metadata. Pods start normally with the default CNI (kindnet).
+func ApplyNADCRD() error {
+	if IsNADCRDInstalled() {
+		_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: NAD CRD is already installed. Skipping...\n")
+		return nil
+	}
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(NADCRDYAML)
+	dir, _ := getProjectDir()
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("apply NAD CRD: %w\noutput: %s", err, string(out))
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "Applied NAD CRD: %s\n", string(out))
+	return nil
+}
+
+// CreateTestNetworkAttachmentDefinition creates a minimal bridge-based
+// NetworkAttachmentDefinition that e2e tests can reference via NetworkRef.
+func CreateTestNetworkAttachmentDefinition(namespace string) error {
+	nadYAML := fmt.Sprintf(`apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: test-multus-network
+  namespace: %s
+spec:
+  config: '{"cniVersion":"0.3.1","name":"test-multus-network","type":"bridge","bridge":"br-test"}'
+`, namespace)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(nadYAML)
+	dir, _ := getProjectDir()
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("create NetworkAttachmentDefinition: %w\noutput: %s", err, string(out))
+	}
+	_, _ = fmt.Fprintf(GinkgoWriter, "Created NetworkAttachmentDefinition: %s\n", string(out))
+	return nil
 }
 
 func IsKubeVirtInstalled() bool {

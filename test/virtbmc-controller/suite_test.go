@@ -35,6 +35,7 @@ var (
 	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == "true"
 	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
 	isCertManagerAlreadyInstalled = false
+	skipMultusInstall             = os.Getenv("MULTUS_INSTALL_SKIP") == "true"
 
 	repo = func() string {
 		if r := os.Getenv("REPO"); r != "" {
@@ -98,6 +99,16 @@ var _ = BeforeSuite(func() {
 		}
 	}
 
+	if !skipMultusInstall {
+		By("applying the NetworkAttachmentDefinition CRD")
+		err = util.ApplyNADCRD()
+		Expect(err).ToNot(HaveOccurred())
+
+		By("creating a test NetworkAttachmentDefinition")
+		err = util.CreateTestNetworkAttachmentDefinition(util.E2ENamespace)
+		Expect(err).ToNot(HaveOccurred())
+	}
+
 	By("deploying the controller-manager")
 	cmd := exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", controllerManagerImage))
 	_, err = util.Run(cmd)
@@ -133,9 +144,16 @@ var _ = AfterSuite(func() {
 			return apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKey{Namespace: util.E2ENamespace, Name: util.E2EBMCName}, &bmc))
 		}, timeout, interval).Should(BeTrue(), "VirtualMachineBMC %s/%s should be deleted", util.E2ENamespace, util.E2EBMCName)
 	}
+
+	By("cleaning up the test NetworkAttachmentDefinition")
+	kcmd := exec.Command("kubectl", "delete", "network-attachment-definition",
+		util.E2EMultusNetworkName, "-n", util.E2ENamespace, "--ignore-not-found")
+	_, err := util.Run(kcmd)
+	Expect(err).ToNot(HaveOccurred(), "delete NetworkAttachmentDefinition %s/%s", util.E2ENamespace, util.E2EMultusNetworkName)
+
 	By("undeploying the controller-manager")
 	cmd := exec.Command("make", "undeploy")
-	_, err := util.Run(cmd)
+	_, err = util.Run(cmd)
 	Expect(err).ToNot(HaveOccurred(), "make undeploy should succeed")
 })
 
