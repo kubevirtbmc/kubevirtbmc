@@ -451,6 +451,12 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				))
 			})
 
+			It("should power off the VM", func() {
+				_, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"ForceOff"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+			})
+
 			It("should accept InsertMedia action", func() {
 				body := `{"Image":"https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso","Inserted":true}`
 				out, err := runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia", body))
@@ -509,4 +515,5 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 		})
 	})
+
 })

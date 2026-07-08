@@ -138,12 +138,6 @@ var _ = AfterSuite(func() {
 					Namespace: agentNamespace,
 				},
 			},
-			&cdiv1.DataVolume{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      agentVMName,
-					Namespace: agentNamespace,
-				},
-			},
 			&corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentSecretName,

@@ -404,7 +404,6 @@ func runIPMIInCluster(ctx context.Context, cfg *rest.Config, namespace string, r
 	})
 }
 
-// verifyDataVolumeExists waits for a DataVolume to exist in the given namespace.
 func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namespace, name string) {
 	Eventually(func() error {
 		dv := &cdiv1.DataVolume{}
@@ -413,7 +412,6 @@ func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namesp
 		"DataVolume %s/%s should exist", namespace, name)
 }
 
-// verifyDataVolumeDeleted waits for a DataVolume to be deleted from the given namespace.
 func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, namespace, name string) {
 	Eventually(func() bool {
 		dv := &cdiv1.DataVolume{}
@@ -423,8 +421,6 @@ func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, names
 		"DataVolume %s/%s should be deleted", namespace, name)
 }
 
-// verifyVMHasDataVolumeVolume waits for the VM spec to contain a volume with
-// a DataVolume source whose name matches the given dvName.
 func verifyVMHasDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName, dvName string) {
 	Eventually(func() bool {
 		vm := &kubevirtv1.VirtualMachine{}
@@ -444,8 +440,6 @@ func verifyVMHasDataVolumeVolume(ctx context.Context, k8sClient client.Client, n
 		"VM %s/%s should have a volume with DataVolume source %q", namespace, vmName, dvName)
 }
 
-// verifyVMHasNoDataVolumeVolume waits for the VM spec to have no volumes with
-// a DataVolume source.
 func verifyVMHasNoDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName string) {
 	Eventually(func() bool {
 		vm := &kubevirtv1.VirtualMachine{}
