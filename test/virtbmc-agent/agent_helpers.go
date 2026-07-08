@@ -15,9 +15,10 @@ import (
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kubevirtv1 "kubevirt.io/api/core/v1"
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 )
 
@@ -401,4 +402,65 @@ func runIPMIInCluster(ctx context.Context, cfg *rest.Config, namespace string, r
 		ContainerName: "ipmitool",
 		Command:       cmd,
 	})
+}
+
+// verifyDataVolumeExists waits for a DataVolume to exist in the given namespace.
+func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namespace, name string) {
+	Eventually(func() error {
+		dv := &cdiv1.DataVolume{}
+		return k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv)
+	}, agentTestTimeout, agentTestInterval).Should(Succeed(),
+		"DataVolume %s/%s should exist", namespace, name)
+}
+
+// verifyDataVolumeDeleted waits for a DataVolume to be deleted from the given namespace.
+func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, namespace, name string) {
+	Eventually(func() bool {
+		dv := &cdiv1.DataVolume{}
+		err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv)
+		return apierrors.IsNotFound(err)
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"DataVolume %s/%s should be deleted", namespace, name)
+}
+
+// verifyVMHasDataVolumeVolume waits for the VM spec to contain a volume with
+// a DataVolume source whose name matches the given dvName.
+func verifyVMHasDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName, dvName string) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+		for _, v := range vm.Spec.Template.Spec.Volumes {
+			if v.DataVolume != nil && v.DataVolume.Name == dvName {
+				return true
+			}
+		}
+		return false
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s should have a volume with DataVolume source %q", namespace, vmName, dvName)
+}
+
+// verifyVMHasNoDataVolumeVolume waits for the VM spec to have no volumes with
+// a DataVolume source.
+func verifyVMHasNoDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName string) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+		for _, v := range vm.Spec.Template.Spec.Volumes {
+			if v.DataVolume != nil {
+				return false
+			}
+		}
+		return true
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s should have no DataVolume volumes", namespace, vmName)
 }

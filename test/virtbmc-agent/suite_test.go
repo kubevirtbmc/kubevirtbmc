@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -69,6 +70,7 @@ var _ = BeforeSuite(func() {
 	Expect(err2).ToNot(HaveOccurred())
 	Expect(kubevirtv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(bmcv1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(cdiv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	k8sClient, err2 = client.New(config, client.Options{Scheme: scheme.Scheme})
 	Expect(err2).ToNot(HaveOccurred())
 
@@ -131,6 +133,12 @@ var _ = AfterSuite(func() {
 
 		objs := []client.Object{
 			&kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentVMName,
+					Namespace: agentNamespace,
+				},
+			},
+			&cdiv1.DataVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      agentVMName,
 					Namespace: agentNamespace,
