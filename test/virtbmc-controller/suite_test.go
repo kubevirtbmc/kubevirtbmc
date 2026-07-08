@@ -29,13 +29,14 @@ import (
 const (
 	timeout  = time.Second * 60
 	interval = time.Millisecond * 250
+	strTrue  = "true"
 )
 
 var (
-	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == "true"
-	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
+	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == strTrue
+	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == strTrue
 	isCertManagerAlreadyInstalled = false
-	skipMultusInstall             = os.Getenv("MULTUS_INSTALL_SKIP") == "true"
+	skipMultusInstall             = os.Getenv("MULTUS_INSTALL_SKIP") == strTrue
 
 	repo = func() string {
 		if r := os.Getenv("REPO"); r != "" {
