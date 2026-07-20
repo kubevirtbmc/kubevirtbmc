@@ -3,6 +3,7 @@ package virtbmcagent
 import (
 	"context"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -121,6 +122,48 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				Expect(stderr).To(ContainSubstring("Unable to establish IPMI v2 / RMCP+ session"))
 			})
 
+		})
+
+		Context("Dual-stack (lan + lanplus)", func() {
+			DescribeTable("should report power status",
+				func(iface string) {
+					req := ipmiReq("power", "status")
+					req.Interface = iface
+					out, _, err := runIPMIInCluster(ctx, config, ns, req)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out).To(SatisfyAny(
+						ContainSubstring("Chassis Power is on"),
+						ContainSubstring("Chassis Power is off"),
+					))
+				},
+				Entry("via lan", "lan"),
+				Entry("via lanplus", "lanplus"),
+			)
+
+			DescribeTable("should accept disable boot timeout raw command",
+				func(iface string) {
+					req := ipmiReq("raw", "0x00", "0x08", "0x03", "0x08")
+					req.Interface = iface
+					_, _, err := runIPMIInCluster(ctx, config, ns, req)
+					Expect(err).NotTo(HaveOccurred())
+				},
+				Entry("via lan", "lan"),
+				Entry("via lanplus", "lanplus"),
+			)
+
+			DescribeTable("should return power status within 1s with -R 1",
+				func(iface string) {
+					req := ipmiReq("power", "status")
+					req.Interface = iface
+					req.RetryCount = 1
+					_, _, elapsed, err := runIPMIInClusterTimed(ctx, config, ns, req)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(elapsed).To(BeNumerically("<", time.Second),
+						"%s power status with -R 1 should return within 1s, took %v", iface, elapsed)
+				},
+				Entry("via lan", "lan"),
+				Entry("via lanplus", "lanplus"),
+			)
 		})
 
 		Context("Power management", func() {

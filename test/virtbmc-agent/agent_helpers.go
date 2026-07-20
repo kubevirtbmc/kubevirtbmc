@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -381,27 +382,45 @@ type IPMIRequest struct {
 	ServiceHost string
 	Username    string
 	Password    string
+	Interface   string // "lan" or "lanplus"; defaults to "lanplus"
+	RetryCount  int    // when > 0, passes -R to ipmitool (retry count)
 	Args        []string
 }
 
+func buildIPMICommand(r IPMIRequest) []string {
+	iface := r.Interface
+	if iface == "" {
+		iface = "lanplus"
+	}
+	cmd := []string{"ipmitool", "-I", iface, "-U", r.Username, "-P", r.Password, "-H", r.ServiceHost}
+	if r.RetryCount > 0 {
+		cmd = append(cmd, "-R", strconv.Itoa(r.RetryCount))
+	}
+	return append(cmd, r.Args...)
+}
+
 func runIPMIInCluster(ctx context.Context, cfg *rest.Config, namespace string, r IPMIRequest) (stdout, stderr string, err error) {
+	stdout, stderr, _, err = runIPMIInClusterTimed(ctx, cfg, namespace, r)
+	return stdout, stderr, err
+}
+
+func runIPMIInClusterTimed(ctx context.Context, cfg *rest.Config, namespace string, r IPMIRequest) (stdout, stderr string, elapsed time.Duration, err error) {
 	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return "", "", fmt.Errorf("building clientset: %w", err)
+		return "", "", 0, fmt.Errorf("building clientset: %w", err)
 	}
 	if err := CreateIPMIToolPod(ctx, clientset, namespace); err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 
-	baseArgs := []string{"ipmitool", "-I", "lanplus", "-U", r.Username, "-P", r.Password, "-H", r.ServiceHost}
-	cmd := append(baseArgs, r.Args...)
-
-	return execInPod(ctx, cfg, clientset, execOptions{
+	start := time.Now()
+	stdout, stderr, err = execInPod(ctx, cfg, clientset, execOptions{
 		Namespace:     namespace,
 		PodName:       ipmitoolPodName,
 		ContainerName: "ipmitool",
-		Command:       cmd,
+		Command:       buildIPMICommand(r),
 	})
+	return stdout, stderr, time.Since(start), err
 }
 
 func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namespace, name string) {
