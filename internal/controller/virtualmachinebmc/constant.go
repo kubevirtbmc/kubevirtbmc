@@ -3,6 +3,8 @@ package virtualmachinebmc
 const (
 	DefaultUsername            = "admin"
 	DefaultPassword            = "password"
+	DefaultAgentCPURequest     = "10m"
+	DefaultAgentMemoryRequest  = "128Mi"
 	virtBMCContainerName       = "virtbmc"
 	VirtBMCImageName           = "kubevirtbmc/virtbmc"
 	ipmiPort                   = 10623

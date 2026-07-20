@@ -149,6 +149,8 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(createdPod.Spec.ServiceAccountName).To(Equal(serviceAccountName))
 			Expect(createdPod.Spec.Containers).To(HaveLen(1))
 			Expect(createdPod.Spec.Containers[0].Name).To(Equal(virtBMCContainerName))
+			Expect(createdPod.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal(DefaultAgentCPURequest))
+			Expect(createdPod.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal(DefaultAgentMemoryRequest))
 
 			By("Checking that the Service is created with correct name")
 			svcLookupKey := types.NamespacedName{

@@ -25,6 +25,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,8 +45,10 @@ type VirtualMachineBMCReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	AgentImageName string
-	AgentImageTag  string
+	AgentImageName     string
+	AgentImageTag      string
+	AgentCPURequest    string
+	AgentMemoryRequest string
 }
 
 const (
@@ -130,6 +133,23 @@ func (r *VirtualMachineBMCReconciler) ensureRBACResources(ctx context.Context, v
 	}
 
 	return nil
+}
+
+// agentResourceRequests returns the resource requests for the virtBMC agent
+// container, falling back to the defaults when not configured. Values are
+// validated at controller startup, so MustParse is safe here.
+func (r *VirtualMachineBMCReconciler) agentResourceRequests() corev1.ResourceList {
+	cpuRequest, memoryRequest := r.AgentCPURequest, r.AgentMemoryRequest
+	if cpuRequest == "" {
+		cpuRequest = DefaultAgentCPURequest
+	}
+	if memoryRequest == "" {
+		memoryRequest = DefaultAgentMemoryRequest
+	}
+	return corev1.ResourceList{
+		corev1.ResourceCPU:    resource.MustParse(cpuRequest),
+		corev1.ResourceMemory: resource.MustParse(memoryRequest),
+	}
 }
 
 func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualMachineBMC *bmcv1.VirtualMachineBMC) *corev1.Pod {
@@ -221,6 +241,9 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 						},
 						InitialDelaySeconds: 2,
 						PeriodSeconds:       10,
+					},
+					Resources: corev1.ResourceRequirements{
+						Requests: r.agentResourceRequests(),
 					},
 				},
 			},

@@ -26,6 +26,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -70,6 +71,8 @@ func main() {
 		tlsOpts              []func(*tls.Config)
 		agentImageName       string
 		agentImageTag        string
+		agentCPURequest      string
+		agentMemoryRequest   string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8443", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -78,6 +81,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.StringVar(&agentImageName, "agent-image-name", ctlvirtualmachinebmc.VirtBMCImageName, "The name of the agent image.")
 	flag.StringVar(&agentImageTag, "agent-image-tag", AppVersion, "The tag of the agent image.")
+	flag.StringVar(&agentCPURequest, "agent-cpu-request", ctlvirtualmachinebmc.DefaultAgentCPURequest, "The CPU request of the agent pod.")
+	flag.StringVar(&agentMemoryRequest, "agent-memory-request", ctlvirtualmachinebmc.DefaultAgentMemoryRequest, "The memory request of the agent pod.")
 	showVersion := flag.Bool("version", false, "Show version.")
 
 	opts := zap.Options{
@@ -93,6 +98,16 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Validate agent pod resource requests early, fail fast on misconfiguration
+	if _, err := resource.ParseQuantity(agentCPURequest); err != nil {
+		setupLog.Error(err, "invalid --agent-cpu-request", "value", agentCPURequest)
+		os.Exit(1)
+	}
+	if _, err := resource.ParseQuantity(agentMemoryRequest); err != nil {
+		setupLog.Error(err, "invalid --agent-memory-request", "value", agentMemoryRequest)
+		os.Exit(1)
+	}
 
 	// Disable HTTP/2 unless explicitly enabled
 	disableHTTP2 := func(c *tls.Config) {
@@ -145,10 +160,12 @@ func main() {
 	}
 
 	if err = (&ctlvirtualmachinebmc.VirtualMachineBMCReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		AgentImageName: agentImageName,
-		AgentImageTag:  agentImageTag,
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		AgentImageName:     agentImageName,
+		AgentImageTag:      agentImageTag,
+		AgentCPURequest:    agentCPURequest,
+		AgentMemoryRequest: agentMemoryRequest,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineBMC")
 		os.Exit(1)
