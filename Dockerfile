@@ -18,6 +18,8 @@ COPY cmd/controller/main.go cmd/controller/main.go
 COPY api/ api/
 # Copy internal packages (controller, webhook, etc.) so internal imports build correctly inside the image
 COPY internal/ internal/
+# Copy pkg/ (resourcemanager, ipmi, redfish, etc.) for shared package imports
+COPY pkg/ pkg/
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command

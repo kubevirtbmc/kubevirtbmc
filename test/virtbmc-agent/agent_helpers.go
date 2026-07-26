@@ -3,14 +3,18 @@ package virtbmcagent
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	kvclient "kubevirt.io/client-go/kubevirt"
 
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -23,15 +27,19 @@ import (
 )
 
 const (
-	agentNamespace       = "default"
-	agentVMName          = "testvm"
-	agentBMCName         = "test-bmc"
-	agentSecretName      = "bmc-credentials-secret"
-	curlImage            = "curlimages/curl:latest"
-	ipmitoolImage        = "mikeynap/ipmitool:latest"
-	agentTestTimeout     = 60 * time.Second
-	agentTestInterval    = 250 * time.Millisecond
-	agentPodName         = "testvm-virtbmc"
+	agentNamespace      = "default"
+	agentVMName         = "testvm"
+	agentBMCName        = "test-bmc"
+	agentSecretName     = "bmc-credentials-secret"
+	issue191DiskName    = "oneshot-conflict-disk"
+	issue191RemovedDisk = "oneshot-removed-disk"
+	curlImage           = "curlimages/curl:latest"
+	ipmitoolImage       = "ghcr.io/halfcrazy/ipmitool:latest" // ipmitool v1.8.19
+	agentTestTimeout    = 60 * time.Second
+	agentTestInterval   = 250 * time.Millisecond
+	agentPodName        = "testvm-virtbmc"
+	// suiteInitTimeout covers container disk image pull during suite setup.
+	suiteInitTimeout     = 180 * time.Second
 	vmPowerStatusTimeout = 120 * time.Second
 	helperPodTimeout     = 180 * time.Second
 
@@ -175,6 +183,258 @@ func verifyVMBootOrder(ctx context.Context, k8sClient client.Client, namespace s
 		namespace, agentVMName, expectedDisks, expectedIfaces)
 }
 
+// resetBootState clears all bootOrder fields and firmware from the test VM
+// and clears status.bootOverride, so each boot test starts from a clean slate.
+func resetBootState(ctx context.Context, k8sClient client.Client, namespace string) {
+	vm := &kubevirtv1.VirtualMachine{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
+		return
+	}
+	if vm.Spec.Template == nil {
+		return
+	}
+
+	var vmPatch []map[string]any
+	for i := len(vm.Spec.Template.Spec.Domain.Devices.Disks) - 1; i >= 0; i-- {
+		d := vm.Spec.Template.Spec.Domain.Devices.Disks[i]
+		if isIssue191Disk(d.Name) {
+			vmPatch = append(vmPatch, map[string]any{
+				"op":   "remove",
+				"path": fmt.Sprintf("/spec/template/spec/domain/devices/disks/%d", i),
+			})
+			continue
+		}
+		if d.BootOrder != nil {
+			vmPatch = append(vmPatch, map[string]any{
+				"op":   "remove",
+				"path": fmt.Sprintf("/spec/template/spec/domain/devices/disks/%d/bootOrder", i),
+			})
+		}
+	}
+	for i, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+		if iface.BootOrder != nil {
+			vmPatch = append(vmPatch, map[string]any{
+				"op":   "remove",
+				"path": fmt.Sprintf("/spec/template/spec/domain/devices/interfaces/%d/bootOrder", i),
+			})
+		}
+	}
+	for i := len(vm.Spec.Template.Spec.Volumes) - 1; i >= 0; i-- {
+		volume := vm.Spec.Template.Spec.Volumes[i]
+		if isIssue191Disk(volume.Name) {
+			vmPatch = append(vmPatch, map[string]any{
+				"op":   "remove",
+				"path": fmt.Sprintf("/spec/template/spec/volumes/%d", i),
+			})
+		}
+	}
+	// Remove firmware if it was added by an override (test VM has none).
+	if vm.Spec.Template.Spec.Domain.Firmware != nil {
+		vmPatch = append(vmPatch, map[string]any{
+			"op":   "remove",
+			"path": "/spec/template/spec/domain/firmware",
+		})
+	}
+
+	if len(vmPatch) > 0 {
+		patchJSON, _ := json.Marshal(vmPatch)
+		_ = k8sClient.Patch(ctx, vm, client.RawPatch(types.JSONPatchType, patchJSON))
+	}
+
+	bmc := &bmcv1.VirtualMachineBMC{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {
+		return
+	}
+	if bmc.Status.BootOverride != nil {
+		bmc.Status.BootOverride = nil
+		_ = k8sClient.Status().Update(ctx, bmc)
+	}
+}
+
+func isIssue191Disk(name string) bool {
+	return name == issue191DiskName || name == issue191RemovedDisk
+}
+
+func setVMDiskBootOrder(ctx context.Context, k8sClient client.Client, namespace string, diskIndex int, order uint) {
+	vm := &kubevirtv1.VirtualMachine{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm)).To(Succeed())
+	patch := []map[string]any{{
+		"op":    "add",
+		"path":  fmt.Sprintf("/spec/template/spec/domain/devices/disks/%d/bootOrder", diskIndex),
+		"value": order,
+	}}
+	patchJSON, err := json.Marshal(patch)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient.Patch(ctx, vm, client.RawPatch(types.JSONPatchType, patchJSON))).To(Succeed())
+}
+
+func removeVMDiskAndVolumeIfExists(ctx context.Context, k8sClient client.Client, namespace, name string) {
+	vm := &kubevirtv1.VirtualMachine{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm)).To(Succeed())
+
+	var patch []map[string]any
+	for i, d := range vm.Spec.Template.Spec.Domain.Devices.Disks {
+		if d.Name == name {
+			patch = append(patch, map[string]any{
+				"op":   "remove",
+				"path": fmt.Sprintf("/spec/template/spec/domain/devices/disks/%d", i),
+			})
+			break
+		}
+	}
+	for i, volume := range vm.Spec.Template.Spec.Volumes {
+		if volume.Name == name {
+			patch = append(patch, map[string]any{
+				"op":   "remove",
+				"path": fmt.Sprintf("/spec/template/spec/volumes/%d", i),
+			})
+			break
+		}
+	}
+	if len(patch) == 0 {
+		return
+	}
+	patchJSON, err := json.Marshal(patch)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient.Patch(ctx, vm, client.RawPatch(types.JSONPatchType, patchJSON))).To(Succeed())
+}
+
+func addEmptyDiskWithBootOrder(ctx context.Context, k8sClient client.Client, namespace, name string, order uint) {
+	vm := &kubevirtv1.VirtualMachine{}
+	Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm)).To(Succeed())
+	patch := []map[string]any{
+		{
+			"op":   "add",
+			"path": "/spec/template/spec/domain/devices/disks/-",
+			"value": map[string]any{
+				"name":      name,
+				"disk":      map[string]any{"bus": "virtio"},
+				"bootOrder": order,
+			},
+		},
+		{
+			"op":   "add",
+			"path": "/spec/template/spec/volumes/-",
+			"value": map[string]any{
+				"name":      name,
+				"emptyDisk": map[string]any{"capacity": "1Gi"},
+			},
+		},
+	}
+	patchJSON, err := json.Marshal(patch)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient.Patch(ctx, vm, client.RawPatch(types.JSONPatchType, patchJSON))).To(Succeed())
+}
+
+func verifyVMNamedBootOrders(ctx context.Context, k8sClient client.Client, namespace string, expectedDisks, expectedIfaces map[string]*uint) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+
+		diskOrders := make(map[string]*uint)
+		for _, d := range vm.Spec.Template.Spec.Domain.Devices.Disks {
+			diskOrders[d.Name] = d.BootOrder
+		}
+		ifaceOrders := make(map[string]*uint)
+		for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+			ifaceOrders[iface.Name] = iface.BootOrder
+		}
+		return bootOrderMapsMatch(diskOrders, expectedDisks) && bootOrderMapsMatch(ifaceOrders, expectedIfaces)
+	}, vmPowerStatusTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s named boot orders should match: disks=%v ifaces=%v",
+		namespace, agentVMName, expectedDisks, expectedIfaces)
+}
+
+func bootOrderMapsMatch(actual, expected map[string]*uint) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for name, expectedOrder := range expected {
+		actualOrder, ok := actual[name]
+		if !ok {
+			return false
+		}
+		if expectedOrder == nil {
+			if actualOrder != nil {
+				return false
+			}
+			continue
+		}
+		if actualOrder == nil || *actualOrder != *expectedOrder {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyVMBootOrderNot checks that the VM's boot order does NOT match the
+// given override order, i.e. a cancel has taken effect.
+func verifyVMBootOrderNot(ctx context.Context, k8sClient client.Client, namespace string, expectedDisks, expectedIfaces map[int]uint) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+		disks := vm.Spec.Template.Spec.Domain.Devices.Disks
+		ifaces := vm.Spec.Template.Spec.Domain.Devices.Interfaces
+
+		for idx, order := range expectedDisks {
+			if idx < len(disks) && disks[idx].BootOrder != nil && *disks[idx].BootOrder == order {
+				return false
+			}
+		}
+		for idx, order := range expectedIfaces {
+			if idx < len(ifaces) && ifaces[idx].BootOrder != nil && *ifaces[idx].BootOrder == order {
+				return false
+			}
+		}
+		return true
+	}, vmPowerStatusTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s boot order should no longer match override: disks=%v ifaces=%v",
+		namespace, agentVMName, expectedDisks, expectedIfaces)
+}
+
+// verifyVMFirmware checks whether the test VM's firmware is set to EFI or BIOS.
+func verifyVMFirmware(ctx context.Context, k8sClient client.Client, namespace string, expectEFI bool) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+		fw := vm.Spec.Template.Spec.Domain.Firmware
+		if expectEFI {
+			return fw != nil && fw.Bootloader != nil && fw.Bootloader.EFI != nil
+		}
+		// Legacy BIOS: either no firmware (KubeVirt default) or explicit BIOS.
+		return fw == nil || fw.Bootloader == nil || fw.Bootloader.BIOS != nil
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s firmware should be EFI=%v", namespace, agentVMName, expectEFI)
+}
+
+// verifyBMCBootOverride checks whether status.bootOverride exists or not on
+// the VirtualMachineBMC CR.
+func verifyBMCBootOverride(ctx context.Context, k8sClient client.Client, namespace string, shouldExist bool) {
+	Eventually(func() bool {
+		bmc := &bmcv1.VirtualMachineBMC{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {
+			return !shouldExist
+		}
+		return (bmc.Status.BootOverride != nil) == shouldExist
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"VirtualMachineBMC %s/%s should have status.bootOverride present=%v", namespace, agentBMCName, shouldExist)
+}
+
 func (e *agentTestEnv) ensureSecretExists(ctx context.Context, k8sClient client.Client, namespace string) error {
 	secret := &corev1.Secret{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentSecretName}, secret); err != nil {
@@ -191,13 +451,13 @@ func (e *agentTestEnv) ensureSecretExists(ctx context.Context, k8sClient client.
 }
 
 func (e *agentTestEnv) ensureBMCExists(ctx context.Context, k8sClient client.Client, namespace string) error {
-	bmc := &bmcv1.VirtualMachineBMC{
+	e.BMC = &bmcv1.VirtualMachineBMC{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agentBMCName,
 			Namespace: namespace,
 		},
 	}
-	return k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc)
+	return k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, e.BMC)
 }
 
 func waitForAgentPodReady(ctx context.Context, k8sClient client.Client, namespace, podName string) {
@@ -457,4 +717,38 @@ func verifyVMHasNoDataVolumeVolume(ctx context.Context, k8sClient client.Client,
 		return true
 	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
 		"VM %s/%s should have no DataVolume volumes", namespace, vmName)
+}
+
+// waitForGuestAgent blocks until the QEMU guest agent is connected on the
+// test VMI.
+func waitForGuestAgent(ctx context.Context, k8sClient client.Client, namespace string) {
+	Eventually(func() bool {
+		vmi := &kubevirtv1.VirtualMachineInstance{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vmi); err != nil {
+			return false
+		}
+		for _, cond := range vmi.Status.Conditions {
+			if cond.Type == kubevirtv1.VirtualMachineInstanceAgentConnected && cond.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}, 10*time.Minute, 5*time.Second).Should(BeTrue(),
+		"guest agent should connect for %s/%s", namespace, agentVMName)
+}
+
+// triggerGuestReboot sends a soft reboot through the QEMU guest agent.
+// With rebootPolicy=Terminate on the VMI, KubeVirt destroys the VMI and
+// creates a new one, consuming the oneshot override.
+func triggerGuestReboot(ctx context.Context, cfg *rest.Config, k8sClient client.Client, namespace string) {
+	waitForGuestAgent(ctx, k8sClient, namespace)
+
+	virtClient, err := kvclient.NewForConfig(cfg)
+	if err != nil {
+		Expect(err).NotTo(HaveOccurred())
+		return
+	}
+	err = virtClient.KubevirtV1().VirtualMachineInstances(namespace).SoftReboot(ctx, agentVMName)
+	// SoftReboot reports an error because the VMI is destroyed mid-call.
+	_ = err
 }

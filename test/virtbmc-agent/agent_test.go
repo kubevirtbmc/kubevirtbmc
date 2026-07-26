@@ -8,10 +8,12 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
-	"kubevirt.io/kubevirtbmc/test/util"
+	"kubevirt.io/kubevirtbmc/pkg/util"
+	testutil "kubevirt.io/kubevirtbmc/test/util"
 )
 
 // Agent e2e tests run in order: IPMI first, then Redfish, then Virtual Media.
@@ -30,6 +32,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		ns = agentNamespace
 		env, err = ensureAgentTestEnv(ctx, ns, k8sClient)
 		Expect(err).NotTo(HaveOccurred())
+
+		By("ensuring IPMI is disabled for a clean starting state")
+		env.BMC.Spec.IPMI = nil
+		Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
 
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
@@ -73,7 +79,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 			By("recording the current pod UID before enabling IPMI")
 			var podBefore corev1.Pod
-			Expect(k8sClient.Get(ctx, util.AgentPodKey(ns), &podBefore)).To(Succeed())
+			Expect(k8sClient.Get(ctx, testutil.AgentPodKey(ns), &podBefore)).To(Succeed())
 
 			By("enabling IPMI on the VirtualMachineBMC")
 			bmc := &bmcv1.VirtualMachineBMC{}
@@ -83,7 +89,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
 
 			By("waiting for new agent pod to be recreated and ready")
-			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
+			Eventually(testutil.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
 
 			By("creating a new Redfish session for the restarted pod")
 			Eventually(func() error {
@@ -171,6 +177,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		})
 
 		Context("Boot device configuration", func() {
+			BeforeEach(func() {
+				resetBootState(ctx, k8sClient, ns)
+			})
+
 			It("should set boot device to PXE", func() {
 				out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
 				Expect(err).NotTo(HaveOccurred())
@@ -214,6 +224,330 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					map[int]uint{0: 2, 1: 1}, // disks: regular=2, cdrom=1
 					map[int]uint{0: 3},       // interface=3
 				)
+			})
+
+			Context("oneshot boot order", func() {
+				It("should save boot override status on oneshot PXE", func() {
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+					Expect(err).NotTo(HaveOccurred())
+					// PXE: interfaces first, then regular disks, then cdroms
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 2, 1: 3},
+						map[int]uint{0: 1},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+				})
+
+				It("should save persistent override marker on persistent PXE", func() {
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe", "options=persistent"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 2, 1: 3},
+						map[int]uint{0: 1},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+				})
+
+				It("should cancel oneshot override with bootdev none", func() {
+					By("setting oneshot PXE first")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 2, 1: 3},
+						map[int]uint{0: 1},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+					By("cancelling with bootdev none")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "none"))
+					Expect(err).NotTo(HaveOccurred())
+
+					By("verifying original boot order restored and backup removed")
+					verifyVMBootOrderNot(ctx, k8sClient, ns, map[int]uint{0: 1, 1: 3}, map[int]uint{0: 2})
+					verifyBMCBootOverride(ctx, k8sClient, ns, false)
+				})
+
+				It("should restore only devices saved in oneshot backup and leave added devices unchanged", func() {
+					DeferCleanup(func() {
+						removeVMDiskAndVolumeIfExists(ctx, k8sClient, ns, issue191DiskName)
+						removeVMDiskAndVolumeIfExists(ctx, k8sClient, ns, issue191RemovedDisk)
+					})
+
+					By("setting original boot orders that will be saved in the oneshot backup")
+					setVMDiskBootOrder(ctx, k8sClient, ns, 0, 9)
+					addEmptyDiskWithBootOrder(ctx, k8sClient, ns, issue191RemovedDisk, 7)
+
+					By("setting oneshot PXE")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMNamedBootOrders(ctx, k8sClient, ns,
+						map[string]*uint{
+							"containerdisk":     util.Ptr[uint](2),
+							"cdrom":             util.Ptr[uint](4),
+							issue191RemovedDisk: util.Ptr[uint](3),
+						},
+						map[string]*uint{"default": util.Ptr[uint](1)},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+					By("removing a device that existed when the backup was saved")
+					removeVMDiskAndVolumeIfExists(ctx, k8sClient, ns, issue191RemovedDisk)
+
+					By("adding a new device with its own boot order after the backup was saved")
+					addEmptyDiskWithBootOrder(ctx, k8sClient, ns, issue191DiskName, 8)
+					verifyVMNamedBootOrders(ctx, k8sClient, ns,
+						map[string]*uint{
+							"containerdisk":  util.Ptr[uint](2),
+							"cdrom":          util.Ptr[uint](4),
+							issue191DiskName: util.Ptr[uint](8),
+						},
+						map[string]*uint{"default": util.Ptr[uint](1)},
+					)
+
+					By("powering off the VM")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIDeleted(ctx, k8sClient, ns)
+
+					By("powering on the VM to consume the oneshot backup")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIRunning(ctx, k8sClient, ns)
+
+					By("verifying existing devices are restored, removed devices are skipped, and added devices are left unchanged")
+					verifyVMNamedBootOrders(ctx, k8sClient, ns,
+						map[string]*uint{
+							"containerdisk":  util.Ptr[uint](9),
+							"cdrom":          nil,
+							issue191DiskName: util.Ptr[uint](8),
+						},
+						map[string]*uint{"default": nil},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, false)
+				})
+
+				It("should set EFI firmware template on running VM", func() {
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe", "options=efiboot"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 2, 1: 3},
+						map[int]uint{0: 1},
+					)
+					verifyVMFirmware(ctx, k8sClient, ns, true)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+				})
+
+				It("should set EFI firmware on stopped VM", func() {
+					By("stopping the VM")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIDeleted(ctx, k8sClient, ns)
+
+					By("setting EFI firmware")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk", "options=persistent,efiboot"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 1, 1: 3},
+						map[int]uint{0: 2},
+					)
+					verifyVMFirmware(ctx, k8sClient, ns, true)
+
+					By("restarting the VM")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIRunning(ctx, k8sClient, ns)
+				})
+
+				It("should restore original boot order after multiple oneshot overrides before reboot", func() {
+					By("setting first oneshot to PXE")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 2, 1: 3},
+						map[int]uint{0: 1},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+					By("setting second oneshot to cdrom before reboot")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "cdrom"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 2, 1: 1},
+						map[int]uint{0: 3},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+					By("powering off the VM")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIDeleted(ctx, k8sClient, ns)
+
+					By("powering on the VM to consume the oneshot")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIRunning(ctx, k8sClient, ns)
+
+					By("verifying the original boot order is restored and backup is cleared")
+					verifyVMNamedBootOrders(ctx, k8sClient, ns,
+						map[string]*uint{"containerdisk": nil, "cdrom": nil},
+						map[string]*uint{"default": nil},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, false)
+
+					By("power cycling to get a clean VMI from the current template")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "power", "cycle"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIPowerCycle(ctx, k8sClient, ns)
+
+					By("waiting for guest agent to be connected")
+					waitForGuestAgent(ctx, k8sClient, ns)
+
+					By("setting oneshot HDD")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 1, 1: 3},
+						map[int]uint{0: 2},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+					By("triggering guest OS reboot — rebootPolicy=Terminate destroys and recreates the VMI")
+					vmiBefore := &kubevirtv1.VirtualMachineInstance{}
+					Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentVMName}, vmiBefore)).To(Succeed())
+					uidBefore := vmiBefore.UID
+					triggerGuestReboot(ctx, config, k8sClient, ns)
+					waitForVMIPowerCycle(ctx, k8sClient, ns)
+					vmiAfter := &kubevirtv1.VirtualMachineInstance{}
+					Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentVMName}, vmiAfter)).To(Succeed())
+					Expect(vmiAfter.UID).NotTo(Equal(uidBefore), "Terminate should recreate the VMI with a new UID")
+
+					By("verifying oneshot was consumed: boot order restored, backup cleared")
+					verifyBMCBootOverride(ctx, k8sClient, ns, false)
+					verifyVMBootOrderNot(ctx, k8sClient, ns, map[int]uint{0: 1, 1: 3}, map[int]uint{0: 2})
+				})
+
+				It("should consume oneshot after guest OS reboot on a VM with rebootPolicy=Terminate", Label("Slow"), func() {
+					By("power cycling to get a clean VMI from the current template")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "power", "cycle"))
+					Expect(err).NotTo(HaveOccurred())
+					waitForVMIPowerCycle(ctx, k8sClient, ns)
+
+					By("waiting for guest agent to be connected")
+					waitForGuestAgent(ctx, k8sClient, ns)
+
+					By("setting oneshot HDD")
+					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk"))
+					Expect(err).NotTo(HaveOccurred())
+					verifyVMBootOrder(ctx, k8sClient, ns,
+						map[int]uint{0: 1, 1: 3},
+						map[int]uint{0: 2},
+					)
+					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+					By("triggering guest OS reboot — rebootPolicy=Terminate destroys and recreates the VMI")
+					vmiBefore := &kubevirtv1.VirtualMachineInstance{}
+					Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentVMName}, vmiBefore)).To(Succeed())
+					uidBefore := vmiBefore.UID
+					triggerGuestReboot(ctx, config, k8sClient, ns)
+					waitForVMIPowerCycle(ctx, k8sClient, ns)
+					vmiAfter := &kubevirtv1.VirtualMachineInstance{}
+					Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentVMName}, vmiAfter)).To(Succeed())
+					Expect(vmiAfter.UID).NotTo(Equal(uidBefore), "Terminate should recreate the VMI with a new UID")
+
+					By("verifying oneshot was consumed: boot order restored, backup cleared")
+					verifyBMCBootOverride(ctx, k8sClient, ns, false)
+					verifyVMBootOrderNot(ctx, k8sClient, ns, map[int]uint{0: 1, 1: 3}, map[int]uint{0: 2})
+				})
+			})
+
+			Context("bootparam get 5", func() {
+				It("should read back oneshot PXE boot flags", func() {
+					By("setting oneshot PXE")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe"))
+					Expect(err).NotTo(HaveOccurred())
+
+					By("reading back boot flags")
+					out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootparam", "get", "5"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out).To(And(
+						ContainSubstring("Boot Flag Valid"),
+						ContainSubstring("only next boot"),
+						ContainSubstring("Force PXE"),
+					))
+				})
+
+				It("should read back persistent HDD boot flags", func() {
+					By("setting persistent disk")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "disk", "options=persistent"))
+					Expect(err).NotTo(HaveOccurred())
+
+					By("reading back boot flags")
+					out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootparam", "get", "5"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out).To(And(
+						ContainSubstring("Boot Flag Valid"),
+						ContainSubstring("all future boots"),
+						ContainSubstring("Force Boot from default Hard-Drive"),
+					))
+				})
+
+				It("should read back EFI oneshot CD boot flags", func() {
+					By("setting EFI oneshot CD")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "cdrom", "options=efiboot"))
+					Expect(err).NotTo(HaveOccurred())
+
+					By("reading back boot flags")
+					out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootparam", "get", "5"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out).To(And(
+						ContainSubstring("Boot Flag Valid"),
+						ContainSubstring("only next boot"),
+						ContainSubstring("Force Boot from CD/DVD"),
+						ContainSubstring("BIOS EFI boot"),
+					))
+				})
+
+				It("should survive agent pod restart and persist boot flags", func() {
+					By("setting persistent PXE as a known state")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe", "options=persistent"))
+					Expect(err).NotTo(HaveOccurred())
+
+					By("recording the current agent pod UID")
+					var podBefore corev1.Pod
+					Expect(k8sClient.Get(ctx, testutil.AgentPodKey(ns), &podBefore)).To(Succeed())
+
+					By("deleting the agent pod to trigger restart")
+					var podToDelete corev1.Pod
+					Expect(k8sClient.Get(ctx, testutil.AgentPodKey(ns), &podToDelete)).To(Succeed())
+					Expect(k8sClient.Delete(ctx, &podToDelete)).To(Succeed())
+
+					By("waiting for new agent pod to be recreated and ready")
+					Eventually(testutil.PodRunningAndReadyWithNewUID(ctx, k8sClient, ns, podBefore.UID), agentTestTimeout, agentTestInterval).Should(BeTrue(), "new agent pod should become ready")
+
+					By("verifying bootparam get 5 returns correct state from CR status after restart")
+					out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootparam", "get", "5"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out).To(And(
+						ContainSubstring("Boot Flag Valid"),
+						ContainSubstring("all future boots"),
+						ContainSubstring("Force PXE"),
+					))
+
+					By("re-creating Redfish session for restarted pod")
+					Eventually(func() error {
+						authToken, err = CreateRedfishSession(ctx, config, ns, env.RedfishBaseURL, env.Username, env.Password)
+						return err
+					}, agentTestTimeout, agentTestInterval).Should(Succeed())
+					Expect(authToken).NotTo(BeEmpty())
+
+					By("verifying Redfish GET also returns correct boot state after restart")
+					out2, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out2).To(And(
+						ContainSubstring(`"BootSourceOverrideTarget":"Pxe"`),
+						ContainSubstring(`"BootSourceOverrideEnabled":"Continuous"`),
+					))
+				})
 			})
 		})
 	})
@@ -327,6 +661,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		})
 
 		Context("Boot configuration", func() {
+			BeforeEach(func() {
+				resetBootState(ctx, k8sClient, ns)
+			})
+
 			It("should return current boot configuration", func() {
 				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
 				Expect(err).NotTo(HaveOccurred())
@@ -334,6 +672,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("should set boot to PXE once", func() {
+				By("setting a one-time PXE boot override through Redfish")
 				body := `{"Boot":{"BootSourceOverrideTarget":"Pxe","BootSourceOverrideEnabled":"Once"}}`
 				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
 				Expect(err).NotTo(HaveOccurred())
@@ -346,9 +685,25 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					map[int]uint{0: 2, 1: 3}, // disks: regular=2, cdrom=3
 					map[int]uint{0: 1},       // interface=1
 				)
+				verifyBMCBootOverride(ctx, k8sClient, ns, true)
+
+				By("powering off the VM")
+				_, err = runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"ForceOff"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIDeleted(ctx, k8sClient, ns)
+
+				By("powering on the VM to consume the one-time override")
+				_, err = runCurlRedfish(ctx, config, ns, redfishSession("POST", "/Systems/1/Actions/ComputerSystem.Reset", `{"ResetType":"On"}`))
+				Expect(err).NotTo(HaveOccurred())
+				waitForVMIRunning(ctx, k8sClient, ns)
+
+				By("verifying the original boot order is restored")
+				verifyVMBootOrderNot(ctx, k8sClient, ns, map[int]uint{0: 2, 1: 3}, map[int]uint{0: 1})
+				verifyBMCBootOverride(ctx, k8sClient, ns, false)
 			})
 
 			It("should set boot to PXE continuous", func() {
+				verifyBMCBootOverride(ctx, k8sClient, ns, false)
 				body := `{"Boot":{"BootSourceOverrideTarget":"Pxe","BootSourceOverrideEnabled":"Continuous"}}`
 				out, err := runCurlRedfish(ctx, config, ns, redfishSession("PATCH", "/Systems/1", body))
 				Expect(err).NotTo(HaveOccurred())
@@ -361,6 +716,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					map[int]uint{0: 2, 1: 3}, // disks: regular=2, cdrom=3
 					map[int]uint{0: 1},       // interface=1
 				)
+				verifyBMCBootOverride(ctx, k8sClient, ns, true)
 			})
 
 			It("should set boot to disk", func() {
@@ -401,6 +757,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("200"),
 					ContainSubstring("204"),
 				))
+				verifyVMFirmware(ctx, k8sClient, ns, true)
 			})
 
 			It("should set boot mode to Legacy", func() {
@@ -411,14 +768,18 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					ContainSubstring("200"),
 					ContainSubstring("204"),
 				))
+				verifyVMFirmware(ctx, k8sClient, ns, false)
 			})
 		})
 
 		Context("System and manager information", func() {
-			It("should return system details", func() {
+			It("should return system details including boot override state", func() {
 				out, err := runCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(ContainSubstring("ComputerSystem"))
+				Expect(out).To(ContainSubstring(`"BootSourceOverrideEnabled"`))
+				Expect(out).To(ContainSubstring(`"BootSourceOverrideTarget"`))
+				Expect(out).To(ContainSubstring(`"BootSourceOverrideMode"`))
 			})
 
 			It("should return manager information", func() {
@@ -431,7 +792,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 	Context("Virtual Media operations", func() {
 		BeforeAll(func() {
-			if !util.VirtualMediaPrerequisitesMet() {
+			if !testutil.VirtualMediaPrerequisitesMet() {
 				Skip("Virtual media tests require CDI (datavolumes.cdi.kubevirt.io) and KubeVirt with DeclarativeHotplugVolumes feature gate enabled; see README.")
 			}
 		})

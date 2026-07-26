@@ -13,6 +13,8 @@ import (
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
+
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 )
 
 // MockResourceManager is a mock of ResourceManager interface.
@@ -37,6 +39,20 @@ func NewMockResourceManager(ctrl *gomock.Controller) *MockResourceManager {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockResourceManager) EXPECT() *MockResourceManagerMockRecorder {
 	return m.recorder
+}
+
+// ClearBootOverrides mocks base method.
+func (m *MockResourceManager) ClearBootOverrides() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearBootOverrides")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearBootOverrides indicates an expected call of ClearBootOverrides.
+func (mr *MockResourceManagerMockRecorder) ClearBootOverrides() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearBootOverrides", reflect.TypeOf((*MockResourceManager)(nil).ClearBootOverrides))
 }
 
 // EjectMedia mocks base method.
@@ -198,17 +214,61 @@ func (mr *MockResourceManagerMockRecorder) PowerOn() *gomock.Call {
 }
 
 // SetBootDevice mocks base method.
-func (m *MockResourceManager) SetBootDevice(arg0 BootDevice) error {
+func (m *MockResourceManager) SetBootDevice(arg0 BootDevice, arg1 *BootOptions) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetBootDevice", arg0)
+	ret := m.ctrl.Call(m, "SetBootDevice", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetBootDevice indicates an expected call of SetBootDevice.
-func (mr *MockResourceManagerMockRecorder) SetBootDevice(arg0 any) *gomock.Call {
+func (mr *MockResourceManagerMockRecorder) SetBootDevice(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBootDevice", reflect.TypeOf((*MockResourceManager)(nil).SetBootDevice), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBootDevice", reflect.TypeOf((*MockResourceManager)(nil).SetBootDevice), arg0, arg1)
+}
+
+// SetFirmwareMode mocks base method.
+func (m *MockResourceManager) SetFirmwareMode(arg0 FirmwareMode) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetFirmwareMode", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetFirmwareMode indicates an expected call of SetFirmwareMode.
+func (mr *MockResourceManagerMockRecorder) SetFirmwareMode(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetFirmwareMode", reflect.TypeOf((*MockResourceManager)(nil).SetFirmwareMode), arg0)
+}
+
+// GetBootFlags mocks base method.
+func (m *MockResourceManager) GetBootFlags() (*BootFlagsState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBootFlags")
+	ret0, _ := ret[0].(*BootFlagsState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBootFlags indicates an expected call of GetBootFlags.
+func (mr *MockResourceManagerMockRecorder) GetBootFlags() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBootFlags", reflect.TypeOf((*MockResourceManager)(nil).GetBootFlags))
+}
+
+// GetBootOverride mocks base method.
+func (m *MockResourceManager) GetBootOverride() (*bmcv1.BootOverrideStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBootOverride")
+	ret0, _ := ret[0].(*bmcv1.BootOverrideStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBootOverride indicates an expected call of GetBootOverride.
+func (mr *MockResourceManagerMockRecorder) GetBootOverride() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBootOverride", reflect.TypeOf((*MockResourceManager)(nil).GetBootOverride))
 }
 
 // GetSystemUUID mocks base method.

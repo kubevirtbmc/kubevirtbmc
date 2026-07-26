@@ -288,6 +288,21 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 	})
 
 	Context("when enableIPMI is toggled from default (disabled)", func() {
+		JustBeforeEach(func() {
+			By("ensuring the BMC starts with IPMI disabled")
+			bmcReset := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), bmcReset)).To(Succeed())
+			bmcReset.Spec.IPMI = nil
+			Expect(k8sClient.Update(ctx, bmcReset)).To(Succeed())
+			Eventually(func() bool {
+				var pod corev1.Pod
+				if err := k8sClient.Get(ctx, util.AgentPodKey(util.E2ENamespace), &pod); err != nil {
+					return false
+				}
+				return len(pod.Spec.Containers) == 1 && len(pod.Spec.Containers[0].Ports) == 1
+			}, timeout, interval).Should(BeTrue(), "Pod should be recreated without IPMI port")
+		})
+
 		It("should recreate Pod and patch Service with IPMI ports", func() {
 			By("recording the current Pod and verifying it has no IPMI port")
 			var podBefore corev1.Pod

@@ -47,3 +47,21 @@ rules:
   - watch
   - create
   - delete
+- apiGroups:
+  - bmc.kubevirt.io
+  resources:
+  - virtualmachinebmcs
+  verbs:
+  - get
+- apiGroups:
+  - bmc.kubevirt.io
+  resources:
+  - virtualmachinebmcs/status
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get

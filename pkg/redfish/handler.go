@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/generated/redfish/server"
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
 	"kubevirt.io/kubevirtbmc/pkg/session"
@@ -204,30 +205,105 @@ func (h *handler) GetComputerSystem() (*server.ComputerSystemV1220ComputerSystem
 		return nil, fmt.Errorf("computerSystem is not a *resourcemanager.ComputerSystemAdapter (got %T)", computerSystem)
 	}
 
-	return adapter.ComputerSystem(), nil
+	cs := adapter.ComputerSystem()
+
+	// GetBootFlags (VM spec + status.bootOverride) is authoritative; the
+	// in-memory ComputerSystem model is lost on pod restart.
+	if flags, err := h.rm.GetBootFlags(); err == nil && flags != nil {
+		cs.Boot.BootSourceOverrideTarget = resourcemanager.BootDeviceToRedfishTarget(flags.BootDevice)
+		cs.Boot.BootSourceOverrideMode = resourcemanager.EFIBootToRedfishMode(flags.EFIBoot)
+		if flags.OverrideActive {
+			if flags.Mode == resourcemanager.BootModeOneshot {
+				cs.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE
+			} else {
+				cs.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS
+			}
+		} else {
+			cs.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED
+		}
+	}
+
+	return cs, nil
 }
 
 func (h *handler) PatchComputerSystem(computerSystemPatch *server.ComputerSystemV1220ComputerSystem) error {
 	boot := computerSystemPatch.Boot
-	if boot.BootSourceOverrideEnabled != server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED {
-		var bootDevice resourcemanager.BootDevice
+	firmwareMode, hasFirmwareMode := redfishFirmwareMode(boot.BootSourceOverrideMode)
 
-		switch boot.BootSourceOverrideTarget {
-		case server.COMPUTERSYSTEMBOOTSOURCE_PXE:
-			bootDevice = resourcemanager.BootDevicePxe
-		case server.COMPUTERSYSTEMBOOTSOURCE_HDD:
-			bootDevice = resourcemanager.BootDeviceHdd
-		case server.COMPUTERSYSTEMBOOTSOURCE_CD:
-			bootDevice = resourcemanager.BootDeviceCd
-		default:
-			return nil
-		}
-
-		if err := h.rm.SetBootDevice(bootDevice); err != nil {
+	var bootMode resourcemanager.BootMode
+	hasBootOverride := true
+	switch boot.BootSourceOverrideEnabled {
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED:
+		if err := h.rm.ClearBootOverrides(); err != nil {
 			return err
 		}
+		if hasFirmwareMode {
+			return h.rm.SetFirmwareMode(firmwareMode)
+		}
+		return nil
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE:
+		bootMode = resourcemanager.BootModeOneshot
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS:
+		bootMode = resourcemanager.BootModePersistent
+	case "":
+		// Enabled omitted: per DSP0266, PATCH leaves absent properties
+		// unchanged, so the target applies under the current override mode.
+		// (ironic sends target-only PATCHes when the desired enabled state
+		// already matches the reported one.)
+		override, err := h.rm.GetBootOverride()
+		if err != nil {
+			return err
+		}
+		if override == nil {
+			hasBootOverride = false
+		} else if override.Mode == bmcv1.BootOverrideModeOneshot {
+			bootMode = resourcemanager.BootModeOneshot
+		} else {
+			bootMode = resourcemanager.BootModePersistent
+		}
+	default:
+		hasBootOverride = false
+	}
+
+	if !hasBootOverride {
+		if hasFirmwareMode {
+			return h.rm.SetFirmwareMode(firmwareMode)
+		}
+		return nil
+	}
+
+	var bootDevice resourcemanager.BootDevice
+	switch boot.BootSourceOverrideTarget {
+	case server.COMPUTERSYSTEMBOOTSOURCE_PXE:
+		bootDevice = resourcemanager.BootDevicePxe
+	case server.COMPUTERSYSTEMBOOTSOURCE_HDD:
+		bootDevice = resourcemanager.BootDeviceHdd
+	case server.COMPUTERSYSTEMBOOTSOURCE_CD:
+		bootDevice = resourcemanager.BootDeviceCd
+	default:
+		return nil
+	}
+
+	opts := &resourcemanager.BootOptions{Mode: bootMode}
+	if hasFirmwareMode {
+		efiBoot := firmwareMode == resourcemanager.FirmwareModeUEFI
+		opts.EFIBoot = &efiBoot
+	}
+	if err := h.rm.SetBootDevice(bootDevice, opts); err != nil {
+		return err
 	}
 	return nil
+}
+
+func redfishFirmwareMode(mode server.ComputerSystemV1220BootSourceOverrideMode) (resourcemanager.FirmwareMode, bool) {
+	switch mode {
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI:
+		return resourcemanager.FirmwareModeUEFI, true
+	case server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY:
+		return resourcemanager.FirmwareModeLegacy, true
+	default:
+		return "", false
+	}
 }
 
 func (h *handler) ComputerSystemReset(resetType server.ResourceResetType) error {
@@ -254,5 +330,5 @@ func (h *handler) ComputerSystemSetDefaultBootOrder(bootDevices []string) error 
 	if len(bootDevices) > 0 {
 		bootDevice = resourcemanager.BootDevice(bootDevices[0])
 	}
-	return h.rm.SetBootDevice(bootDevice)
+	return h.rm.SetBootDevice(bootDevice, &resourcemanager.BootOptions{Mode: resourcemanager.BootModePersistent})
 }

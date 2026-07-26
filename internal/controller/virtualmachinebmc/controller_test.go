@@ -151,6 +151,13 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(createdPod.Spec.Containers[0].Name).To(Equal(virtBMCContainerName))
 			Expect(createdPod.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal(DefaultAgentCPURequest))
 			Expect(createdPod.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal(DefaultAgentMemoryRequest))
+			hasPodNameEnv := false
+			for _, env := range createdPod.Spec.Containers[0].Env {
+				if env.Name == "POD_NAME" && env.ValueFrom != nil && env.ValueFrom.FieldRef != nil && env.ValueFrom.FieldRef.FieldPath == "metadata.name" {
+					hasPodNameEnv = true
+				}
+			}
+			Expect(hasPodNameEnv).To(BeTrue())
 
 			By("Checking that the Service is created with correct name")
 			svcLookupKey := types.NamespacedName{

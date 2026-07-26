@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -261,12 +262,14 @@ func E2EVM(namespace string) *kubevirtv1.VirtualMachine {
 							Interfaces: []kubevirtv1.Interface{
 								{Name: "default", InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{Masquerade: &kubevirtv1.InterfaceMasquerade{}}},
 							},
+							Rng: &kubevirtv1.Rng{},
 						},
+						RebootPolicy: ptr.To(kubevirtv1.RebootPolicyTerminate),
 					},
 					Volumes: []kubevirtv1.Volume{
 						{Name: "containerdisk", VolumeSource: kubevirtv1.VolumeSource{
 							ContainerDisk: &kubevirtv1.ContainerDiskSource{
-								Image:           "quay.io/kubevirt/cirros-container-disk-demo",
+								Image:           "quay.io/kubevirt/fedora-with-test-tooling-container-disk:devel",
 								ImagePullPolicy: corev1.PullIfNotPresent,
 							},
 						}},

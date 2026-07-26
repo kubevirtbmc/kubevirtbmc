@@ -15,6 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy the go source
 COPY cmd/virtbmc/main.go cmd/virtbmc/main.go
+COPY api/ api/
 COPY pkg/ pkg/
 
 # Build

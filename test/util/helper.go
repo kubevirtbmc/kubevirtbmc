@@ -1,9 +1,11 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -145,6 +147,10 @@ func InstallKubeVirt() error {
 		fmt.Println("KVM is available, skipping useEmulation")
 	}
 
+	// RebootPolicy gate: guest-OS-initiated reboots recreate the VMI when
+	// the VM uses rebootPolicy=Terminate (needed for oneshot consumption e2e).
+	ensureRebootPolicyFeatureGate()
+
 	Eventually(func() (string, error) {
 		cmd := exec.Command("kubectl", "get", "kubevirt", "kubevirt", "-n", "kubevirt", "-o", "jsonpath={.status.phase}")
 		out, err := Run(cmd)
@@ -155,6 +161,39 @@ func InstallKubeVirt() error {
 	}, "5m", "5s").Should(Equal("Deployed"), "KubeVirt should reach Deployed phase")
 
 	return nil
+}
+
+// ensureRebootPolicyFeatureGate adds the RebootPolicy feature gate to the
+// KubeVirt CR if not already present.
+func ensureRebootPolicyFeatureGate() {
+	cmd := exec.Command("kubectl", "get", "kubevirt", "kubevirt", "-n", "kubevirt",
+		"-o", "jsonpath={.spec.configuration.developerConfiguration.featureGates}", "--ignore-not-found")
+	out, err := Run(cmd)
+	if err != nil {
+		fmt.Printf("Failed to get KubeVirt feature gates: %v\n", err)
+		return
+	}
+
+	var gates []string
+	raw := strings.TrimSpace(out)
+	if raw != "" && raw != "[]" {
+		if err := json.Unmarshal([]byte(raw), &gates); err != nil {
+			fmt.Printf("Failed to parse KubeVirt feature gates: %v\n", err)
+			return
+		}
+	}
+
+	if slices.Contains(gates, "RebootPolicy") {
+		return
+	}
+
+	gates = append(gates, "RebootPolicy")
+	gatesJSON, _ := json.Marshal(gates)
+	patch := fmt.Sprintf(`{"spec":{"configuration":{"developerConfiguration":{"featureGates":%s}}}}`, string(gatesJSON))
+	cmd = exec.Command("kubectl", "patch", "kubevirt", "kubevirt", "-n", "kubevirt", "--type=merge", "-p", patch)
+	if _, err := Run(cmd); err != nil {
+		fmt.Printf("Failed to enable RebootPolicy feature gate: %v\n", err)
+	}
 }
 
 func InstallCertManager() error {

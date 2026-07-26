@@ -94,6 +94,46 @@ spec:
           status:
             description: VirtualMachineBMCStatus defines the observed state of VirtualMachineBMC.
             properties:
+              bootOverride:
+                description: |-
+                  BootOverride is the currently active boot override, nil when the system
+                  boots per its normal boot order.
+                properties:
+                  bootOrders:
+                    additionalProperties:
+                      type: integer
+                    description: |-
+                      BootOrders captures every bootable device present when the oneshot was
+                      issued, keyed "<class>:<name>" where class is "disk", "cdrom" or
+                      "interface" (matching the BMC device vocabulary) and name is the
+                      KubeVirt device name (devices.disks[].name / devices.interfaces[].name).
+                      A zero value means the device existed but had no bootOrder (bootOrder
+                      counts from 1), which distinguishes it from devices added after the
+                      backup was taken.
+                    type: object
+                  mode:
+                    description: BootOverrideMode is the persistence mode of a boot
+                      override.
+                    enum:
+                    - Oneshot
+                    - Persistent
+                    type: string
+                  originalFirmware:
+                    description: |-
+                      OriginalFirmware records the VM firmware bootloader type when the
+                      oneshot backup was taken.
+                    enum:
+                    - Legacy
+                    - UEFI
+                    type: string
+                  vmiUID:
+                    description: |-
+                      VMIUID is the UID of the VMI generation current when a oneshot override
+                      was issued. A UID change means the oneshot boot was consumed.
+                    type: string
+                required:
+                - mode
+                type: object
               clusterIP:
                 description: IP address exposed by the BMC service
                 type: string

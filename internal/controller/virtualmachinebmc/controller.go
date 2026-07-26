@@ -231,6 +231,14 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 								},
 							},
 						},
+						{
+							Name: "POD_NAME",
+							ValueFrom: &corev1.EnvVarSource{
+								FieldRef: &corev1.ObjectFieldSelector{
+									FieldPath: "metadata.name",
+								},
+							},
+						},
 					},
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
@@ -318,6 +326,18 @@ func (r *VirtualMachineBMCReconciler) deleteVirtBMCPod(ctx context.Context, virt
 	return nil
 }
 
+// patchStatusCondition records the given condition on the VirtualMachineBMC
+// status. It uses a merge patch computed from the pre-mutation object rather
+// than a full status update, so a status field written by another actor (the
+// virtbmc pod writing status.bootOverride) is never clobbered by a stale copy.
+func (r *VirtualMachineBMCReconciler) patchStatusCondition(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC, condition metav1.Condition) error {
+	orig := virtualMachineBMC.DeepCopy()
+	if !meta.SetStatusCondition(&virtualMachineBMC.Status.Conditions, condition) {
+		return nil
+	}
+	return r.Status().Patch(ctx, virtualMachineBMC, client.MergeFrom(orig))
+}
+
 func (r *VirtualMachineBMCReconciler) validateVirtualMachineExists(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (bool, error) {
 	log := log.FromContext(ctx)
 
@@ -333,29 +353,26 @@ func (r *VirtualMachineBMCReconciler) validateVirtualMachineExists(ctx context.C
 				"vm", virtualMachineBMC.Spec.VirtualMachineRef.Name,
 				"namespace", virtualMachineBMC.Namespace)
 
-			if changed := meta.SetStatusCondition(&virtualMachineBMC.Status.Conditions, metav1.Condition{
+			return false, r.patchStatusCondition(ctx, virtualMachineBMC, metav1.Condition{
 				Type:   bmcv1.ConditionVirtualMachineAvailable,
 				Status: metav1.ConditionFalse,
 				Reason: "VirtualMachineNotFound",
 				Message: fmt.Sprintf("VirtualMachine %q not found in namespace %q",
 					virtualMachineBMC.Spec.VirtualMachineRef.Name,
 					virtualMachineBMC.Namespace),
-			}); changed {
-				return false, r.Status().Update(ctx, virtualMachineBMC)
-			}
-			return false, nil
+			})
 		}
 		log.Error(err, "error checking VirtualMachine existence")
 		return false, err
 	}
 
-	if changed := meta.SetStatusCondition(&virtualMachineBMC.Status.Conditions, metav1.Condition{
+	if err := r.patchStatusCondition(ctx, virtualMachineBMC, metav1.Condition{
 		Type:    bmcv1.ConditionVirtualMachineAvailable,
 		Status:  metav1.ConditionTrue,
 		Reason:  "VirtualMachineFound",
 		Message: fmt.Sprintf("VirtualMachine %q is available", virtualMachineBMC.Spec.VirtualMachineRef.Name),
-	}); changed {
-		return false, r.Status().Update(ctx, virtualMachineBMC)
+	}); err != nil {
+		return false, err
 	}
 	return true, nil
 }
@@ -380,30 +397,26 @@ func (r *VirtualMachineBMCReconciler) validateSecretExists(ctx context.Context, 
 				"secret", virtualMachineBMC.Spec.AuthSecretRef.Name,
 				"namespace", virtualMachineBMC.Namespace)
 
-			if changed := meta.SetStatusCondition(&virtualMachineBMC.Status.Conditions, metav1.Condition{
+			return false, r.patchStatusCondition(ctx, virtualMachineBMC, metav1.Condition{
 				Type:   bmcv1.ConditionSecretAvailable,
 				Status: metav1.ConditionFalse,
 				Reason: "SecretNotFound",
 				Message: fmt.Sprintf("Secret %q not found in namespace %q",
 					virtualMachineBMC.Spec.AuthSecretRef.Name,
 					virtualMachineBMC.Namespace),
-			}); changed {
-				return false, r.Status().Update(ctx, virtualMachineBMC)
-
-			}
-			return false, nil
+			})
 		}
 		log.Error(err, "error checking Secret existence")
 		return false, err
 	}
 
-	if changed := meta.SetStatusCondition(&virtualMachineBMC.Status.Conditions, metav1.Condition{
+	if err := r.patchStatusCondition(ctx, virtualMachineBMC, metav1.Condition{
 		Type:    bmcv1.ConditionSecretAvailable,
 		Status:  metav1.ConditionTrue,
 		Reason:  "SecretFound",
 		Message: fmt.Sprintf("Secret %q is available", virtualMachineBMC.Spec.AuthSecretRef.Name),
-	}); changed {
-		return false, r.Status().Update(ctx, virtualMachineBMC)
+	}); err != nil {
+		return false, err
 	}
 	return true, nil
 }

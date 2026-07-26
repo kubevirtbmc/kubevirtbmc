@@ -27,9 +27,11 @@ import (
 	"kubevirt.io/kubevirtbmc/test/util"
 )
 
+const envTrueValue = "true"
+
 var (
-	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == "true"
-	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
+	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == envTrueValue
+	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == envTrueValue
 	isCertManagerAlreadyInstalled = false
 
 	repo = func() string {
@@ -113,10 +115,14 @@ var _ = BeforeSuite(func() {
 	time.Sleep(util.WebhookRegistrationDelay)
 
 	By("ensuring test VM, Secret and VirtualMachineBMC exist and waiting for VMI and agent pod")
-	Expect(util.EnsureTestVMSecretBMC(ctx, k8sClient, agentNamespace, agentTestTimeout, agentTestInterval)).To(Succeed())
+	Expect(util.EnsureTestVMSecretBMC(ctx, k8sClient, agentNamespace, suiteInitTimeout, agentTestInterval)).To(Succeed())
 })
 
 var _ = AfterSuite(func() {
+	if os.Getenv("KEEP_ENV") == envTrueValue {
+		_, _ = fmt.Fprintf(GinkgoWriter, "KEEP_ENV=true, skipping teardown\n")
+		return
+	}
 	By("undeploying the controller-manager")
 	cmd := exec.Command("make", "undeploy")
 	_, _ = util.Run(cmd)

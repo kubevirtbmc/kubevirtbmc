@@ -13,7 +13,34 @@ type ComputerSystemInterface interface {
 	Id() string
 	GetPowerState() server.ResourcePowerState
 	SetPowerState(powerState server.ResourcePowerState)
-	SetBootOverride(server.ComputerSystemBootSource)
+	SetBootOverride(BootDevice, OverrideMode)
+	SetFirmwareMode(FirmwareMode)
+	ClearBootOverride()
+}
+
+var (
+	overrideModeToRedfish = map[OverrideMode]server.ComputerSystemV1220BootSourceOverrideEnabled{
+		OverrideModeDisabled:   server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
+		OverrideModeOnce:       server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
+		OverrideModeContinuous: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
+	}
+	firmwareModeToRedfish = map[FirmwareMode]server.ComputerSystemV1220BootSourceOverrideMode{
+		FirmwareModeLegacy: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY,
+		FirmwareModeUEFI:   server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI,
+	}
+)
+
+// BootDeviceToRedfishTarget maps a BootDevice to the Redfish BootSource enum.
+func BootDeviceToRedfishTarget(d BootDevice) server.ComputerSystemBootSource {
+	return bootSourceMap[d]
+}
+
+// EFIBootToRedfishMode maps the EFI firmware flag to the Redfish override mode.
+func EFIBootToRedfishMode(efi bool) server.ComputerSystemV1220BootSourceOverrideMode {
+	if efi {
+		return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI
+	}
+	return server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY
 }
 
 type ComputerSystemAdapter struct {
@@ -119,7 +146,15 @@ func (a *ComputerSystemAdapter) SetPowerState(powerState server.ResourcePowerSta
 	a.computerSystem.PowerState = powerState
 }
 
-func (a *ComputerSystemAdapter) SetBootOverride(target server.ComputerSystemBootSource) {
-	a.computerSystem.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS
-	a.computerSystem.Boot.BootSourceOverrideTarget = target
+func (a *ComputerSystemAdapter) SetBootOverride(device BootDevice, mode OverrideMode) {
+	a.computerSystem.Boot.BootSourceOverrideTarget = bootSourceMap[device]
+	a.computerSystem.Boot.BootSourceOverrideEnabled = overrideModeToRedfish[mode]
+}
+
+func (a *ComputerSystemAdapter) SetFirmwareMode(mode FirmwareMode) {
+	a.computerSystem.Boot.BootSourceOverrideMode = firmwareModeToRedfish[mode]
+}
+
+func (a *ComputerSystemAdapter) ClearBootOverride() {
+	a.computerSystem.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED
 }

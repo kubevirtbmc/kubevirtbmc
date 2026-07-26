@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
+	ctlbootorderrestore "kubevirt.io/kubevirtbmc/internal/controller/bootorderrestore"
 	ctlservice "kubevirt.io/kubevirtbmc/internal/controller/service"
 	ctlvirtualmachinebmc "kubevirt.io/kubevirtbmc/internal/controller/virtualmachinebmc"
 	webhookvirtualmachinebmc "kubevirt.io/kubevirtbmc/internal/webhook/bmc/v1beta1"
@@ -175,6 +176,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Service")
+		os.Exit(1)
+	}
+	if err = (&ctlbootorderrestore.BootOrderRestoreReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BootOrderRestore")
 		os.Exit(1)
 	}
 	if err = webhookvirtualmachinebmc.SetupVirtualMachineBMCWebhookWithManager(mgr); err != nil {

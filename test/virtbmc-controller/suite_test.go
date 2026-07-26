@@ -27,13 +27,14 @@ import (
 )
 
 const (
-	timeout  = time.Second * 60
-	interval = time.Millisecond * 250
+	timeout      = time.Second * 90
+	interval     = time.Millisecond * 250
+	envTrueValue = "true"
 )
 
 var (
-	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == "true"
-	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
+	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == envTrueValue
+	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == envTrueValue
 	isCertManagerAlreadyInstalled = false
 
 	repo = func() string {
@@ -105,6 +106,10 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
+	if os.Getenv("KEEP_ENV") == envTrueValue {
+		_, _ = fmt.Fprintf(GinkgoWriter, "KEEP_ENV=true, skipping teardown\n")
+		return
+	}
 	// Delete test resources and undeploy the controller-manager; KubeVirt and cert-manager base install remain.
 	if k8sClient != nil {
 		ctx := context.Background()

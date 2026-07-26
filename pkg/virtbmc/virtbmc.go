@@ -5,9 +5,12 @@ import (
 	"fmt"
 
 	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
 	kvclient "kubevirt.io/client-go/kubevirt"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/ipmi"
 	"kubevirt.io/kubevirtbmc/pkg/redfish"
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
@@ -25,6 +28,7 @@ type Options struct {
 	BMCUser        string
 	BMCPassword    string
 	EnableIPMI     bool
+	PodName        string
 }
 
 type VirtBMC struct {
@@ -34,6 +38,7 @@ type VirtBMC struct {
 	redfishPort int
 	vmNamespace string
 	vmName      string
+	bmcName     string
 
 	virtClient kvclient.Interface
 	cdiClient  cdiclient.Interface
@@ -48,7 +53,15 @@ type VirtBMC struct {
 func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC, error) {
 	virtClient := NewVirtClient(options)
 	cdiClient := NewCdiClient(options)
-	resourceManager := resourcemanager.NewVirtualMachineResourceManager(ctx, virtClient, cdiClient)
+	bmcClient := NewBMCClient(options)
+
+	vmNamespace := ctx.Value(VMNamespaceKey{}).(string)
+	vmName := ctx.Value(VMNameKey{}).(string)
+	bmcName, err := virtualMachineBMCNameFromPodOwner(ctx, bmcClient, vmNamespace, options.PodName)
+	if err != nil {
+		return nil, err
+	}
+	resourceManager := resourcemanager.NewVirtualMachineResourceManager(ctx, virtClient, cdiClient, bmcClient, bmcName)
 
 	var ipmiSimulator *ipmi.Simulator
 	if options.EnableIPMI {
@@ -60,8 +73,9 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 		address:         options.Address,
 		ipmiPort:        options.IPMIPort,
 		redfishPort:     options.RedfishPort,
-		vmNamespace:     ctx.Value(VMNamespaceKey{}).(string),
-		vmName:          ctx.Value(VMNameKey{}).(string),
+		vmNamespace:     vmNamespace,
+		vmName:          vmName,
+		bmcName:         bmcName,
 		virtClient:      virtClient,
 		cdiClient:       cdiClient,
 		resourceManager: resourceManager,
@@ -69,6 +83,25 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 		redfishEmulator: redfish.NewEmulator(ctx, options.RedfishPort, options.BMCUser, options.BMCPassword, resourceManager),
 		enableIPMI:      options.EnableIPMI,
 	}, nil
+}
+
+func virtualMachineBMCNameFromPodOwner(ctx context.Context, bmcClient client.Client, namespace, podName string) (string, error) {
+	if podName == "" {
+		return "", fmt.Errorf("POD_NAME is required to resolve VirtualMachineBMC owner")
+	}
+
+	pod := &corev1.Pod{}
+	if err := bmcClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: podName}, pod); err != nil {
+		return "", fmt.Errorf("failed to get own pod %s/%s: %w", namespace, podName, err)
+	}
+
+	for _, owner := range pod.OwnerReferences {
+		if owner.APIVersion == bmcv1.GroupVersion.String() && owner.Kind == "VirtualMachineBMC" {
+			return owner.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("pod %s/%s has no VirtualMachineBMC ownerReference", namespace, podName)
 }
 
 func (b *VirtBMC) Run() error {

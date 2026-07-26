@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/generated/redfish/server"
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
 	"kubevirt.io/kubevirtbmc/pkg/session"
@@ -15,6 +16,51 @@ const (
 	testUsername = "admin"
 	testPassword = "admin123"
 )
+
+func expectSetBootDevice(
+	t *testing.T,
+	mockRM *resourcemanager.MockResourceManager,
+	device resourcemanager.BootDevice,
+	mode resourcemanager.BootMode,
+	returnErr error,
+) {
+	t.Helper()
+	mockRM.EXPECT().
+		SetBootDevice(device, gomock.AssignableToTypeOf(&resourcemanager.BootOptions{})).
+		DoAndReturn(func(_ resourcemanager.BootDevice, opts *resourcemanager.BootOptions) error {
+			assert.Equal(t, mode, opts.Mode)
+			assert.Nil(t, opts.EFIBoot)
+			return returnErr
+		})
+}
+
+func expectSetBootDeviceWithEFI(
+	t *testing.T,
+	mockRM *resourcemanager.MockResourceManager,
+	device resourcemanager.BootDevice,
+	mode resourcemanager.BootMode,
+	efiBoot bool,
+	returnErr error,
+) {
+	t.Helper()
+	mockRM.EXPECT().
+		SetBootDevice(device, gomock.AssignableToTypeOf(&resourcemanager.BootOptions{})).
+		DoAndReturn(func(_ resourcemanager.BootDevice, opts *resourcemanager.BootOptions) error {
+			assert.Equal(t, mode, opts.Mode)
+			if assert.NotNil(t, opts.EFIBoot) {
+				assert.Equal(t, efiBoot, *opts.EFIBoot)
+			}
+			return returnErr
+		})
+}
+
+func expectSetFirmwareMode(
+	mockRM *resourcemanager.MockResourceManager,
+	mode resourcemanager.FirmwareMode,
+	returnErr error,
+) {
+	mockRM.EXPECT().SetFirmwareMode(mode).Return(returnErr)
+}
 
 func TestAuthenticate(t *testing.T) {
 	ctl := gomock.NewController(t)
@@ -150,7 +196,9 @@ func TestPatchComputerSystem(t *testing.T) {
 			boot: server.ComputerSystemV1220Boot{
 				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
 			},
-			mockSetup:   func() {},
+			mockSetup: func() {
+				mockRM.EXPECT().ClearBootOverrides().Return(nil)
+			},
 			expectError: false,
 		},
 		{
@@ -160,7 +208,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDevicePxe, resourcemanager.BootModeOneshot, nil)
 			},
 			expectError: false,
 		},
@@ -171,7 +219,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDevicePxe, resourcemanager.BootModePersistent, nil)
 			},
 			expectError: false,
 		},
@@ -182,7 +230,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceHdd, resourcemanager.BootModeOneshot, nil)
 			},
 			expectError: false,
 		},
@@ -193,7 +241,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceHdd, resourcemanager.BootModePersistent, nil)
 			},
 			expectError: false,
 		},
@@ -222,7 +270,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDevicePxe).Return(assert.AnError)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDevicePxe, resourcemanager.BootModeOneshot, assert.AnError)
 			},
 			expectError: true,
 		},
@@ -233,7 +281,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceHdd).Return(assert.AnError)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceHdd, resourcemanager.BootModeOneshot, assert.AnError)
 			},
 			expectError: true,
 		},
@@ -244,7 +292,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceCd, resourcemanager.BootModeOneshot, nil)
 			},
 			expectError: false,
 		},
@@ -255,7 +303,7 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceCd, resourcemanager.BootModePersistent, nil)
 			},
 			expectError: false,
 		},
@@ -266,9 +314,102 @@ func TestPatchComputerSystem(t *testing.T) {
 				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_CD,
 			},
 			mockSetup: func() {
-				mockRM.EXPECT().SetBootDevice(resourcemanager.BootDeviceCd).Return(assert.AnError)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceCd, resourcemanager.BootModeOneshot, assert.AnError)
 			},
 			expectError: true,
+		},
+		{
+			name: "valid boot source override target to PXE once with UEFI mode",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
+				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_PXE,
+				BootSourceOverrideMode:    server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI,
+			},
+			mockSetup: func() {
+				expectSetBootDeviceWithEFI(t, mockRM, resourcemanager.BootDevicePxe, resourcemanager.BootModeOneshot, true, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "valid boot source override target to HDD continuous with Legacy mode",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
+				BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
+				BootSourceOverrideMode:    server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY,
+			},
+			mockSetup: func() {
+				expectSetBootDeviceWithEFI(t, mockRM, resourcemanager.BootDeviceHdd, resourcemanager.BootModePersistent, false, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "valid UEFI mode without boot override",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideMode: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().GetBootOverride().Return(nil, nil)
+				expectSetFirmwareMode(mockRM, resourcemanager.FirmwareModeUEFI, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "valid Legacy mode without boot override",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideMode: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().GetBootOverride().Return(nil, nil)
+				expectSetFirmwareMode(mockRM, resourcemanager.FirmwareModeLegacy, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "failed to set UEFI mode without boot override",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideMode: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_UEFI,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().GetBootOverride().Return(nil, nil)
+				expectSetFirmwareMode(mockRM, resourcemanager.FirmwareModeUEFI, assert.AnError)
+			},
+			expectError: true,
+		},
+		{
+			name: "target-only PATCH applies under active continuous override",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideTarget: server.COMPUTERSYSTEMBOOTSOURCE_CD,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().GetBootOverride().Return(&bmcv1.BootOverrideStatus{
+					Mode: bmcv1.BootOverrideModePersistent,
+				}, nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDeviceCd, resourcemanager.BootModePersistent, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "target-only PATCH applies under active oneshot override",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideTarget: server.COMPUTERSYSTEMBOOTSOURCE_PXE,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().GetBootOverride().Return(&bmcv1.BootOverrideStatus{
+					Mode: bmcv1.BootOverrideModeOneshot,
+				}, nil)
+				expectSetBootDevice(t, mockRM, resourcemanager.BootDevicePxe, resourcemanager.BootModeOneshot, nil)
+			},
+			expectError: false,
+		},
+		{
+			name: "target-only PATCH without active override is a no-op",
+			boot: server.ComputerSystemV1220Boot{
+				BootSourceOverrideTarget: server.COMPUTERSYSTEMBOOTSOURCE_CD,
+			},
+			mockSetup: func() {
+				mockRM.EXPECT().GetBootOverride().Return(nil, nil)
+			},
+			expectError: false,
 		},
 	}
 

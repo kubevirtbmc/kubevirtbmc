@@ -46,16 +46,13 @@ func (noopHAL) Close() error              { return nil }
 // reset line without power cycling, making it strictly less brutal; it maps to
 // a graceful restart.
 //
-// SetBootFlags translates the typed BootDeviceSelector (spec Table 28-6) into a
-// KubeVirt SetBootDevice call, which patches the persistent bootOrder in the VM
-// spec. The full BootFlags / BootInfoAcknowledge structures are intentionally
-// NOT mirrored in memory: the virtbmc pod is stateless and a restart would
-// lose any in-memory copy, causing GetBootFlags / GetBootInfoAcknowledge to
-// return values inconsistent with the actual VM spec bootOrder. Rather than
-// expose that inconsistency, both Get methods consistently return
-// hal.ErrNotSupported, which go-ipmi maps to CodeBootParamNotSupported (0x80,
-// spec §28.13). The authoritative, persistent boot state lives in the VM spec,
-// written via rm.SetBootDevice — not in the BMC's boot-flags register.
+// Boot flags (spec §28.13 parameter 5) are not mirrored in BMC memory — the
+// virtbmc pod is stateless and a restart would lose any in-memory copy. The
+// authoritative boot state lives in the VM spec and status.bootOverride on
+// the VirtualMachineBMC CR: SetBootFlags writes it via rm.SetBootDevice /
+// rm.ClearBootOverrides, GetBootFlags reads it back via rm.GetBootFlags.
+// GetBootInfoAcknowledge has no KubeVirt counterpart and returns
+// hal.ErrNotSupported (→ 0x80, spec §28.13).
 type vmChassis struct {
 	rm resourcemanager.ResourceManager
 }
@@ -107,34 +104,85 @@ func (vmChassis) IntrusionState(context.Context) (bool, error) {
 	return false, hal.ErrNotSupported
 }
 
-// SetBootFlags translates the typed BootDeviceSelector into a KubeVirt
-// SetBootDevice call (the persistent side effect, patched into the VM spec).
-// The flags are not mirrored in memory; see the vmChassis doc comment for the
-// rationale. Unrecognised selectors (no-override, BIOS setup, diagnostic
-// partition, floppy, ...) produce no KubeVirt side effect and are acknowledged.
+// SetBootFlags commits boot flags (spec Table 28-6) to the KubeVirt VM spec.
+// ForcePXE/ForceHardDrive/ForceCDROM map to rm.SetBootDevice with BootOptions
+// carrying the persistence mode (Persist bit) and firmware type (BIOSBootType);
+// NoOverride maps to rm.ClearBootOverrides. Other selectors (BIOS setup,
+// diagnostic partition, floppy, …) are acknowledged without side effect.
+//
+// Deliberate spec deviation: BIOSBootType (data 1 bit 5) is only honored when
+// set (1b = EFI). Per Table 28-14 the bit is always meaningful and 0b requests
+// a PC-compatible (legacy) boot, but ipmitool has no legacy option — 0b is the
+// default every plain `chassis bootdev` sends — so 0b cannot distinguish
+// "explicit legacy request" from "unspecified". Treating 0b as a legacy
+// request would make every plain bootdev on an EFI VM a firmware switch, which
+// is far heavier than a boot-order override and almost never intended. EFI can
+// be reverted to legacy through Redfish BootSourceOverrideMode=Legacy instead.
 func (c vmChassis) SetBootFlags(_ context.Context, flags *ipmi.BootOptionParam_BootFlags) error {
 	if flags == nil {
 		return hal.ErrNotSupported
 	}
-	if device, ok := kubevirtBootDevice(flags.BootDeviceSelector); ok {
-		return c.rm.SetBootDevice(device)
+
+	if flags.BootDeviceSelector == ipmi.BootDeviceSelectorNoOverride {
+		return c.rm.ClearBootOverrides()
 	}
-	return nil
+
+	device, ok := kubevirtBootDevice(flags.BootDeviceSelector)
+	if !ok {
+		return nil
+	}
+
+	opts := &resourcemanager.BootOptions{}
+	if flags.Persist {
+		opts.Mode = resourcemanager.BootModePersistent
+	} else {
+		opts.Mode = resourcemanager.BootModeOneshot
+	}
+	if flags.BIOSBootType {
+		efiBoot := true
+		opts.EFIBoot = &efiBoot
+	}
+
+	return c.rm.SetBootDevice(device, opts)
 }
 
-// GetBootFlags always returns ErrNotSupported (→ 0x80). The virtual BMC does
-// not persist boot flags: a pod restart would lose any in-memory copy and
-// return values inconsistent with the actual VM spec bootOrder. Reporting
-// "parameter not supported" consistently is preferable to returning stale or
-// divergent state. The persistent boot order lives in the VM spec, written via
-// SetBootFlags → rm.SetBootDevice.
-func (vmChassis) GetBootFlags(context.Context) (*ipmi.BootOptionParam_BootFlags, error) {
-	return nil, hal.ErrNotSupported
+// GetBootFlags reads back boot flags (device, firmware type, persistence)
+// derived by the ResourceManager from the VM spec and status.bootOverride.
+func (c vmChassis) GetBootFlags(_ context.Context) (*ipmi.BootOptionParam_BootFlags, error) {
+	state, err := c.rm.GetBootFlags()
+	if err != nil {
+		return nil, hal.ErrNotSupported
+	}
+	if state == nil {
+		return nil, hal.ErrNotSupported
+	}
+
+	flags := &ipmi.BootOptionParam_BootFlags{
+		BootFlagsValid: state.OverrideActive,
+		Persist:        state.Mode == resourcemanager.BootModePersistent,
+		BIOSBootType:   ipmi.BIOSBootType(state.EFIBoot),
+	}
+
+	if state.OverrideActive {
+		switch state.BootDevice {
+		case resourcemanager.BootDevicePxe:
+			flags.BootDeviceSelector = ipmi.BootDeviceSelectorForcePXE
+		case resourcemanager.BootDeviceHdd:
+			flags.BootDeviceSelector = ipmi.BootDeviceSelectorForceHardDrive
+		case resourcemanager.BootDeviceCd:
+			flags.BootDeviceSelector = ipmi.BootDeviceSelectorForceCDROM
+		default:
+			flags.BootDeviceSelector = ipmi.BootDeviceSelectorNoOverride
+		}
+	} else {
+		flags.BootDeviceSelector = ipmi.BootDeviceSelectorNoOverride
+	}
+
+	return flags, nil
 }
 
 // SetBootInfoAcknowledge is accepted as a no-op (spec §28.14 explicitly allows
-// a no-op HAL). KubeVirt has no corresponding concept, and the value is not
-// persisted — see GetBootFlags rationale.
+// a no-op HAL). KubeVirt has no corresponding concept.
 func (vmChassis) SetBootInfoAcknowledge(_ context.Context, ack *ipmi.BootOptionParam_BootInfoAcknowledge) error {
 	if ack == nil {
 		return hal.ErrNotSupported
@@ -143,7 +191,7 @@ func (vmChassis) SetBootInfoAcknowledge(_ context.Context, ack *ipmi.BootOptionP
 }
 
 // GetBootInfoAcknowledge always returns ErrNotSupported (→ 0x80); the value is
-// not persisted. See GetBootFlags rationale.
+// not persisted anywhere.
 func (vmChassis) GetBootInfoAcknowledge(context.Context) (*ipmi.BootOptionParam_BootInfoAcknowledge, error) {
 	return nil, hal.ErrNotSupported
 }
