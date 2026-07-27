@@ -152,6 +152,24 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(createdPod.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal(DefaultAgentCPURequest))
 			Expect(createdPod.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal(DefaultAgentMemoryRequest))
 
+			By("Checking that the Pod and container have a restricted-compliant securityContext")
+			Expect(createdPod.Spec.SecurityContext).NotTo(BeNil())
+			Expect(createdPod.Spec.SecurityContext.RunAsNonRoot).NotTo(BeNil())
+			Expect(*createdPod.Spec.SecurityContext.RunAsNonRoot).To(BeTrue())
+			Expect(createdPod.Spec.SecurityContext.SeccompProfile).NotTo(BeNil())
+			Expect(createdPod.Spec.SecurityContext.SeccompProfile.Type).To(Equal(corev1.SeccompProfileTypeRuntimeDefault))
+
+			container := createdPod.Spec.Containers[0]
+			Expect(container.SecurityContext).NotTo(BeNil())
+			Expect(container.SecurityContext.AllowPrivilegeEscalation).NotTo(BeNil())
+			Expect(*container.SecurityContext.AllowPrivilegeEscalation).To(BeFalse())
+			Expect(container.SecurityContext.ReadOnlyRootFilesystem).NotTo(BeNil())
+			Expect(*container.SecurityContext.ReadOnlyRootFilesystem).To(BeTrue())
+			Expect(container.SecurityContext.RunAsNonRoot).NotTo(BeNil())
+			Expect(*container.SecurityContext.RunAsNonRoot).To(BeTrue())
+			Expect(container.SecurityContext.Capabilities).NotTo(BeNil())
+			Expect(container.SecurityContext.Capabilities.Drop).To(ConsistOf(corev1.Capability("ALL")))
+
 			By("Checking that the Service is created with correct name")
 			svcLookupKey := types.NamespacedName{
 				Name:      testVMName + "-virtbmc",
