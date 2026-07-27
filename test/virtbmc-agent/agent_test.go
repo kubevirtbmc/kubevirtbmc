@@ -236,6 +236,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 						map[int]uint{0: 1},
 					)
 					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+					verifyBMCBootOverrideMode(ctx, k8sClient, ns, bmcv1.BootOverrideModeOneshot)
 				})
 
 				It("should save persistent override marker on persistent PXE", func() {
@@ -246,6 +247,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 						map[int]uint{0: 1},
 					)
 					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+					verifyBMCBootOverrideMode(ctx, k8sClient, ns, bmcv1.BootOverrideModePersistent)
 				})
 
 				It("should cancel oneshot override with bootdev none", func() {
@@ -335,6 +337,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					)
 					verifyVMFirmware(ctx, k8sClient, ns, true)
 					verifyBMCBootOverride(ctx, k8sClient, ns, true)
+					verifyBMCBootOverrideMode(ctx, k8sClient, ns, bmcv1.BootOverrideModeOneshot)
 				})
 
 				It("should set EFI firmware on stopped VM", func() {
@@ -351,6 +354,8 @@ var _ = Describe("Agent e2e", Ordered, func() {
 						map[int]uint{0: 2},
 					)
 					verifyVMFirmware(ctx, k8sClient, ns, true)
+					// options=persistent,efiboot must not be downgraded to oneshot
+					verifyBMCBootOverrideMode(ctx, k8sClient, ns, bmcv1.BootOverrideModePersistent)
 
 					By("restarting the VM")
 					_, _, err = runIPMIInCluster(ctx, config, ns, ipmiReq("power", "on"))
@@ -503,6 +508,22 @@ var _ = Describe("Agent e2e", Ordered, func() {
 						ContainSubstring("Boot Flag Valid"),
 						ContainSubstring("only next boot"),
 						ContainSubstring("Force Boot from CD/DVD"),
+						ContainSubstring("BIOS EFI boot"),
+					))
+				})
+
+				It("should read back persistent EFI PXE boot flags", func() {
+					By("setting persistent EFI PXE")
+					_, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootdev", "pxe", "options=persistent,efiboot"))
+					Expect(err).NotTo(HaveOccurred())
+
+					By("reading back boot flags")
+					out, _, err := runIPMIInCluster(ctx, config, ns, ipmiReq("chassis", "bootparam", "get", "5"))
+					Expect(err).NotTo(HaveOccurred())
+					Expect(out).To(And(
+						ContainSubstring("Boot Flag Valid"),
+						ContainSubstring("all future boots"),
+						ContainSubstring("Force PXE"),
 						ContainSubstring("BIOS EFI boot"),
 					))
 				})

@@ -435,6 +435,23 @@ func verifyBMCBootOverride(ctx context.Context, k8sClient client.Client, namespa
 		"VirtualMachineBMC %s/%s should have status.bootOverride present=%v", namespace, agentBMCName, shouldExist)
 }
 
+// verifyBMCBootOverrideMode polls until status.bootOverride exists with the
+// expected persistence mode. A presence-only check cannot catch a mis-parsed
+// persist bit: the override is still written, just with the wrong mode.
+func verifyBMCBootOverrideMode(ctx context.Context, k8sClient client.Client, namespace string, mode bmcv1.BootOverrideMode) {
+	Eventually(func() bmcv1.BootOverrideMode {
+		bmc := &bmcv1.VirtualMachineBMC{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {
+			return ""
+		}
+		if bmc.Status.BootOverride == nil {
+			return ""
+		}
+		return bmc.Status.BootOverride.Mode
+	}, agentTestTimeout, agentTestInterval).Should(Equal(mode),
+		"VirtualMachineBMC %s/%s should have status.bootOverride.mode=%s", namespace, agentBMCName, mode)
+}
+
 func (e *agentTestEnv) ensureSecretExists(ctx context.Context, k8sClient client.Client, namespace string) error {
 	secret := &corev1.Secret{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentSecretName}, secret); err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -448,13 +449,22 @@ func (m *VirtualMachineResourceManager) isEFIBoot() bool {
 	return !currentFirmwareIsBios(vm)
 }
 
+// efiBootLogValue renders the EFIBoot tri-state for logs: nil (firmware
+// untouched) must read differently from an explicit false.
+func efiBootLogValue(efiBoot *bool) string {
+	if efiBoot == nil {
+		return "unset"
+	}
+	return strconv.FormatBool(*efiBoot)
+}
+
 func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice, opts *BootOptions) error {
 	// Default to persistent when no options provided.
 	if opts == nil {
 		opts = &BootOptions{Mode: BootModePersistent}
 	}
 
-	logrus.Infof("SetBootDevice: %s (mode=%s, efi=%v)", bootDevice, opts.Mode, opts.EFIBoot)
+	logrus.Infof("SetBootDevice: %s (mode=%s, efi=%s)", bootDevice, opts.Mode, efiBootLogValue(opts.EFIBoot))
 
 	// Fetch the VM only to discover device indices for patch paths.
 	// The actual mutation is done via JSON Patch to avoid full-UPDATE races.
