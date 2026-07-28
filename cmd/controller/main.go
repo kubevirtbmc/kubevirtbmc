@@ -118,10 +118,15 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	enableWebhooks := os.Getenv("ENABLE_WEBHOOKS") != "false"
+
 	// Create webhook server
-	webhookServer := webhook.NewServer(webhook.Options{
-		TLSOpts: tlsOpts,
-	})
+	var webhookServer webhook.Server
+	if enableWebhooks {
+		webhookServer = webhook.NewServer(webhook.Options{
+			TLSOpts: tlsOpts,
+		})
+	}
 
 	// Configure metrics server
 	metricsServerOptions := metricsserver.Options{
@@ -177,9 +182,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Service")
 		os.Exit(1)
 	}
-	if err = webhookvirtualmachinebmc.SetupVirtualMachineBMCWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to set up webhook", "webhook", "VirtualMachineBMC")
-		os.Exit(1)
+	if enableWebhooks {
+		if err = webhookvirtualmachinebmc.SetupVirtualMachineBMCWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to set up webhook", "webhook", "VirtualMachineBMC")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("webhooks disabled via ENABLE_WEBHOOKS=false")
 	}
 	//+kubebuilder:scaffold:builder
 

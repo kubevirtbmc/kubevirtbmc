@@ -157,7 +157,7 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -trimpath -ldflags $(LINKFLAGS) -o bin/virtbmc cmd/virtbmc/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt vet install install-virtbmc-rbac ## Run a controller from your host.
 	go run ./cmd/controller/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
@@ -201,6 +201,14 @@ endif
 .PHONY: install
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
+
+.PHONY: install-virtbmc-rbac
+install-virtbmc-rbac: kustomize 
+	@TMP_DIR=$$(mktemp -d); \
+	cp config/virtbmc/role.yaml $$TMP_DIR/role.yaml; \
+	(cd $$TMP_DIR && $(KUSTOMIZE) create --resources role.yaml --nameprefix kubevirtbmc- >/dev/null); \
+	$(KUSTOMIZE) build $$TMP_DIR | $(KUBECTL) apply -f -; \
+	rm -rf $$TMP_DIR
 
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
