@@ -161,17 +161,23 @@ func (r *VirtualMachineBMCReconciler) constructPodFromVirtualMachineBMC(virtualM
 		secretName = virtualMachineBMC.Spec.AuthSecretRef.Name
 	}
 
+	annotations := map[string]string{
+		EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
+	}
+
+	if virtualMachineBMC.Spec.NetworkRef != "" {
+		annotations[MultusNetworksAnnotation] = virtualMachineBMC.Spec.NetworkRef
+	}
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
 				VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
 				VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
 			},
-			Annotations: map[string]string{
-				EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
-			},
-			Name:      name,
-			Namespace: virtualMachineBMC.Namespace,
+			Annotations: annotations,
+			Name:        name,
+			Namespace:   virtualMachineBMC.Namespace,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: serviceAccountName,
@@ -524,6 +530,52 @@ func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, v
 	return true, nil
 }
 
+func specNetworkRef(spec *bmcv1.VirtualMachineBMCSpec) string {
+	return spec.NetworkRef
+}
+
+func podNetworkRef(pod *corev1.Pod) string {
+	if pod == nil {
+		return ""
+	}
+
+	return pod.Annotations[MultusNetworksAnnotation]
+}
+
+// reconcileNetworkChange detects a mismatch between the spec's NetworkRef and
+// the annotation stamped on the existing pod. Since pod networking is immutable,
+// the pod must be recreated when the network attachment changes.
+func (r *VirtualMachineBMCReconciler) reconcileNetworkChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (deleted bool, err error) {
+
+	log := log.FromContext(ctx)
+
+	pod, err := r.getVirtBMCPod(ctx, virtualMachineBMC)
+	if err != nil {
+		return false, err
+	}
+
+	if pod == nil {
+		return false, nil
+	}
+
+	currentNetworkRef := podNetworkRef(pod)
+	desiredNetworkRef := specNetworkRef(&virtualMachineBMC.Spec)
+
+	if currentNetworkRef == desiredNetworkRef {
+		return false, nil
+	}
+
+	log.Info("networkRef changed, replacing pod",
+		"currentNetworkRef", currentNetworkRef,
+		"desiredNetworkRef", desiredNetworkRef)
+
+	if err := r.deleteVirtBMCPod(ctx, virtualMachineBMC); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachineinstances,verbs=get;list;watch;delete
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs,verbs=get;list;watch;create;update;patch;delete
@@ -590,6 +642,14 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	if err := r.ensureRBACResources(ctx, &virtualMachineBMC); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	deleted, err = r.reconcileNetworkChange(ctx, &virtualMachineBMC)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if deleted {
+		return ctrl.Result{}, nil
 	}
 
 	// Prepare the virtBMC Pod

@@ -28,6 +28,14 @@ const (
 	E2EWebhookServiceName      = "kubevirtbmc-webhook-service"
 	E2EWebhookServiceNamespace = "kubevirtbmc-system"
 	WebhookRegistrationDelay   = 10 * time.Second
+
+	// E2EMultusNetworkName is the name of the NetworkAttachmentDefinition
+	// created during e2e setup. It is used as the NetworkRef value in tests.
+	E2EMultusNetworkName = "test-multus-network"
+
+	// MultusNetworksAnnotation is the pod annotation key that Multus uses
+	// to attach additional network interfaces.
+	MultusNetworksAnnotation = "k8s.v1.cni.cncf.io/networks"
 )
 
 func AgentPodKey(namespace string) types.NamespacedName {

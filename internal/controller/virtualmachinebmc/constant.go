@@ -17,4 +17,5 @@ const (
 	VMNameLabel                = "kubevirt.io/vm-name"
 	VirtualMachineBMCNamespace = "kubevirtbmc-system"
 	EnableIPMIAnnotation       = "bmc.kubevirt.io/enable-ipmi"
+	MultusNetworksAnnotation   = "k8s.v1.cni.cncf.io/networks"
 )
