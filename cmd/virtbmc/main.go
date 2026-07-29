@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
@@ -99,7 +100,7 @@ func run(ctx context.Context, options virtbmc.Options) error {
 	// trap Ctrl+C can call cancel on the context
 	ctx, cancel := context.WithCancel(ctx)
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	defer func() {
 		signal.Stop(c)
 		cancel()

@@ -35,7 +35,7 @@ const (
 	issue191DiskName    = "oneshot-conflict-disk"
 	issue191RemovedDisk = "oneshot-removed-disk"
 	curlImage           = "curlimages/curl:latest"
-	ipmitoolImage       = "ghcr.io/halfcrazy/ipmitool:latest" // ipmitool v1.8.19
+	ipmitoolImage       = "kubevirtbmc/ipmitool:latest" // ipmitool v1.8.19
 	agentTestTimeout    = 60 * time.Second
 	agentTestInterval   = 250 * time.Millisecond
 	agentPodName        = "testvm-virtbmc"
