@@ -14,7 +14,7 @@ import (
 
 const (
 	certManagerURLFmt      = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
-	kubeVirtStableVersion  = "https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt"
+	kubeVirtVersion        = "v1.8.3"
 	kubeVirtOperatorURLFmt = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-operator.yaml"
 	kubeVirtCRURLFmt       = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-cr.yaml"
 )
@@ -113,23 +113,13 @@ func IsKubeVirtInstalled() bool {
 }
 
 func InstallKubeVirt() error {
-	cmd := exec.Command("curl", "-sL", kubeVirtStableVersion)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("get KubeVirt version: %w", err)
-	}
-	version := strings.TrimSpace(string(out))
-	if version == "" {
-		return fmt.Errorf("empty KubeVirt version from %s", kubeVirtStableVersion)
-	}
-
-	operatorURL := fmt.Sprintf(kubeVirtOperatorURLFmt, version)
-	cmd = exec.Command("kubectl", "apply", "-f", operatorURL)
+	operatorURL := fmt.Sprintf(kubeVirtOperatorURLFmt, kubeVirtVersion)
+	cmd := exec.Command("kubectl", "apply", "-f", operatorURL)
 	if _, err := Run(cmd); err != nil {
 		return fmt.Errorf("apply KubeVirt operator: %w", err)
 	}
 
-	crURL := fmt.Sprintf(kubeVirtCRURLFmt, version)
+	crURL := fmt.Sprintf(kubeVirtCRURLFmt, kubeVirtVersion)
 	cmd = exec.Command("kubectl", "apply", "-f", crURL)
 	if _, err := Run(cmd); err != nil {
 		return fmt.Errorf("apply KubeVirt CR: %w", err)
