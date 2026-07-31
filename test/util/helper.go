@@ -14,7 +14,7 @@ import (
 
 const (
 	certManagerURLFmt      = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
-	kubeVirtVersion        = "v1.8.3"
+	kubeVirtVersion        = "v1.8.4"
 	kubeVirtOperatorURLFmt = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-operator.yaml"
 	kubeVirtCRURLFmt       = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-cr.yaml"
 )
