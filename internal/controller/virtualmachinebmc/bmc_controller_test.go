@@ -659,11 +659,11 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(updatedDeployment.Spec.Template.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
 		})
 
-		It("Should delete and recreate Pod and patch Service when enableIPMI is changed", func() {
+		It("Should delete and recreate Deployment and patch Service when enableIPMI is changed", func() {
 			ctx := context.Background()
 
 			By("Getting VirtualMachine and Secret from the first test")
-			podLookupKey := types.NamespacedName{
+			deploymentLookupKey := types.NamespacedName{
 				Name:      testVMName + "-virtbmc",
 				Namespace: testVirtualMachineBMCNamespace,
 			}
@@ -676,20 +676,20 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				Namespace: testVirtualMachineBMCNamespace,
 			}
 
-			var originalPod corev1.Pod
+			var originalDeployment appsv1.Deployment
 			var originalSvc corev1.Service
 			Eventually(func() bool {
-				err1 := k8sClient.Get(ctx, podLookupKey, &originalPod)
+				err1 := k8sClient.Get(ctx, deploymentLookupKey, &originalDeployment)
 				err2 := k8sClient.Get(ctx, svcLookupKey, &originalSvc)
 				return err1 == nil && err2 == nil
 			}, timeout, interval).Should(BeTrue())
 
-			originalPodUID := originalPod.UID
+			originalDeploymentUID := originalDeployment.UID
 			originalSvcUID := originalSvc.UID
 			originalSvcClusterIP := originalSvc.Spec.ClusterIP
 
-			Expect(originalPod.Spec.Containers[0].Ports).To(HaveLen(1))
-			Expect(originalPod.Spec.Containers[0].Ports[0].Name).To(Equal(redfishPortName))
+			Expect(originalDeployment.Spec.Template.Spec.Containers[0].Ports).To(HaveLen(1))
+			Expect(originalDeployment.Spec.Template.Spec.Containers[0].Ports[0].Name).To(Equal(redfishPortName))
 
 			Expect(originalSvc.Spec.Ports).To(HaveLen(1))
 			Expect(originalSvc.Spec.Ports[0].Name).To(Equal(redfishPortName))
@@ -700,30 +700,30 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			updatedBMC.Spec.IPMI = &bmcv1.IPMISpec{Enabled: boolPtr(true)}
 			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
 
-			By("Verifying that Pod is recreated (new UID) and Service is patched (same UID) with IPMI ports")
-			var newPod corev1.Pod
+			By("Verifying that Deployment is recreated (new UID) and Service is patched (same UID) with IPMI ports")
+			var newDeployment appsv1.Deployment
 			var newSvc corev1.Service
 			Eventually(func() bool {
-				if err := k8sClient.Get(ctx, podLookupKey, &newPod); err != nil {
+				if err := k8sClient.Get(ctx, deploymentLookupKey, &newDeployment); err != nil {
 					return false
 				}
 				if err := k8sClient.Get(ctx, svcLookupKey, &newSvc); err != nil {
 					return false
 				}
-				if newPod.UID == originalPodUID {
+				if newDeployment.UID == originalDeploymentUID {
 					return false
 				}
 				if newSvc.UID != originalSvcUID {
 					return false
 				}
-				if len(newPod.Spec.Containers[0].Ports) < 2 || len(newSvc.Spec.Ports) < 2 {
+				if len(newDeployment.Spec.Template.Spec.Containers[0].Ports) < 2 || len(newSvc.Spec.Ports) < 2 {
 					return false
 				}
 				return true
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(newPod.Spec.Containers[0].Ports).To(HaveLen(2))
-			portNames := []string{newPod.Spec.Containers[0].Ports[0].Name, newPod.Spec.Containers[0].Ports[1].Name}
+			Expect(newDeployment.Spec.Template.Spec.Containers[0].Ports).To(HaveLen(2))
+			portNames := []string{newDeployment.Spec.Template.Spec.Containers[0].Ports[0].Name, newDeployment.Spec.Template.Spec.Containers[0].Ports[1].Name}
 			Expect(portNames).To(ContainElement(redfishPortName))
 			Expect(portNames).To(ContainElement(ipmiPortName))
 
