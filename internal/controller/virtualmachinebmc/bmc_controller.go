@@ -159,15 +159,15 @@ func (r *VirtualMachineBMCReconciler) constructServiceFromVirtualMachineBMC(virt
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
-				VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
+				bmcv1.VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
+				bmcv1.VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
 			},
 			Name:      name,
 			Namespace: virtualMachineBMC.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
-				VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
+				bmcv1.VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
 			},
 			Ports: func() []corev1.ServicePort {
 				ports := []corev1.ServicePort{

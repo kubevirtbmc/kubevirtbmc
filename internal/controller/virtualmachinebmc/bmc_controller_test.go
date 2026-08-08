@@ -145,10 +145,10 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(createdDeployment.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
-			Expect(createdDeployment.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
-			Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
-			Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
+			Expect(createdDeployment.Labels).To(HaveKeyWithValue(bmcv1.VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
+			Expect(createdDeployment.Labels).To(HaveKeyWithValue(bmcv1.VMNameLabel, testVMName))
+			Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue(bmcv1.VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
+			Expect(createdDeployment.Spec.Template.Labels).To(HaveKeyWithValue(bmcv1.VMNameLabel, testVMName))
 			Expect(createdDeployment.Spec.Template.Spec.ServiceAccountName).To(Equal(serviceAccountName))
 			Expect(createdDeployment.Spec.Template.Spec.Containers).To(HaveLen(1))
 			Expect(createdDeployment.Spec.Template.Spec.Containers[0].Name).To(Equal(virtBMCContainerName))
@@ -192,9 +192,9 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(createdSvc.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
-			Expect(createdSvc.Labels).To(HaveKeyWithValue(VMNameLabel, testVMName))
-			Expect(createdSvc.Spec.Selector).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
+			Expect(createdSvc.Labels).To(HaveKeyWithValue(bmcv1.VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
+			Expect(createdSvc.Labels).To(HaveKeyWithValue(bmcv1.VMNameLabel, testVMName))
+			Expect(createdSvc.Spec.Selector).To(HaveKeyWithValue(bmcv1.VirtualMachineBMCNameLabel, testVirtualMachineBMCName))
 			Expect(createdSvc.Spec.Ports).To(HaveLen(1))
 		})
 
@@ -654,8 +654,8 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return restartedAt != "" && restartedAt != originalRestartedAt
 			}, timeout, interval).Should(BeTrue())
 
-			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VirtualMachineBMCNameLabel, bmcName))
-			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(VMNameLabel, vmName))
+			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(bmcv1.VirtualMachineBMCNameLabel, bmcName))
+			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(bmcv1.VMNameLabel, vmName))
 			Expect(updatedDeployment.Spec.Template.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
 		})
 

@@ -85,7 +85,6 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 	}, nil
 }
 
-// Resolved via label, not ownerReferences: the agent Pod is owned by a ReplicaSet, not the VirtualMachineBMC directly.
 func virtualMachineBMCNameFromPodLabel(ctx context.Context, bmcClient client.Client, namespace, podName string) (string, error) {
 	if podName == "" {
 		return "", fmt.Errorf("POD_NAME is required to resolve VirtualMachineBMC owner")

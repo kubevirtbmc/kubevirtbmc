@@ -52,8 +52,8 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 	}
 
 	labels := map[string]string{
-		VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
-		VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
+		bmcv1.VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
+		bmcv1.VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
 	}
 
 	deployment := &appsv1.Deployment{

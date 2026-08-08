@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
-	ctlvirtualmachinebmc "kubevirt.io/kubevirtbmc/internal/controller/virtualmachinebmc"
 )
 
 // ServiceReconciler reconciles a Service object
@@ -60,7 +59,7 @@ func (s *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if svc.Labels == nil {
 		return ctrl.Result{}, nil
 	}
-	virtualMachineBMCName, ok := svc.Labels[ctlvirtualmachinebmc.VirtualMachineBMCNameLabel]
+	virtualMachineBMCName, ok := svc.Labels[bmcv1.VirtualMachineBMCNameLabel]
 	if !ok {
 		return ctrl.Result{}, nil
 	}

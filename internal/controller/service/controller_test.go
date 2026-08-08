@@ -86,7 +86,7 @@ var _ = Describe("Service Controller", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						ctlvirtualmachinebmc.VirtualMachineBMCNameLabel: testVirtualMachineBMCName,
+						bmcv1.VirtualMachineBMCNameLabel: testVirtualMachineBMCName,
 					},
 					Name:      testVMName + "-virtbmc",
 					Namespace: testVirtualMachineBMCNamespace,
@@ -204,7 +204,7 @@ var _ = Describe("Service Controller", func() {
 			svc := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						ctlvirtualmachinebmc.VirtualMachineBMCNameLabel: "test-vmbmc-no-ip",
+						bmcv1.VirtualMachineBMCNameLabel: "test-vmbmc-no-ip",
 					},
 					Name:      "test-vm-no-ip-virtbmc",
 					Namespace: testVirtualMachineBMCNamespace,
