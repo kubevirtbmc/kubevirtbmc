@@ -19,7 +19,6 @@ package virtualmachinebmc
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 	"time"
 
@@ -31,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
@@ -38,6 +38,7 @@ import (
 
 const (
 	defaultDesiredReplicas int32 = 1
+	fieldManager                 = "kubevirtbmc-controller"
 )
 
 func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC *bmcv1.VirtualMachineBMC) *appsv1.Deployment {
@@ -180,62 +181,18 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 func (r *VirtualMachineBMCReconciler) ensureVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
 	log := log.FromContext(ctx)
 
-	desiredDeployment := r.createVirtBMCDeployment(virtualMachineBMC)
-	if err := ctrl.SetControllerReference(virtualMachineBMC, desiredDeployment, r.Scheme); err != nil {
+	desired := r.createVirtBMCDeployment(virtualMachineBMC)
+	desired.SetGroupVersionKind(appsv1.SchemeGroupVersion.WithKind("Deployment"))
+	if err := ctrl.SetControllerReference(virtualMachineBMC, desired, r.Scheme); err != nil {
 		return err
 	}
 
-	if err := r.Create(ctx, desiredDeployment); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			existingDeployment, getErr := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
-			if getErr != nil {
-				return getErr
-			}
-			if existingDeployment == nil {
-				return nil
-			}
-
-			restartedAt := ""
-			if existingDeployment.Spec.Template.Annotations != nil {
-				restartedAt = existingDeployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
-			}
-
-			changed := false
-			if !reflect.DeepEqual(existingDeployment.Spec.Template.Spec, desiredDeployment.Spec.Template.Spec) {
-				existingDeployment.Spec.Template.Spec = desiredDeployment.Spec.Template.Spec
-				changed = true
-			}
-			if restartedAt != "" {
-				desiredAnnotations := map[string]string{
-					"kubectl.kubernetes.io/restartedAt": restartedAt,
-				}
-				if !reflect.DeepEqual(existingDeployment.Spec.Template.Annotations, desiredAnnotations) {
-					existingDeployment.Spec.Template.Annotations = desiredAnnotations
-					changed = true
-				}
-			} else {
-				if existingDeployment.Spec.Template.Annotations != nil {
-					existingDeployment.Spec.Template.Annotations = nil
-					changed = true
-				}
-			}
-
-			if !changed {
-				return nil
-			}
-
-			if err := r.Update(ctx, existingDeployment); err != nil {
-				log.Error(err, "unable to reconcile Deployment for VirtualMachineBMC", "deployment", existingDeployment.Name)
-				return err
-			}
-			log.V(1).Info("reconciled Deployment for VirtualMachineBMC", "deployment", existingDeployment.Name)
-			return nil
-		}
-		log.Error(err, "unable to create Deployment for VirtualMachineBMC", "deployment", desiredDeployment.Name)
+	if err := r.Patch(ctx, desired, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
+		log.Error(err, "unable to apply Deployment for VirtualMachineBMC", "deployment", desired.Name)
 		return err
 	}
 
-	log.V(1).Info("created Deployment for VirtualMachineBMC", "deployment", desiredDeployment.Name)
+	log.V(1).Info("applied Deployment for VirtualMachineBMC", "deployment", desired.Name)
 	return nil
 }
 

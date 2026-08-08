@@ -10,11 +10,15 @@ import (
 	kvclient "kubevirt.io/client-go/kubevirt"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/ipmi"
 	"kubevirt.io/kubevirtbmc/pkg/redfish"
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
 )
+
+// virtualMachineBMCNameLabel must match virtualMachineBMCNameLabel.
+// Duplicated here (rather than imported) because Dockerfile.virtbmc only
+// copies api/ and pkg/ into the agent's build context, not internal/.
+const virtualMachineBMCNameLabel = "kubevirt.io/virtualmachinebmc-name"
 
 type VMNameKey struct{}
 
@@ -57,7 +61,7 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 
 	vmNamespace := ctx.Value(VMNamespaceKey{}).(string)
 	vmName := ctx.Value(VMNameKey{}).(string)
-	bmcName, err := virtualMachineBMCNameFromPodOwner(ctx, bmcClient, vmNamespace, options.PodName)
+	bmcName, err := virtualMachineBMCNameFromPodLabel(ctx, bmcClient, vmNamespace, options.PodName)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +89,9 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 	}, nil
 }
 
-func virtualMachineBMCNameFromPodOwner(ctx context.Context, bmcClient client.Client, namespace, podName string) (string, error) {
+// The agent Pod is owned by a ReplicaSet, not directly by the
+// VirtualMachineBMC, so we resolve via label instead of ownerReferences.
+func virtualMachineBMCNameFromPodLabel(ctx context.Context, bmcClient client.Client, namespace, podName string) (string, error) {
 	if podName == "" {
 		return "", fmt.Errorf("POD_NAME is required to resolve VirtualMachineBMC owner")
 	}
@@ -95,13 +101,12 @@ func virtualMachineBMCNameFromPodOwner(ctx context.Context, bmcClient client.Cli
 		return "", fmt.Errorf("failed to get own pod %s/%s: %w", namespace, podName, err)
 	}
 
-	for _, owner := range pod.OwnerReferences {
-		if owner.APIVersion == bmcv1.GroupVersion.String() && owner.Kind == "VirtualMachineBMC" {
-			return owner.Name, nil
-		}
+	if name, ok := pod.Labels[virtualMachineBMCNameLabel]; ok && name != "" {
+		return name, nil
 	}
 
-	return "", fmt.Errorf("pod %s/%s has no VirtualMachineBMC ownerReference", namespace, podName)
+	return "", fmt.Errorf("pod %s/%s has no %s label identifying its VirtualMachineBMC",
+		namespace, podName, virtualMachineBMCNameLabel)
 }
 
 func (b *VirtBMC) Run() error {

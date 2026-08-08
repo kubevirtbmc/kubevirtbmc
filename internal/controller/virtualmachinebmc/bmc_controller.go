@@ -450,6 +450,19 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	// Delete the pre-Deployment fixed-name agent pod so the new Deployment
+	// is the sole agent. Runs before Apply to avoid dual-serving on the Service.
+	deployName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+	legacyPod := &corev1.Pod{}
+	err = r.Get(ctx, types.NamespacedName{Name: deployName, Namespace: virtualMachineBMC.Namespace}, legacyPod)
+	if err == nil && metav1.IsControlledBy(legacyPod, &virtualMachineBMC) {
+		if err := r.Delete(ctx, legacyPod); err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
+	} else if err != nil && !apierrors.IsNotFound(err) {
+		return ctrl.Result{}, err
+	}
+
 	if err := r.ensureVirtBMCDeployment(ctx, &virtualMachineBMC); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -473,10 +486,10 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineBMCReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, ownerKey, func(rawObj client.Object) []string {
-		// grab the pod object, extract the owner...
-		pod := rawObj.(*corev1.Pod)
-		owner := metav1.GetControllerOf(pod)
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &appsv1.Deployment{}, ownerKey, func(rawObj client.Object) []string {
+		// grab the deployment object, extract the owner...
+		deployment := rawObj.(*appsv1.Deployment)
+		owner := metav1.GetControllerOf(deployment)
 		if owner == nil {
 			return nil
 		}
@@ -511,7 +524,7 @@ func (r *VirtualMachineBMCReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&bmcv1.VirtualMachineBMC{}).
-		Owns(&corev1.Pod{}).
+		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&rbacv1.RoleBinding{}).
