@@ -10,15 +10,11 @@ import (
 	kvclient "kubevirt.io/client-go/kubevirt"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/ipmi"
 	"kubevirt.io/kubevirtbmc/pkg/redfish"
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
 )
-
-// virtualMachineBMCNameLabel must match virtualMachineBMCNameLabel.
-// Duplicated here (rather than imported) because Dockerfile.virtbmc only
-// copies api/ and pkg/ into the agent's build context, not internal/.
-const virtualMachineBMCNameLabel = "kubevirt.io/virtualmachinebmc-name"
 
 type VMNameKey struct{}
 
@@ -89,8 +85,7 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 	}, nil
 }
 
-// The agent Pod is owned by a ReplicaSet, not directly by the
-// VirtualMachineBMC, so we resolve via label instead of ownerReferences.
+// Resolved via label, not ownerReferences: the agent Pod is owned by a ReplicaSet, not the VirtualMachineBMC directly.
 func virtualMachineBMCNameFromPodLabel(ctx context.Context, bmcClient client.Client, namespace, podName string) (string, error) {
 	if podName == "" {
 		return "", fmt.Errorf("POD_NAME is required to resolve VirtualMachineBMC owner")
@@ -101,12 +96,12 @@ func virtualMachineBMCNameFromPodLabel(ctx context.Context, bmcClient client.Cli
 		return "", fmt.Errorf("failed to get own pod %s/%s: %w", namespace, podName, err)
 	}
 
-	if name, ok := pod.Labels[virtualMachineBMCNameLabel]; ok && name != "" {
+	if name, ok := pod.Labels[bmcv1.VirtualMachineBMCNameLabel]; ok && name != "" {
 		return name, nil
 	}
 
 	return "", fmt.Errorf("pod %s/%s has no %s label identifying its VirtualMachineBMC",
-		namespace, podName, virtualMachineBMCNameLabel)
+		namespace, podName, bmcv1.VirtualMachineBMCNameLabel)
 }
 
 func (b *VirtBMC) Run() error {

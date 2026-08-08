@@ -40,17 +40,12 @@ func AgentServiceKey(namespace string) types.NamespacedName {
 	return types.NamespacedName{Name: E2EAgentDeploymentName, Namespace: namespace}
 }
 
-// agentPodLabels selects the single Pod owned by the agent Deployment for the
-// default E2E VirtualMachineBMC/VM pair. Deployment-managed Pods get a
-// generated name, so callers that need the live Pod (e.g. to observe its UID)
-// must look it up by label rather than by a fixed name.
 var agentPodLabels = client.MatchingLabels{
 	"kubevirt.io/virtualmachinebmc-name": E2EBMCName,
 	"kubevirt.io/vm-name":                E2EVMName,
 }
 
-// AgentPod returns the single running Pod backing the agent Deployment in the
-// given namespace. It errors if zero or more than one Pod matches.
+// AgentPod errors unless exactly one Pod matches, since Deployment-managed Pods have a generated name.
 func AgentPod(ctx context.Context, k8sClient client.Client, namespace string) (*corev1.Pod, error) {
 	var podList corev1.PodList
 	if err := k8sClient.List(ctx, &podList, client.InNamespace(namespace), agentPodLabels); err != nil {

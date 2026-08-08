@@ -293,10 +293,6 @@ func specIPMIEnabled(spec *bmcv1.VirtualMachineBMCSpec) bool {
 	return spec.IPMI != nil && spec.IPMI.Enabled != nil && *spec.IPMI.Enabled
 }
 
-// deploymentIPMIEnabled reports the IPMI state stamped on the Deployment's pod
-// template by constructDeploymentFromVirtualMachineBMC, so it can be compared
-// against the desired spec without depending on the underlying Pod's name
-// (which the Deployment's ReplicaSet generates dynamically).
 func deploymentIPMIEnabled(deployment *appsv1.Deployment) bool {
 	val, ok := deployment.Spec.Template.Annotations[EnableIPMIAnnotation]
 	if !ok {
@@ -450,8 +446,7 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// Delete the pre-Deployment fixed-name agent pod so the new Deployment
-	// is the sole agent. Runs before Apply to avoid dual-serving on the Service.
+	// Migration cleanup: remove any pre-Deployment fixed-name agent Pod before applying the Deployment.
 	deployName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
 	legacyPod := &corev1.Pod{}
 	err = r.Get(ctx, types.NamespacedName{Name: deployName, Namespace: virtualMachineBMC.Namespace}, legacyPod)

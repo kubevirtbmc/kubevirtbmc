@@ -28,6 +28,9 @@ const (
 	ConditionSecretAvailable         = "SecretAvailable"
 )
 
+// VirtualMachineBMCNameLabel lives here (not in the controller package) so the virtbmc agent binary, which only builds from api/ and pkg/, can read it too.
+const VirtualMachineBMCNameLabel = "kubevirt.io/virtualmachinebmc-name"
+
 // VirtualMachineBMCSpec defines the desired state of VirtualMachineBMC.
 type VirtualMachineBMCSpec struct {
 	// Reference to the VM to manage.

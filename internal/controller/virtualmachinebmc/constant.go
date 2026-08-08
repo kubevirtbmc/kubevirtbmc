@@ -1,5 +1,7 @@
 package virtualmachinebmc
 
+import bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
+
 const (
 	DefaultUsername            = "admin"
 	DefaultPassword            = "password"
@@ -13,7 +15,7 @@ const (
 	RedfishSvcPort             = 80
 	ipmiPortName               = "ipmi"
 	redfishPortName            = "redfish"
-	VirtualMachineBMCNameLabel = "kubevirt.io/virtualmachinebmc-name"
+	VirtualMachineBMCNameLabel = bmcv1.VirtualMachineBMCNameLabel
 	VMNameLabel                = "kubevirt.io/vm-name"
 	VirtualMachineBMCNamespace = "kubevirtbmc-system"
 	EnableIPMIAnnotation       = "bmc.kubevirt.io/enable-ipmi"
