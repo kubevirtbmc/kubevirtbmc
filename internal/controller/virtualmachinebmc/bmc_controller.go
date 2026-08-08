@@ -446,15 +446,7 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// Migration cleanup: remove any pre-Deployment fixed-name agent Pod before applying the Deployment.
-	deployName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
-	legacyPod := &corev1.Pod{}
-	err = r.Get(ctx, types.NamespacedName{Name: deployName, Namespace: virtualMachineBMC.Namespace}, legacyPod)
-	if err == nil && metav1.IsControlledBy(legacyPod, &virtualMachineBMC) {
-		if err := r.Delete(ctx, legacyPod); err != nil && !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, err
-		}
-	} else if err != nil && !apierrors.IsNotFound(err) {
+	if err := r.deleteLegacyVirtBMCPod(ctx, &virtualMachineBMC); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -462,13 +454,11 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// Prepare the virtBMC Service
 	svc := r.constructServiceFromVirtualMachineBMC(&virtualMachineBMC)
 	if err := ctrl.SetControllerReference(&virtualMachineBMC, svc, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Create the virtBMC Service on the cluster
 	if err := r.Create(ctx, svc); err != nil && !apierrors.IsAlreadyExists(err) {
 		log.Error(err, "unable to create Service for VirtualMachineBMC", "svc", svc)
 		return ctrl.Result{}, err

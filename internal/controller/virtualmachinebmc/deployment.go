@@ -265,6 +265,33 @@ func (r *VirtualMachineBMCReconciler) getVirtBMCDeployment(ctx context.Context, 
 	return deployment, nil
 }
 
+// Note: This function needs to be cleaned up in future releases once we are confident that all users have
+// upgraded to the newer release.
+func (r *VirtualMachineBMCReconciler) deleteLegacyVirtBMCPod(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	log := log.FromContext(ctx)
+	podName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	pod := &corev1.Pod{}
+	if err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: virtualMachineBMC.Namespace}, pod); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if !metav1.IsControlledBy(pod, virtualMachineBMC) {
+		return nil
+	}
+
+	if err := r.Delete(ctx, pod); err != nil && !apierrors.IsNotFound(err) {
+		log.Error(err, "unable to delete legacy virtBMC Pod", "pod", podName)
+		return err
+	}
+
+	log.Info("deleted legacy virtBMC Pod", "pod", podName)
+	return nil
+}
+
 func int32Ptr(i int32) *int32 {
 	return &i
 }
