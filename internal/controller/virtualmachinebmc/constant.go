@@ -15,4 +15,5 @@ const (
 	redfishPortName            = "redfish"
 	VirtualMachineBMCNamespace = "kubevirtbmc-system"
 	EnableIPMIAnnotation       = "bmc.kubevirt.io/enable-ipmi"
+	SecretHashAnnotation       = "bmc.kubevirt.io/secret-hash"
 )

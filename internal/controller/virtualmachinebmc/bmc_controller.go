@@ -338,43 +338,30 @@ func (r *VirtualMachineBMCReconciler) patchVirtBMCServicePorts(
 	return nil
 }
 
-// reconcileIPMIChange detects a mismatch between the spec's enableIPMI flag and
-// the IPMI annotation stamped on the Deployment's pod template. When a mismatch
-// is found it deletes the stale Deployment (ports are immutable) and patches
-// the Service in-place (preserving ClusterIP), then requeues so the main loop
-// recreates the Deployment.
-func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (requeue bool, err error) {
+func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
 	log := log.FromContext(ctx)
 
 	deployment, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	if deployment == nil {
-		return false, nil
+		return nil
 	}
 
 	currentHasIPMI := deploymentIPMIEnabled(deployment)
 	desiredHasIPMI := specIPMIEnabled(&virtualMachineBMC.Spec)
 
 	if currentHasIPMI == desiredHasIPMI {
-		return false, nil
+		return nil
 	}
 
-	log.Info("enableIPMI changed, replacing deployment and patching service",
+	log.Info("enableIPMI changed, patching Service ports",
 		"currentHasIPMI", currentHasIPMI,
 		"desiredHasIPMI", desiredHasIPMI)
 
-	if err := r.deleteVirtBMCDeployment(ctx, virtualMachineBMC); err != nil {
-		return false, err
-	}
-
-	if err := r.patchVirtBMCServicePorts(ctx, virtualMachineBMC); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return r.patchVirtBMCServicePorts(ctx, virtualMachineBMC)
 }
 
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;update;patch
@@ -434,12 +421,8 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	deleted, err := r.reconcileIPMIChange(ctx, &virtualMachineBMC)
-	if err != nil {
+	if err := r.reconcileIPMIChange(ctx, &virtualMachineBMC); err != nil {
 		return ctrl.Result{}, err
-	}
-	if deleted {
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if err := r.ensureRBACResources(ctx, &virtualMachineBMC); err != nil {
@@ -546,12 +529,6 @@ func (r *VirtualMachineBMCReconciler) findVirtualMachineBMCsForSecretAndVM(ctx c
 
 		case *corev1.Secret:
 			if vmBMC.Spec.AuthSecretRef != nil && vmBMC.Spec.AuthSecretRef.Name == o.GetName() {
-				vmBMCCopy := vmBMC.DeepCopy()
-				if err := r.rolloutRestartVirtBMCDeployment(ctx, vmBMCCopy); err != nil {
-					log.Error(err, "unable to restart virtBMC Deployment during Secret change", "vmBMC", vmBMC.Name)
-				}
-				log.Info("Restarted virtBMC deployment after Secret change")
-
 				match = true
 			}
 		}

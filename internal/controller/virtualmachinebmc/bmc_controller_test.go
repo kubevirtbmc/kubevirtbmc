@@ -627,10 +627,11 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
-			originalRestartedAt := ""
+			originalSecretHash := ""
 			if originalDeployment.Spec.Template.Annotations != nil {
-				originalRestartedAt = originalDeployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
+				originalSecretHash = originalDeployment.Spec.Template.Annotations[SecretHashAnnotation]
 			}
+			Expect(originalSecretHash).NotTo(BeEmpty())
 
 			By("Updating the Secret with new credentials")
 			updatedSecret := &corev1.Secret{}
@@ -641,7 +642,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			}
 			Expect(k8sClient.Update(ctx, updatedSecret)).Should(Succeed())
 
-			By("Verifying the Deployment template gets a restart annotation")
+			By("Verifying the Deployment template gets a new secret-hash annotation, triggering a rollout")
 			var updatedDeployment appsv1.Deployment
 			Eventually(func() bool {
 				if err := k8sClient.Get(ctx, deploymentLookupKey, &updatedDeployment); err != nil {
@@ -650,8 +651,8 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				if updatedDeployment.Spec.Template.Annotations == nil {
 					return false
 				}
-				restartedAt := updatedDeployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
-				return restartedAt != "" && restartedAt != originalRestartedAt
+				secretHash := updatedDeployment.Spec.Template.Annotations[SecretHashAnnotation]
+				return secretHash != "" && secretHash != originalSecretHash
 			}, timeout, interval).Should(BeTrue())
 
 			Expect(updatedDeployment.Spec.Template.Labels).To(HaveKeyWithValue(bmcv1.VirtualMachineBMCNameLabel, bmcName))
@@ -659,7 +660,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(updatedDeployment.Spec.Template.Spec.ServiceAccountName).To(Equal(vmName + "-virtbmc"))
 		})
 
-		It("Should delete and recreate Deployment and patch Service when enableIPMI is changed", func() {
+		It("Should update Deployment in place and patch Service when enableIPMI is changed", func() {
 			ctx := context.Background()
 
 			By("Getting VirtualMachine and Secret from the first test")
@@ -700,7 +701,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			updatedBMC.Spec.IPMI = &bmcv1.IPMISpec{Enabled: boolPtr(true)}
 			Expect(k8sClient.Update(ctx, updatedBMC)).Should(Succeed())
 
-			By("Verifying that Deployment is recreated (new UID) and Service is patched (same UID) with IPMI ports")
+			By("Verifying that Deployment is updated in place (same UID) and Service is patched (same UID) with IPMI ports")
 			var newDeployment appsv1.Deployment
 			var newSvc corev1.Service
 			Eventually(func() bool {
@@ -710,7 +711,7 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				if err := k8sClient.Get(ctx, svcLookupKey, &newSvc); err != nil {
 					return false
 				}
-				if newDeployment.UID == originalDeploymentUID {
+				if newDeployment.UID != originalDeploymentUID {
 					return false
 				}
 				if newSvc.UID != originalSvcUID {

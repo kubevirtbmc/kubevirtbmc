@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
+	virtualmachinebmccontroller "kubevirt.io/kubevirtbmc/internal/controller/virtualmachinebmc"
 	"kubevirt.io/kubevirtbmc/test/util"
 )
 
@@ -262,16 +263,17 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 	})
 
 	Context("when the Secret is modified", func() {
-		It("should rollout restart the agent Deployment", func() {
+		It("should roll out the agent Deployment via the secret-hash annotation", func() {
 			By("verifying the agent Pod is running before the change")
 			Eventually(util.DeploymentReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should become ready")
 
 			var deploymentBefore appsv1.Deployment
 			Expect(k8sClient.Get(ctx, util.AgentDeploymentKey(util.E2ENamespace), &deploymentBefore)).To(Succeed())
-			originalRestartedAt := ""
+			originalSecretHash := ""
 			if deploymentBefore.Spec.Template.Annotations != nil {
-				originalRestartedAt = deploymentBefore.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
+				originalSecretHash = deploymentBefore.Spec.Template.Annotations[virtualmachinebmccontroller.SecretHashAnnotation]
 			}
+			Expect(originalSecretHash).NotTo(BeEmpty())
 
 			By("modifying the Secret")
 			secret := &corev1.Secret{}
@@ -279,7 +281,7 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			secret.Data["password"] = []byte("new-password")
 			Expect(k8sClient.Update(ctx, secret)).To(Succeed())
 
-			By("verifying the controller reacted by updating the Deployment restart annotation")
+			By("verifying the controller reacted by updating the Deployment's secret-hash annotation")
 			Eventually(func() bool {
 				var deployment appsv1.Deployment
 				if err := k8sClient.Get(ctx, util.AgentDeploymentKey(util.E2ENamespace), &deployment); err != nil {
@@ -288,9 +290,9 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 				if deployment.Spec.Template.Annotations == nil {
 					return false
 				}
-				restartedAt := deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"]
-				return restartedAt != "" && restartedAt != originalRestartedAt
-			}, timeout, interval).Should(BeTrue(), "agent Deployment should get a rollout restart annotation when Secret is modified")
+				secretHash := deployment.Spec.Template.Annotations[virtualmachinebmccontroller.SecretHashAnnotation]
+				return secretHash != "" && secretHash != originalSecretHash
+			}, timeout, interval).Should(BeTrue(), "agent Deployment should get a new secret-hash annotation when Secret is modified")
 
 			By("verifying the agent Pod is running after controller reconciles")
 			Eventually(util.DeploymentReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should become ready")
@@ -313,13 +315,18 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			}, timeout, interval).Should(BeTrue(), "Pod should be recreated without IPMI port")
 		})
 
-		It("should recreate Pod and patch Service with IPMI ports", func() {
+		It("should update the Deployment in place, roll the Pod, and patch the Service with IPMI ports", func() {
 			By("recording the current Pod and verifying it has no IPMI port")
 			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(podBefore.Spec.Containers).To(HaveLen(1))
 			Expect(podBefore.Spec.Containers[0].Ports).To(HaveLen(1))
 			Expect(podBefore.Spec.Containers[0].Ports[0].Name).To(Equal("redfish"))
+
+			By("recording the current Deployment UID")
+			var deploymentBefore appsv1.Deployment
+			Expect(k8sClient.Get(ctx, util.AgentDeploymentKey(util.E2ENamespace), &deploymentBefore)).To(Succeed())
+			deploymentBeforeUID := deploymentBefore.UID
 
 			By("recording the current Service and verifying it has no IPMI port")
 			var svcBefore corev1.Service
@@ -335,7 +342,7 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			bmc.Spec.IPMI = &bmcv1.IPMISpec{Enabled: &enabled}
 			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
 
-			By("waiting for the Pod to be recreated with new UID and IPMI port")
+			By("waiting for the Pod to be rolled with a new UID and IPMI port")
 			Eventually(func() bool {
 				pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
 				if err != nil {
@@ -344,7 +351,12 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 				return pod.UID != podBefore.UID &&
 					len(pod.Spec.Containers) == 1 &&
 					len(pod.Spec.Containers[0].Ports) == 2
-			}, timeout, interval).Should(BeTrue(), "Pod should be recreated with IPMI port")
+			}, timeout, interval).Should(BeTrue(), "Pod should be rolled with IPMI port")
+
+			By("verifying the Deployment itself was updated in place (same UID), not deleted and recreated")
+			var deploymentAfter appsv1.Deployment
+			Expect(k8sClient.Get(ctx, util.AgentDeploymentKey(util.E2ENamespace), &deploymentAfter)).To(Succeed())
+			Expect(deploymentAfter.UID).To(Equal(deploymentBeforeUID), "Deployment should be updated via Server-Side Apply, not deleted and recreated")
 
 			By("waiting for the Service to be patched with same UID, same ClusterIP, and IPMI port")
 			Eventually(func() bool {

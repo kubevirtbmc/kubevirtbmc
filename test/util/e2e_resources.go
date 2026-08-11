@@ -41,8 +41,8 @@ func AgentServiceKey(namespace string) types.NamespacedName {
 }
 
 var agentPodLabels = client.MatchingLabels{
-	"kubevirt.io/virtualmachinebmc-name": E2EBMCName,
-	"kubevirt.io/vm-name":                E2EVMName,
+	bmcv1.VirtualMachineBMCNameLabel: E2EBMCName,
+	bmcv1.VMNameLabel:                E2EVMName,
 }
 
 // AgentPod errors unless exactly one Pod matches, since Deployment-managed Pods have a generated name.

@@ -18,9 +18,10 @@ package virtualmachinebmc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strconv"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -41,7 +42,7 @@ const (
 	fieldManager                 = "kubevirtbmc-controller"
 )
 
-func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC *bmcv1.VirtualMachineBMC) *appsv1.Deployment {
+func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC *bmcv1.VirtualMachineBMC, secretHash string) *appsv1.Deployment {
 
 	serviceAccountName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
 	deploymentName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
@@ -63,16 +64,22 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(defaultDesiredReplicas),
+			Replicas: ptr.To(defaultDesiredReplicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
-					Annotations: map[string]string{
-						EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
-					},
+					Annotations: func() map[string]string {
+						annotations := map[string]string{
+							EnableIPMIAnnotation: strconv.FormatBool(specIPMIEnabled(&virtualMachineBMC.Spec)),
+						}
+						if secretHash != "" {
+							annotations[SecretHashAnnotation] = secretHash
+						}
+						return annotations
+					}(),
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName,
@@ -178,10 +185,41 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 	return deployment
 }
 
+// authSecretHash returns a hash of the referenced auth Secret's credentials,
+// so it can be stamped onto the Deployment's pod template. A change in the
+// hash changes the pod template, which the Deployment controller rolls out
+// on its own, without any manual restart.
+func (r *VirtualMachineBMCReconciler) authSecretHash(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (string, error) {
+	if virtualMachineBMC.Spec.AuthSecretRef == nil {
+		return "", nil
+	}
+
+	var secret corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      virtualMachineBMC.Spec.AuthSecretRef.Name,
+		Namespace: virtualMachineBMC.Namespace,
+	}, &secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	h := sha256.New()
+	h.Write(secret.Data[bmcUserKey])
+	h.Write(secret.Data[bmcPasswordKey])
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func (r *VirtualMachineBMCReconciler) ensureVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
 	log := log.FromContext(ctx)
 
-	desired := r.createVirtBMCDeployment(virtualMachineBMC)
+	secretHash, err := r.authSecretHash(ctx, virtualMachineBMC)
+	if err != nil {
+		return err
+	}
+
+	desired := r.createVirtBMCDeployment(virtualMachineBMC, secretHash)
 	desired.SetGroupVersionKind(appsv1.SchemeGroupVersion.WithKind("Deployment"))
 	if err := ctrl.SetControllerReference(virtualMachineBMC, desired, r.Scheme); err != nil {
 		return err
@@ -216,33 +254,6 @@ func (r *VirtualMachineBMCReconciler) deleteVirtBMCDeployment(ctx context.Contex
 	}
 
 	log.Info("deleted virtBMC Deployment", "deployment", deployment)
-	return nil
-}
-
-func (r *VirtualMachineBMCReconciler) rolloutRestartVirtBMCDeployment(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
-
-	log := log.FromContext(ctx)
-	deployment, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
-	if err != nil {
-		return err
-	}
-
-	if deployment == nil {
-		return nil
-	}
-
-	if deployment.Spec.Template.Annotations == nil {
-		deployment.Spec.Template.Annotations = map[string]string{}
-	}
-
-	deployment.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
-
-	if err := r.Update(ctx, deployment); err != nil {
-		log.Error(err, "unable to rollout restart virtBMC Deployment", "deployment", appsv1.DeploymentAvailable)
-		return err
-	}
-
-	log.Info("triggered rollout restart for virtBMC Deployment", "deployment", deployment)
 	return nil
 }
 
@@ -290,8 +301,4 @@ func (r *VirtualMachineBMCReconciler) deleteLegacyVirtBMCPod(ctx context.Context
 
 	log.Info("deleted legacy virtBMC Pod", "pod", podName)
 	return nil
-}
-
-func int32Ptr(i int32) *int32 {
-	return &i
 }
