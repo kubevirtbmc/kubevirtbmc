@@ -19,7 +19,6 @@ package virtualmachinebmc
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -293,18 +292,6 @@ func specIPMIEnabled(spec *bmcv1.VirtualMachineBMCSpec) bool {
 	return spec.IPMI != nil && spec.IPMI.Enabled != nil && *spec.IPMI.Enabled
 }
 
-func deploymentIPMIEnabled(deployment *appsv1.Deployment) bool {
-	val, ok := deployment.Spec.Template.Annotations[EnableIPMIAnnotation]
-	if !ok {
-		return false
-	}
-	enabled, err := strconv.ParseBool(val)
-	if err != nil {
-		return false
-	}
-	return enabled
-}
-
 func (r *VirtualMachineBMCReconciler) patchVirtBMCServicePorts(
 	ctx context.Context,
 	virtualMachineBMC *bmcv1.VirtualMachineBMC,
@@ -336,32 +323,6 @@ func (r *VirtualMachineBMCReconciler) patchVirtBMCServicePorts(
 	log.V(1).Info("patched Service ports in-place", "svc", svcName,
 		"ports", existing.Spec.Ports)
 	return nil
-}
-
-func (r *VirtualMachineBMCReconciler) reconcileIPMIChange(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
-	log := log.FromContext(ctx)
-
-	deployment, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
-	if err != nil {
-		return err
-	}
-
-	if deployment == nil {
-		return nil
-	}
-
-	currentHasIPMI := deploymentIPMIEnabled(deployment)
-	desiredHasIPMI := specIPMIEnabled(&virtualMachineBMC.Spec)
-
-	if currentHasIPMI == desiredHasIPMI {
-		return nil
-	}
-
-	log.Info("enableIPMI changed, patching Service ports",
-		"currentHasIPMI", currentHasIPMI,
-		"desiredHasIPMI", desiredHasIPMI)
-
-	return r.patchVirtBMCServicePorts(ctx, virtualMachineBMC)
 }
 
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;update;patch
@@ -421,7 +382,7 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.reconcileIPMIChange(ctx, &virtualMachineBMC); err != nil {
+	if err := r.patchVirtBMCServicePorts(ctx, &virtualMachineBMC); err != nil {
 		return ctrl.Result{}, err
 	}
 

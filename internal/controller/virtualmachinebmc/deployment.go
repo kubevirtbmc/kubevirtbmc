@@ -185,10 +185,6 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 	return deployment
 }
 
-// authSecretHash returns a hash of the referenced auth Secret's credentials,
-// so it can be stamped onto the Deployment's pod template. A change in the
-// hash changes the pod template, which the Deployment controller rolls out
-// on its own, without any manual restart.
 func (r *VirtualMachineBMCReconciler) authSecretHash(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (string, error) {
 	if virtualMachineBMC.Spec.AuthSecretRef == nil {
 		return "", nil
