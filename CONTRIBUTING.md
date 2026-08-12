@@ -11,25 +11,20 @@ Thank you for your interest in contributing to KubeVirtBMC! This document provid
 - [Suggesting Features](#suggesting-features)
 - [Development Setup](#development-setup)
 - [Development Workflow](#development-workflow)
+- [Branching Strategy](#branching-strategy)
 - [Commit Guidelines](#commit-guidelines)
 - [Pull Request Process](#pull-request-process)
 - [Code Review](#code-review)
 
----
-
 ## Code of Conduct
 
 This project follows the [Contributor Covenant 3.0 Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold these standards. To report a violation, contact **conduct@kubevirtbmc.io**.
-
----
 
 ## Community
 
 - **GitHub Issues** — Bug reports, feature requests, and enhancements: [github.com/kubevirtbmc/kubevirtbmc/issues](https://github.com/kubevirtbmc/kubevirtbmc/issues)
 - **GitHub Discussions** — Questions and general conversation: [github.com/kubevirtbmc/kubevirtbmc/discussions](https://github.com/kubevirtbmc/kubevirtbmc/discussions)
 - **Discord** — Real-time chat: [discord.gg/k5hT9GDQkY](https://discord.gg/k5hT9GDQkY)
-
----
 
 ## Ways to Contribute
 
@@ -38,8 +33,6 @@ This project follows the [Contributor Covenant 3.0 Code of Conduct](CODE_OF_COND
 - Write or improve tests
 - Review pull requests
 - Report bugs or suggest enhancements
-
----
 
 ## Reporting Bugs
 
@@ -52,13 +45,9 @@ Before filing a bug report, search existing issues to avoid duplicates. When ope
 - Actual vs. expected behavior
 - Relevant logs or screenshots
 
----
-
 ## Suggesting Features
 
 Open an issue using the **Feature Request** or **Enhancement** template. Describe the use case and the problem it solves. For larger changes, consider discussing the design in a GitHub Discussion or on Discord before investing implementation effort.
-
----
 
 ## Development Setup
 
@@ -87,8 +76,6 @@ git remote add upstream https://github.com/kubevirtbmc/kubevirtbmc.git
 ```bash
 make build
 ```
-
----
 
 ## Development Workflow
 
@@ -171,7 +158,40 @@ make run
 
 This runs the controller binary directly against the cluster configured in `~/.kube/config`.
 
----
+## Branching Strategy
+
+KubeVirtBMC uses a **trunk-based model** for day-to-day development, combined with dedicated **release branches** for maintaining previously published minor versions. This is the same general pattern used by projects such as [Kubernetes](https://github.com/kubernetes/community/blob/main/contributors/devel/sig-release/cherry-picks.md) and [Node.js](https://github.com/nodejs/node/blob/main/doc/contributing/backporting-to-release-lines.md), scaled down to fit this project.
+
+### `main`
+
+- `main` is the trunk. It always reflects the latest, unreleased state of the project.
+- All new features and the vast majority of bug fixes are developed and merged here first.
+- Your feature/fix branches (see [Development Workflow](#development-workflow)) are always cut from `main` and merged back into `main`.
+
+### Release branches (`vX.Y`)
+
+- Once a minor version is published (e.g. `v0.9.0`), a dedicated branch named after that minor version — `v0.9` — is cut from the release tag.
+- The purpose of a release branch is to collect the commits that should ship in any future `vX.Y.Z` patch release (e.g. `v0.9.1`, `v0.9.2`, …), without pulling in unreleased features that have already landed on `main`.
+- Only bug fixes are ever backported to a release branch — never new features or breaking changes.
+- A maintainer tags a new patch release (`vX.Y.Z`) from the release branch once enough fixes have accumulated, or sooner if the fix is urgent (e.g. a security issue).
+
+### Backporting a fix
+
+A bug fix is expected to benefit every future release, so it always lands on `main` first and is then backported to whichever release branch(es) still need it:
+
+1. Open your PR against `main` as usual, following the [Pull Request Process](#pull-request-process).
+2. Once it's merged, decide whether the bug also affects a supported release branch (e.g. `v0.9`). If you're not sure, ask on Discord or in the PR thread — a maintainer will help.
+3. Open a **separate** PR against that release branch that cherry-picks the merged commit(s):
+
+   ```bash
+   git fetch upstream
+   git checkout -b backport/v0.9/my-fix upstream/v0.9
+   git cherry-pick -x <commit-sha-from-main>
+   git push -u origin backport/v0.9/my-fix
+   ```
+
+4. Title the backport PR `[v0.9 backport] <original PR title>` and reference the original PR in the description (e.g. `Backport of #123`).
+5. Backport PRs go through the same review, CI, and DCO requirements as any other PR — they are not fast-tracked.
 
 ## Commit Guidelines
 
@@ -225,8 +245,6 @@ git commit -s -m "feat: my contribution"
 
 This appends `Signed-off-by: Your Name <your@email.com>` to the commit message. Commits without a sign-off will be blocked by CI.
 
----
-
 ## Pull Request Process
 
 1. **Ensure your branch is up-to-date** with upstream `main` before opening a PR:
@@ -243,7 +261,7 @@ This appends `Signed-off-by: Your Name <your@email.com>` to the commit message. 
    make fmt vet lint test
    ```
 
-3. **Open the PR** against the `main` branch of `kubevirtbmc/kubevirtbmc`.
+3. **Open the PR** against the `main` branch of `kubevirtbmc/kubevirtbmc`. Bug fixes always target `main` first, even if they also apply to an older release line — see [Branching Strategy](#branching-strategy) for how backports work.
 
 4. **Fill in the PR description** with:
    - What problem does this solve?
@@ -266,8 +284,6 @@ This appends `Signed-off-by: Your Name <your@email.com>` to the commit message. 
 - [ ] All commits are signed off (`git commit -s`)
 - [ ] PR description references the related issue
 
----
-
 ## Code Review
 
 - Reviewers aim to respond within a few business days.
@@ -276,7 +292,5 @@ This appends `Signed-off-by: Your Name <your@email.com>` to the commit message. 
 - If a review request is urgent, ping the thread or reach out on Discord.
 
 Maintainers may close PRs that have had no activity for 30 days with the `stale` label applied first as a warning.
-
----
 
 Thank you for contributing to KubeVirtBMC!
