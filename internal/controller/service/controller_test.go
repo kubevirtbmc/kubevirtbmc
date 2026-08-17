@@ -37,6 +37,7 @@ var _ = Describe("Service Controller", func() {
 		testVirtualMachineBMCNamespace = "default"
 		testVMName                     = "test-vm"
 		testClusterIP                  = "10.0.0.100"
+		testSecretName                 = "test-secret"
 
 		timeout  = time.Second * 10
 		duration = time.Second * 10
@@ -64,6 +65,20 @@ var _ = Describe("Service Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, vm)).Should(Succeed())
 
+			By("Creating the referenced Secret")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testSecretName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("password123"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+
 			By("Creating a new VirtualMachineBMC")
 			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
 				ObjectMeta: metav1.ObjectMeta{
@@ -77,6 +92,9 @@ var _ = Describe("Service Controller", func() {
 				Spec: bmcv1.VirtualMachineBMCSpec{
 					VirtualMachineRef: &corev1.LocalObjectReference{
 						Name: testVMName,
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: testSecretName,
 					},
 				},
 			}
@@ -195,6 +213,9 @@ var _ = Describe("Service Controller", func() {
 				Spec: bmcv1.VirtualMachineBMCSpec{
 					VirtualMachineRef: &corev1.LocalObjectReference{
 						Name: "test-vm-no-ip",
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: testSecretName,
 					},
 				},
 			}

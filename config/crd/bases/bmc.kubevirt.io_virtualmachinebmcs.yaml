@@ -27,8 +27,8 @@ spec:
     - jsonPath: .status.clusterIP
       name: CLUSTERIP
       type: string
-    - jsonPath: .status.conditions[?(@.type=='Ready')].status
-      name: READY
+    - jsonPath: .status.conditions[?(@.type=='ServiceReady')].status
+      name: SERVICEREADY
       type: string
     name: v1beta1
     schema:
@@ -56,7 +56,7 @@ spec:
             description: VirtualMachineBMCSpec defines the desired state of VirtualMachineBMC.
             properties:
               authSecretRef:
-                description: Reference to the Secret containing IPMI/Redfish credentials.
+                description: Reference to the Secret containing IPMI/Redfish credentials
                 properties:
                   name:
                     default: ""
@@ -76,8 +76,30 @@ spec:
                     description: Enabled toggles the IPMI simulator.
                     type: boolean
                 type: object
+              service:
+                description: BMC Service configuration
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to apply to the service
+                    type: object
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Additional labels to apply to the service
+                    type: object
+                  type:
+                    default: ClusterIP
+                    description: Type of service
+                    enum:
+                    - ClusterIP
+                    - NodePort
+                    - LoadBalancer
+                    type: string
+                type: object
               virtualMachineRef:
-                description: Reference to the VM to manage.
+                description: Reference to the VM to manage
                 properties:
                   name:
                     default: ""
@@ -90,6 +112,9 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+            required:
+            - authSecretRef
+            - virtualMachineRef
             type: object
           status:
             description: VirtualMachineBMCStatus defines the observed state of VirtualMachineBMC.
@@ -135,7 +160,7 @@ spec:
                 - mode
                 type: object
               clusterIP:
-                description: IP address exposed by the BMC service
+                description: IP address assigned to the ClusterIP Type BMC service
                 type: string
               conditions:
                 description: List of current conditions (e.g., Ready)
@@ -194,6 +219,9 @@ spec:
                   - type
                   type: object
                 type: array
+              loadBalancerIP:
+                description: IP address assigned to the LoadBalancer Type BMC service
+                type: string
             type: object
         type: object
     served: true

@@ -19,6 +19,7 @@ package virtualmachinebmc
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -155,16 +156,41 @@ func (r *VirtualMachineBMCReconciler) agentResourceRequests() corev1.ResourceLis
 func (r *VirtualMachineBMCReconciler) constructServiceFromVirtualMachineBMC(virtualMachineBMC *bmcv1.VirtualMachineBMC) *corev1.Service {
 	name := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
 
+	labels := map[string]string{
+		bmcv1.VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
+		bmcv1.VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
+	}
+
+	annotations := map[string]string{}
+
+	if virtualMachineBMC.Spec.Service != nil {
+		if virtualMachineBMC.Spec.Service.Labels != nil {
+			for k, v := range virtualMachineBMC.Spec.Service.Labels {
+				labels[k] = v
+			}
+		}
+
+		if virtualMachineBMC.Spec.Service.Annotations != nil {
+			for k, v := range virtualMachineBMC.Spec.Service.Annotations {
+				annotations[k] = v
+			}
+		}
+	}
+
+	svcType := corev1.ServiceTypeClusterIP
+	if virtualMachineBMC.Spec.Service != nil && virtualMachineBMC.Spec.Service.Type != "" {
+		svcType = virtualMachineBMC.Spec.Service.Type
+	}
+
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				bmcv1.VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
-				bmcv1.VMNameLabel:                virtualMachineBMC.Spec.VirtualMachineRef.Name,
-			},
-			Name:      name,
-			Namespace: virtualMachineBMC.Namespace,
+			Labels:      labels,
+			Annotations: annotations,
+			Name:        name,
+			Namespace:   virtualMachineBMC.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
+			Type: svcType,
 			Selector: map[string]string{
 				bmcv1.VirtualMachineBMCNameLabel: virtualMachineBMC.Name,
 			},
@@ -325,6 +351,84 @@ func (r *VirtualMachineBMCReconciler) patchVirtBMCServicePorts(
 	return nil
 }
 
+func (r *VirtualMachineBMCReconciler) deleteVirtBMCService(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	log := log.FromContext(ctx)
+	serviceName := fmt.Sprintf("%s-virtbmc", virtualMachineBMC.Spec.VirtualMachineRef.Name)
+
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: virtualMachineBMC.Namespace,
+		},
+	}
+
+	if err := r.Delete(ctx, service); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.V(1).Info("virtBMC Service already absent", "service", serviceName)
+			return nil
+		}
+
+		log.Error(err, "unable to delete virtBMC Service", "service", serviceName)
+		return err
+	}
+
+	return nil
+}
+
+func (r *VirtualMachineBMCReconciler) desiredServiceType(vmbmc *bmcv1.VirtualMachineBMC) corev1.ServiceType {
+	if vmbmc.Spec.Service == nil {
+		return corev1.ServiceTypeClusterIP
+	}
+	if vmbmc.Spec.Service.Type == "" {
+		return corev1.ServiceTypeClusterIP
+	}
+	return vmbmc.Spec.Service.Type
+}
+
+func (r *VirtualMachineBMCReconciler) reconcileService(ctx context.Context, vmbmc *bmcv1.VirtualMachineBMC, svc *corev1.Service) error {
+	log := log.FromContext(ctx)
+
+	desiredType := r.desiredServiceType(vmbmc)
+	serviceName := fmt.Sprintf("%s-virtbmc", vmbmc.Spec.VirtualMachineRef.Name)
+	existingService := &corev1.Service{}
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: vmbmc.Namespace,
+		Name:      serviceName,
+	}, existingService); err != nil {
+		if apierrors.IsNotFound(err) {
+			svc.Spec.Type = desiredType
+			if err := r.Create(ctx, svc); err != nil {
+				log.Error(err, "unable to create Service for VirtualMachineBMC")
+				return err
+			}
+			log.V(1).Info("created Service for VirtualMachineBMC", "type", desiredType)
+			return nil
+		}
+		log.Error(err, "unable to fetch Service")
+		return err
+	}
+	if existingService.Spec.Type != desiredType {
+		log.Info("Service type changed, deleting Service",
+			"oldType", existingService.Spec.Type,
+			"newType", desiredType,
+		)
+		return r.deleteVirtBMCService(ctx, vmbmc)
+	}
+
+	if !maps.Equal(existingService.Labels, svc.Labels) || !maps.Equal(existingService.Annotations, svc.Annotations) {
+		log.Info("Service labels/annotations changed, patching Service in-place", "service", serviceName)
+		patch := client.MergeFrom(existingService.DeepCopy())
+		existingService.Labels = svc.Labels
+		existingService.Annotations = svc.Annotations
+		if err := r.Patch(ctx, existingService, patch); err != nil {
+			log.Error(err, "unable to patch Service labels/annotations", "service", serviceName)
+			return err
+		}
+	}
+
+	return nil
+}
+
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachineinstances,verbs=get;list;watch;delete
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs,verbs=get;list;watch;create;update;patch;delete
@@ -403,12 +507,9 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	if err := r.Create(ctx, svc); err != nil && !apierrors.IsAlreadyExists(err) {
-		log.Error(err, "unable to create Service for VirtualMachineBMC", "svc", svc)
+	if err := r.reconcileService(ctx, &virtualMachineBMC, svc); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	log.V(1).Info("created Service for VirtualMachineBMC", "svc", svc)
 
 	return ctrl.Result{}, nil
 }

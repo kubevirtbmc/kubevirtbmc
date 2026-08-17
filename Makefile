@@ -123,12 +123,30 @@ golangci-lint:
 	}
 
 .PHONY: e2e-setup
-e2e-setup: kind ## Setup end-to-end test environment.
+e2e-setup: kind cloud-provider-kind ## Setup end-to-end test environment.
 	@$(KIND) get clusters 2>/dev/null | grep -q kvbmc-e2e || \
 		$(KIND) create cluster --name kvbmc-e2e --config test/kind-config.yaml --image=kindest/node:$(KIND_K8S_VERSION)
+	@# Control-plane nodes are excluded from external LoadBalancer targets by default;
+	@# remove the label so cloud-provider-kind can route to workloads scheduled there too.
+	@$(KUBECTL) label node --all node.kubernetes.io/exclude-from-external-load-balancers- --overwrite >/dev/null 2>&1 || true
+	@# cloud-provider-kind (https://kind.sigs.k8s.io/docs/user/loadbalancer/) must run continuously
+	@# in the background to watch kind clusters and assign LoadBalancer Service ingress IPs.
+	@if [ ! -f $(CLOUD_PROVIDER_KIND_PID_FILE) ] || ! kill -0 $$(cat $(CLOUD_PROVIDER_KIND_PID_FILE)) 2>/dev/null; then \
+		echo "Starting cloud-provider-kind..."; \
+		nohup $(CLOUD_PROVIDER_KIND) > $(CLOUD_PROVIDER_KIND_LOG_FILE) 2>&1 & \
+		echo $$! > $(CLOUD_PROVIDER_KIND_PID_FILE); \
+		sleep 2; \
+	else \
+		echo "cloud-provider-kind already running (pid $$(cat $(CLOUD_PROVIDER_KIND_PID_FILE)))"; \
+	fi
 
 .PHONY: e2e-teardown
 e2e-teardown: kind ## Teardown end-to-end test environment.
+	@if [ -f $(CLOUD_PROVIDER_KIND_PID_FILE) ]; then \
+		echo "Stopping cloud-provider-kind..."; \
+		kill $$(cat $(CLOUD_PROVIDER_KIND_PID_FILE)) 2>/dev/null || true; \
+		rm -f $(CLOUD_PROVIDER_KIND_PID_FILE); \
+	fi
 	$(KIND) delete cluster --name kvbmc-e2e
 
 .PHONY: e2e-test
@@ -239,12 +257,16 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 KIND ?= $(LOCALBIN)/kind
 MOCKGEN ?= $(LOCALBIN)/mockgen
+CLOUD_PROVIDER_KIND ?= $(LOCALBIN)/cloud-provider-kind
+CLOUD_PROVIDER_KIND_PID_FILE ?= $(LOCALBIN)/cloud-provider-kind.pid
+CLOUD_PROVIDER_KIND_LOG_FILE ?= $(LOCALBIN)/cloud-provider-kind.log
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.2.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 KIND_VERSION ?= v0.32.0
 MOCKGEN_VERSION ?= v0.6.0
+CLOUD_PROVIDER_KIND_VERSION ?= v0.11.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -278,3 +300,8 @@ kind: $(LOCALBIN) ## Download kind locally if necessary. If wrong version is ins
 mockgen: $(MOCKGEN) ## Download mockgen locally if necessary.
 $(MOCKGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/mockgen || GOBIN=$(LOCALBIN) go install go.uber.org/mock/mockgen@$(MOCKGEN_VERSION)
+
+.PHONY: cloud-provider-kind
+cloud-provider-kind: $(CLOUD_PROVIDER_KIND) ## Download cloud-provider-kind locally if necessary. Provides LoadBalancer Service support for kind clusters.
+$(CLOUD_PROVIDER_KIND): $(LOCALBIN)
+	test -s $(LOCALBIN)/cloud-provider-kind || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/cloud-provider-kind@$(CLOUD_PROVIDER_KIND_VERSION)

@@ -40,6 +40,10 @@ func AgentServiceKey(namespace string) types.NamespacedName {
 	return types.NamespacedName{Name: E2EAgentDeploymentName, Namespace: namespace}
 }
 
+func AgentPodKey(namespace string) types.NamespacedName {
+	return types.NamespacedName{Name: E2EAgentDeploymentName, Namespace: namespace}
+}
+
 var agentPodLabels = client.MatchingLabels{
 	bmcv1.VirtualMachineBMCNameLabel: E2EBMCName,
 	bmcv1.VMNameLabel:                E2EVMName,

@@ -292,6 +292,21 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 
 		It("Should set status condition when VirtualMachine does not exist", func() {
 			ctx := context.Background()
+			secretName := "test-secret-no-vm"
+
+			By("Creating the referenced Secret")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("password123"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
 
 			By("Creating a VirtualMachineBMC without a referenced VM")
 			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
@@ -302,6 +317,9 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				Spec: bmcv1.VirtualMachineBMCSpec{
 					VirtualMachineRef: &corev1.LocalObjectReference{
 						Name: "non-existent-vm",
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
 					},
 				},
 			}
