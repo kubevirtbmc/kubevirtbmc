@@ -551,6 +551,17 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
+			By("Waiting for Service to be created")
+			serviceLookupKey := types.NamespacedName{
+				Name:      vmName + "-virtbmc",
+				Namespace: testVirtualMachineBMCNamespace,
+			}
+			Eventually(func() bool {
+				svc := &corev1.Service{}
+				err := k8sClient.Get(ctx, serviceLookupKey, svc)
+				return err == nil
+			}, timeout, interval).Should(BeTrue())
+
 			By("Deleting the Secret")
 			secretToDelete := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: testVirtualMachineBMCNamespace}, secretToDelete)).Should(Succeed())
@@ -576,6 +587,13 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Eventually(func() bool {
 				deployment := &appsv1.Deployment{}
 				err := k8sClient.Get(ctx, deploymentLookupKey, deployment)
+				return errors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+
+			By("Verifying that the Service is deleted")
+			Eventually(func() bool {
+				svc := &corev1.Service{}
+				err := k8sClient.Get(ctx, serviceLookupKey, svc)
 				return errors.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
 		})

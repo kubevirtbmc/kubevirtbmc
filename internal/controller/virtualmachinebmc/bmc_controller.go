@@ -476,6 +476,11 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			log.Error(err, "unable to delete virtBMC Deployment")
 			return ctrl.Result{}, err
 		}
+
+		if err := r.deleteVirtBMCService(ctx, &virtualMachineBMC); err != nil {
+			log.Error(err, "unable to delete virtBMC Service")
+			return ctrl.Result{}, err
+		}
 	}
 
 	if virtualMachineBMC.Spec.VirtualMachineRef == nil || !vmExists || virtualMachineBMC.Spec.AuthSecretRef == nil || !secretExists {
