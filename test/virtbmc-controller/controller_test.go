@@ -193,6 +193,10 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			Eventually(util.DeploymentNotFound(ctx, k8sClient, util.E2ENamespace), vmDeletionTimeout, interval).Should(BeTrue(),
 				"agent Deployment should be deleted when VM is gone")
 
+			By("verifying the agent Service is removed")
+			Eventually(util.ServiceNotFound(ctx, k8sClient, util.E2ENamespace), vmDeletionTimeout, interval).Should(BeTrue(),
+				"agent Service should be deleted when VM is gone")
+
 			By("verifying VirtualMachineAvailable=False with reason VirtualMachineNotFound")
 			Eventually(
 				util.HasBMCCondition(ctx, k8sClient, util.E2ENamespace,
@@ -225,11 +229,16 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			Eventually(util.DeploymentExists(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should be re-created")
 			Eventually(util.DeploymentReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should become ready")
 
+			By("verifying the agent Service is re-created")
+			Eventually(func() bool {
+				svc := &corev1.Service{}
+				return k8sClient.Get(ctx, util.AgentServiceKey(util.E2ENamespace), svc) == nil
+			}, timeout, interval).Should(BeTrue(), "agent Service should be re-created")
 		})
 	})
 
 	Context("when the Secret is deleted", func() {
-		It("should delete the agent Deployment and set SecretAvailable=False", func() {
+		It("should delete the agent Deployment and Service and set SecretAvailable=False", func() {
 			By("deleting the Secret")
 			secret := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.E2ESecretName, Namespace: util.E2ENamespace}, secret)).To(Succeed())
@@ -239,6 +248,10 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			Eventually(util.DeploymentNotFound(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(),
 				"agent Deployment should be deleted when Secret is gone")
 
+			By("verifying the agent Service is removed")
+			Eventually(util.ServiceNotFound(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(),
+				"agent Service should be deleted when Secret is gone")
+
 			By("verifying SecretAvailable=False with reason SecretNotFound")
 			Eventually(
 				util.HasBMCCondition(ctx, k8sClient, util.E2ENamespace, bmcv1.ConditionSecretAvailable, metav1.ConditionFalse, "SecretNotFound"),
@@ -246,7 +259,7 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			).Should(BeTrue())
 		})
 
-		It("should restore SecretAvailable=True and bring the agent Pod back because both VM and Secret exist", func() {
+		It("should restore SecretAvailable=True and bring the agent Pod and Service back because both VM and Secret exist", func() {
 			By("re-creating the Secret")
 			Expect(k8sClient.Create(ctx, util.E2ESecret(util.E2ENamespace))).To(Succeed())
 
@@ -259,6 +272,12 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			By("verifying the agent Deployment is re-created and becomes ready")
 			Eventually(util.DeploymentExists(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should be re-created")
 			Eventually(util.DeploymentReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should become ready")
+
+			By("verifying the agent Service is re-created")
+			Eventually(func() bool {
+				svc := &corev1.Service{}
+				return k8sClient.Get(ctx, util.AgentServiceKey(util.E2ENamespace), svc) == nil
+			}, timeout, interval).Should(BeTrue(), "agent Service should be re-created")
 		})
 	})
 

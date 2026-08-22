@@ -116,6 +116,13 @@ func DeploymentNotFound(ctx context.Context, k8sClient client.Client, namespace 
 	}
 }
 
+func ServiceNotFound(ctx context.Context, k8sClient client.Client, namespace string) func() bool {
+	return func() bool {
+		svc := &corev1.Service{}
+		return apierrors.IsNotFound(k8sClient.Get(ctx, AgentServiceKey(namespace), svc))
+	}
+}
+
 func PodRunningAndReadyWithNewUID(ctx context.Context, k8sClient client.Client, namespace string, oldUID types.UID) func() bool {
 	return func() bool {
 		pod, err := AgentPod(ctx, k8sClient, namespace)
