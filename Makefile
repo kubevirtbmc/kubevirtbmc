@@ -17,13 +17,13 @@ export REPO ?= kubevirtbmc
 MGR_IMG ?= $(REPO)/virtbmc-controller:$(TAG)
 AGT_IMG ?= $(REPO)/virtbmc:$(TAG)
 
-K8S_VERSION = 1.34.9
+K8S_VERSION = 1.36.4
 # TODO: The inconsistency between k8s version and kind node image version is a temporary hack.
-KIND_K8S_VERSION = v1.34.8
+KIND_K8S_VERSION = v1.36.1
 # KIND_K8S_VERSION = v$(shell echo $(K8S_VERSION))
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.34.x
-export CERT_MANAGER_VERSION = v1.14.2
+ENVTEST_K8S_VERSION = 1.36.x
+export CERT_MANAGER_VERSION = v1.21.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -39,10 +39,10 @@ endif
 CONTAINER_TOOL ?= docker
 
 # KUBEVIRT API version to use (CRD codegen); keep in sync with KUBEVIRT_VERSION.
-KUBEVIRT_API_VERSION = v1.8.4
+KUBEVIRT_API_VERSION = v1.9.0
 # Runtime install pin for e2e (test/util InstallKubeVirt).
 export KUBEVIRT_VERSION ?= $(KUBEVIRT_API_VERSION)
-export CDI_VERSION ?= v1.65.0
+export CDI_VERSION ?= v1.66.0
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -122,11 +122,11 @@ test: manifests generate generate-kubevirt-crd fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $(shell go list ./... | grep -v /test/) -coverprofile cover.out
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v2.6.1
+GOLANGCI_LINT_VERSION ?= v2.13.1
 golangci-lint:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
+	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
 	}
 
 .PHONY: e2e-setup
@@ -313,8 +313,8 @@ CLOUD_PROVIDER_KIND_PID_FILE ?= $(LOCALBIN)/cloud-provider-kind.pid
 CLOUD_PROVIDER_KIND_LOG_FILE ?= $(LOCALBIN)/cloud-provider-kind.log
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.2.1
-CONTROLLER_TOOLS_VERSION ?= v0.19.0
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.21.0
 KIND_VERSION ?= v0.32.0
 MOCKGEN_VERSION ?= v0.6.0
 CLOUD_PROVIDER_KIND_VERSION ?= v0.11.1

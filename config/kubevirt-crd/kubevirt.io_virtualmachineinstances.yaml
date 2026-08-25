@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: virtualmachineinstances.kubevirt.io
 spec:
   group: kubevirt.io
@@ -1542,8 +1542,10 @@ spec:
                           properties:
                             claimName:
                               description: |-
-                                ClaimName needs to be provided from the list vmi.spec.resourceClaims[].name where this
-                                device is allocated
+                                ClaimName references the name of an entry in the
+                                VMI's spec.resourceClaims[] array. The referenced
+                                entry may use either resourceClaimName or
+                                resourceClaimTemplateName.
                               type: string
                             deviceName:
                               description: DeviceName is the name of the device provisioned
@@ -1555,8 +1557,9 @@ spec:
                               type: string
                             requestName:
                               description: |-
-                                RequestName needs to be provided from resourceClaim.spec.devices.requests[].name where this
-                                device is requested
+                                RequestName specifies which request from the
+                                ResourceClaim/ResourceClaimTemplate spec.devices.requests array this
+                                claim request corresponds to.
                               type: string
                             tag:
                               description: If specified, the virtual network interface
@@ -1596,8 +1599,10 @@ spec:
                           properties:
                             claimName:
                               description: |-
-                                ClaimName needs to be provided from the list vmi.spec.resourceClaims[].name where this
-                                device is allocated
+                                ClaimName references the name of an entry in the
+                                VMI's spec.resourceClaims[] array. The referenced
+                                entry may use either resourceClaimName or
+                                resourceClaimTemplateName.
                               type: string
                             deviceName:
                               description: DeviceName is the name of the device provisioned
@@ -1607,8 +1612,9 @@ spec:
                               type: string
                             requestName:
                               description: |-
-                                RequestName needs to be provided from resourceClaim.spec.devices.requests[].name where this
-                                device is requested
+                                RequestName specifies which request from the
+                                ResourceClaim/ResourceClaimTemplate spec.devices.requests array this
+                                claim request corresponds to.
                               type: string
                             tag:
                               description: If specified, the virtual network interface
@@ -1759,9 +1765,43 @@ spec:
                                 will be placed on the guests pci address with the
                                 specified PCI address. For example: 0000:81:01.10'
                               type: string
+                            portRanges:
+                              description: |-
+                                List of port ranges to be forwarded to the virtual machine.
+                                Mutually exclusive with ports. Only supported on masquerade interfaces.
+                                This feature is in Alpha.
+                              items:
+                                description: |-
+                                  PortRange represents a range of ports to be forwarded to the virtual machine.
+                                  All fields are mandatory.
+                                properties:
+                                  end:
+                                    description: |-
+                                      Last port of the range to expose for the virtual machine.
+                                      This must be a valid port number, 0 < x < 65536.
+                                      Must be greater than or equal to start.
+                                    format: int32
+                                    type: integer
+                                  protocol:
+                                    description: Required. Must be UDP or TCP.
+                                    type: string
+                                  start:
+                                    description: |-
+                                      First port of the range to expose for the virtual machine.
+                                      This must be a valid port number, 0 < x < 65536.
+                                    format: int32
+                                    type: integer
+                                required:
+                                - end
+                                - protocol
+                                - start
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
                             ports:
-                              description: List of ports to be forwarded to the virtual
-                                machine.
+                              description: |-
+                                List of ports to be forwarded to the virtual machine.
+                                Mutually exclusive with portRanges.
                               items:
                                 description: |-
                                   Port represents a port to expose from the virtual machine.
@@ -2654,6 +2694,28 @@ spec:
                             Default 10.0.2.0/24 if not specified.
                           type: string
                       type: object
+                    resourceClaim:
+                      description: |-
+                        ResourceClaim represents a network resource requested
+                        via a VMI spec.resourceClaims[] entry, backed by either a
+                        Kubernetes ResourceClaim or ResourceClaimTemplate.
+                        This field should only be configured if the NetworkDevicesWithDRA feature-gate is enabled.
+                        This feature is in alpha.
+                      properties:
+                        claimName:
+                          description: |-
+                            ClaimName references the name of an entry in the
+                            VMI's spec.resourceClaims[] array. The referenced
+                            entry may use either resourceClaimName or
+                            resourceClaimTemplateName.
+                          type: string
+                        requestName:
+                          description: |-
+                            RequestName specifies which request from the
+                            ResourceClaim/ResourceClaimTemplate spec.devices.requests array this
+                            claim request corresponds to.
+                          type: string
+                      type: object
                   required:
                   - name
                   type: object
@@ -2824,26 +2886,20 @@ spec:
                   This is an alpha field and requires enabling the
                   DynamicResourceAllocation feature gate in kubernetes
                    https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/
-                  This field should only be configured if one of the feature-gates GPUsWithDRA or HostDevicesWithDRA is enabled.
+                  This field should only be configured if one of the feature-gates GPUsWithDRA, HostDevicesWithDRA,
+                  or NetworkDevicesWithDRA is enabled.
                   This feature is in alpha.
                 items:
-                  description: |-
-                    PodResourceClaim references exactly one ResourceClaim, either directly
-                    or by naming a ResourceClaimTemplate which is then turned into a ResourceClaim
-                    for the pod.
-
-                    It adds a name to it that uniquely identifies the ResourceClaim inside the Pod.
-                    Containers that need access to the ResourceClaim reference it with this name.
                   properties:
                     name:
                       description: |-
-                        Name uniquely identifies this resource claim inside the pod.
-                        This must be a DNS_LABEL.
+                        Name uniquely identifies this resource claim inside the VMI.
+                        This field is required and must be a DNS_LABEL.
                       type: string
                     resourceClaimName:
                       description: |-
                         ResourceClaimName is the name of a ResourceClaim object in the same
-                        namespace as this pod.
+                        namespace as this VMI.
 
                         Exactly one of ResourceClaimName and ResourceClaimTemplateName must
                         be set.
@@ -2851,17 +2907,14 @@ spec:
                     resourceClaimTemplateName:
                       description: |-
                         ResourceClaimTemplateName is the name of a ResourceClaimTemplate
-                        object in the same namespace as this pod.
+                        object in the same namespace as this VMI.
 
-                        The template will be used to create a new ResourceClaim, which will
-                        be bound to this pod. When this pod is deleted, the ResourceClaim
-                        will also be deleted. The pod name and resource name, along with a
-                        generated component, will be used to form a unique name for the
-                        ResourceClaim, which will be recorded in pod.status.resourceClaimStatuses.
-
-                        This field is immutable and no changes will be made to the
-                        corresponding ResourceClaim by the control plane after creating the
-                        ResourceClaim.
+                        The template name is passed through to the generated virt-launcher Pod
+                        spec. From the Pod spec, the template is used to create a new
+                        ResourceClaim, which is bound to the virt-launcher Pod. When the
+                        virt-launcher Pod is deleted, the ResourceClaim is also deleted. The
+                        generated ResourceClaim name is unique and is recorded in
+                        pod.status.resourceClaimStatuses.
 
                         Exactly one of ResourceClaimName and ResourceClaimTemplateName must
                         be set.
@@ -2877,6 +2930,13 @@ spec:
                 description: |-
                   If specified, the VMI will be dispatched by specified scheduler.
                   If not specified, the VMI will be dispatched by default scheduler.
+                type: string
+              serviceAccountName:
+                description: |-
+                  ServiceAccountName is the name of the ServiceAccount to use to run the
+                  virt-launcher pod. This sets pod.spec.serviceAccountName but does NOT
+                  automatically expose the service account token to the VM guest.
+                  To expose the token to the VM, use a serviceAccount volume.
                 type: string
               startStrategy:
                 description: StartStrategy can be set to "Paused" if Virtual Machine
@@ -3683,6 +3743,10 @@ spec:
                       failed:
                         description: Failed indicates that the backup failed
                         type: boolean
+                      quiesceStatus:
+                        description: QuiesceStatus indicates whether filesystem freeze
+                          succeeded, failed, or was skipped.
+                        type: string
                       startTimestamp:
                         description: StartTimestamp is the timestamp when the backup
                           started
@@ -4119,6 +4183,83 @@ spec:
                           When set to true, DisableTLS will disable the additional layer of live migration encryption
                           provided by KubeVirt. This is usually a bad idea. Defaults to false
                         type: boolean
+                      experimental:
+                        description: |-
+                          ExperimentalMigrationOptions is an alpha API. It is intended for experimental
+                          purposes only and will be removed in the future.
+                        properties:
+                          compression:
+                            description: |-
+                              Compression selects the algorithm for compressing the live migration
+                              data stream. When omitted (nil) or set to "none", compression is
+                              disabled.
+                            enum:
+                            - none
+                            - zstd
+                            type: string
+                          stallDetector:
+                            properties:
+                              completionTimeoutFactor:
+                                description: |-
+                                  CompletionTimeoutFactor multiplies the computed migration completion timeout to determine
+                                  the total time budget for deciding whether a forced switchover can still finish in time,
+                                  and to extend the abort deadline after initiating a completion-timeout-driven switchover.
+                                  Defaults to "2".
+                                type: string
+                              ewmaAlpha:
+                                description: |-
+                                  EwmaAlpha is the smoothing factor for the exponentially weighted moving average of
+                                  observed migration bandwidth. Must be in the range (0, 1]; zero is invalid because
+                                  the estimate would never incorporate new samples. Higher values weight recent samples
+                                  more heavily.
+                                  Defaults to "0.4".
+                                type: string
+                              patienceWindowDecayFactor:
+                                description: |-
+                                  PatienceWindowDecayFactor is the factor by which the relaxation patience window is
+                                  multiplied after each best-remaining-bytes relaxation step.
+                                  Defaults to "0.5".
+                                type: string
+                              precopyPossibleFactor:
+                                description: |-
+                                  PrecopyPossibleFactor is the maximum factor by which estimated downtime may exceed
+                                  MaxDowntime while still attempting a soft stop-and-copy instead of aborting the migration.
+                                  Defaults to "1.5".
+                                type: string
+                              searchLocalMinima:
+                                description: |-
+                                  SearchLocalMinima controls whether convergence actions are delayed until remaining bytes
+                                  reach a local minimum near the best observed value. When false, actions may trigger
+                                  as soon as a stall is detected.
+                                  Defaults to true.
+                                type: boolean
+                              stallMargin:
+                                description: |-
+                                  StallMargin is the fractional tolerance, expressed as a percentage, used when
+                                  comparing remaining migration bytes against the best observed value to detect stalls
+                                  and local minima. A stall is reported when remaining bytes stay above
+                                  (1 - StallMargin/100) of the outside-window minimum.
+                                  Defaults to 4.
+                                format: int64
+                                maximum: 100
+                                minimum: 0
+                                type: integer
+                              stallProgressTimeout:
+                                description: |-
+                                  StallProgressTimeout is the duration in seconds of the sliding window used to track
+                                  minimum remaining-bytes and detect when migration progress has stalled.
+                                  Defaults to 40.
+                                format: int64
+                                type: integer
+                              switchoverTimeout:
+                                description: |-
+                                  SwitchoverTimeout is the duration in seconds allowed for a stop-and-copy or post-copy
+                                  switchover to complete after being triggered before the migration is aborted.
+                                  Defaults to 60.
+                                format: int64
+                                type: integer
+                            type: object
+                        type: object
                       matchSELinuxLevelOnMigration:
                         description: |-
                           By default, the SELinux level of target virt-launcher pods is forced to the level of the source virt-launcher.
@@ -4126,6 +4267,14 @@ spec:
                           That will ensure the target virt-launcher doesn't share categories with another pod on the node.
                           However, migrations will fail when using RWX volumes that don't automatically deal with SELinux levels.
                         type: boolean
+                      maxDowntimeMs:
+                        description: |-
+                          MaxDowntimeMs specifies the maximum tolerable downtime (in milliseconds) during switchover.
+                          Defaults to 900
+                        format: int64
+                        maximum: 2000000
+                        minimum: 1
+                        type: integer
                       network:
                         description: |-
                           Network is the name of the CNI network to use for live migrations. By default, migrations go
