@@ -35,18 +35,20 @@ jobs:
         GH_TOKEN: ${{ secrets.CHART_REPO_TOKEN }}
         COMMIT_SHA: ${{ github.sha }}
         COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        BOT_NAME: "KubeVirtBMC Bot"
+        BOT_EMAIL: "321044191+kubevirtbmc-bot@users.noreply.github.com"
       run: |
         cd chart
-        if git diff --quiet; then
+        git add charts/kubevirtbmc/crds/
+        if git diff --cached --quiet; then
           echo "No CRD changes to sync"
           exit 0
         fi
 
         BRANCH="sync-crds-${COMMIT_SHA}"
-        git config user.name "kubevirtbmc-bot"
-        git config user.email "actions@github.com"
+        git config user.name "$BOT_NAME"
+        git config user.email "$BOT_EMAIL"
         git checkout -b "$BRANCH"
-        git add charts/kubevirtbmc/crds/
         git commit -m "sync CRDs from kubevirtbmc@${COMMIT_SHA}"
         git push origin "$BRANCH"
 
