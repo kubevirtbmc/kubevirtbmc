@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -531,6 +532,27 @@ func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namesp
 		return k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv)
 	}, agentTestTimeout, agentTestInterval).Should(Succeed(),
 		"DataVolume %s/%s should exist", namespace, name)
+}
+
+func verifyDataVolumeStorageClass(ctx context.Context, k8sClient client.Client, namespace, name, want string) {
+	Eventually(func() string {
+		dv := &cdiv1.DataVolume{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv); err != nil {
+			return ""
+		}
+		if dv.Spec.Storage == nil || dv.Spec.Storage.StorageClassName == nil {
+			return ""
+		}
+		return *dv.Spec.Storage.StorageClassName
+	}, agentTestTimeout, agentTestInterval).Should(Equal(want),
+		"DataVolume %s/%s should use storageClassName %q", namespace, name, want)
+}
+
+func newStorageClass(name string) *storagev1.StorageClass {
+	return &storagev1.StorageClass{
+		ObjectMeta:  metav1.ObjectMeta{Name: name},
+		Provisioner: "kubevirtbmc.io/e2e-test",
+	}
 }
 
 func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, namespace, name string) {

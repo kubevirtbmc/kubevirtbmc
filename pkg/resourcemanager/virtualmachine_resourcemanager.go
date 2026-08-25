@@ -223,8 +223,22 @@ func (m *VirtualMachineResourceManager) InsertMedia(imageURL string) error {
 		return err
 	}
 
+	// A missing BMC client/object means no StorageClassName override is configured, not a failure.
+	var storageClassName string
+
+	if m.bmcClient != nil {
+		var bmc bmcv1.VirtualMachineBMC
+		if err := m.bmcClient.Get(m.ctx, types.NamespacedName{Namespace: m.namespace, Name: m.bmcName}, &bmc); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return err
+			}
+		} else if bmc.Spec.StorageClassName != nil {
+			storageClassName = *bmc.Spec.StorageClassName
+		}
+	}
+
 	// Create DataVolume
-	dv := util.ConstructDataVolume(m.namespace, m.name, imageURL, imageSize)
+	dv := util.ConstructDataVolume(m.namespace, m.name, imageURL, imageSize, storageClassName)
 	_, err = m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Create(m.ctx, dv, metav1.CreateOptions{})
 	if err != nil {
 		return err

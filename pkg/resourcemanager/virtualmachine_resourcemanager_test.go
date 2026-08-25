@@ -300,6 +300,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 		virtualMedia         VirtualMediaInterface
 		dv                   *cdiv1.DataVolume
 		vm                   *kubevirtv1.VirtualMachine
+		bmc                  *bmcv1.VirtualMachineBMC
 		expectedVirtualMedia VirtualMediaInterface
 		expectedDV           *cdiv1.DataVolume
 		expectedVM           *kubevirtv1.VirtualMachine
@@ -320,6 +321,42 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			shouldError: false,
+		},
+		{
+			name:         "Insert media with a VirtualMachineBMC.Spec.StorageClassName set should use that StorageClass",
+			imageURL:     imageURL,
+			virtualMedia: &fakeVirtualMedia{},
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			bmc: func() *bmcv1.VirtualMachineBMC {
+				bmc := newTestBMC()
+				bmc.Spec.StorageClassName = util.Ptr("custom-storage-class")
+				return bmc
+			}(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: imageURL,
+				inserted: true,
+			},
+			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(imageURL).
+				WithStorage(testImageSizeBytes).
+				WithStorageClass("custom-storage-class").
 				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
@@ -450,6 +487,11 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				namespace:    testNamespace,
 				name:         testVMName,
 				virtualMedia: tc.virtualMedia,
+			}
+
+			if tc.bmc != nil {
+				vmrm.bmcClient = newTestBMCClient(tc.bmc)
+				vmrm.bmcName = tc.bmc.Name
 			}
 
 			err := vmrm.InsertMedia(tc.imageURL)

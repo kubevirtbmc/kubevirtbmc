@@ -98,6 +98,11 @@ spec:
                     - LoadBalancer
                     type: string
                 type: object
+              storageClassName:
+                description: StorageClassName is the StorageClass for the DataVolume
+                  created on virtual media insert; unset falls back to the cluster
+                  default.
+                type: string
               virtualMachineRef:
                 description: Reference to the VM to manage
                 properties:

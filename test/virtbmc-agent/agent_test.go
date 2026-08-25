@@ -1045,6 +1045,35 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				verifyDataVolumeDeleted(ctx, k8sClient, ns, agentVMName)
 			})
 		})
+
+		Context("Virtual Media storageClassName override", func() {
+			const wantClass = "kubevirtbmc-e2e-override-sc"
+
+			BeforeAll(func() {
+				By("creating a dedicated StorageClass")
+				Expect(k8sClient.Create(ctx, newStorageClass(wantClass))).To(Succeed())
+				DeferCleanup(func() {
+					_ = k8sClient.Delete(ctx, newStorageClass(wantClass))
+				})
+
+				By("setting storageClassName on the VirtualMachineBMC")
+				bmc := &bmcv1.VirtualMachineBMC{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
+				orig := bmc.DeepCopy()
+				bmc.Spec.StorageClassName = util.Ptr(wantClass)
+				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
+			})
+
+			It("should insert media and create a DataVolume using the configured StorageClass", func() {
+				body := `{"Image":"https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso","Inserted":true}`
+				out, err := testutil.RunCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(ContainSubstring("200"))
+
+				verifyDataVolumeExists(ctx, k8sClient, ns, agentVMName)
+				verifyDataVolumeStorageClass(ctx, k8sClient, ns, agentVMName, wantClass)
+			})
+		})
 	})
 
 })

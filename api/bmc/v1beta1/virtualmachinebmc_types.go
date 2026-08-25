@@ -48,6 +48,10 @@ type VirtualMachineBMCSpec struct {
 	// IPMI configures the IPMI simulator.
 	// +optional
 	IPMI *IPMISpec `json:"ipmi,omitempty"`
+
+	// StorageClassName is the StorageClass for the DataVolume created on virtual media insert; unset falls back to the cluster default.
+	// +optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
 }
 
 // Service configuration for the BMC service.

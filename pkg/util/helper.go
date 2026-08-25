@@ -53,7 +53,20 @@ func GetRemoteFileSize(url string) (int64, error) {
 	return size, nil
 }
 
-func ConstructDataVolume(namespace, name, url string, size int64) *cdiv1.DataVolume {
+// ConstructDataVolume builds the DataVolume backing an inserted virtual media image; an empty storageClassName falls back to the cluster default.
+func ConstructDataVolume(namespace, name, url string, size int64, storageClassName string) *cdiv1.DataVolume {
+	storage := &cdiv1.StorageSpec{
+		Resources: corev1.VolumeResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
+			},
+		},
+	}
+
+	if storageClassName != "" {
+		storage.StorageClassName = &storageClassName
+	}
+
 	return &cdiv1.DataVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
@@ -68,13 +81,7 @@ func ConstructDataVolume(namespace, name, url string, size int64) *cdiv1.DataVol
 					URL: url,
 				},
 			},
-			Storage: &cdiv1.StorageSpec{
-				Resources: corev1.VolumeResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
-					},
-				},
-			},
+			Storage: storage,
 		},
 	}
 }

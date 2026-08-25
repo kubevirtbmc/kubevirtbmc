@@ -53,3 +53,11 @@ func (b *DataVolumeBuilder) WithStorage(size int64) *DataVolumeBuilder {
 	}
 	return b
 }
+
+func (b *DataVolumeBuilder) WithStorageClass(name string) *DataVolumeBuilder {
+	if b.dv.Spec.Storage == nil {
+		b.dv.Spec.Storage = &cdiv1.StorageSpec{}
+	}
+	b.dv.Spec.Storage.StorageClassName = &name
+	return b
+}
