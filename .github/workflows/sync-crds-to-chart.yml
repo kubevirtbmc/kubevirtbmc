@@ -1,0 +1,58 @@
+name: Sync CRDs to chart repo
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - config/crd/bases/**
+
+permissions:
+  contents: read
+
+jobs:
+  sync-crds:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out kubevirtbmc
+      uses: actions/checkout@v4
+      with:
+        path: kubevirtbmc
+
+    - name: Check out chart
+      uses: actions/checkout@v4
+      with:
+        repository: kubevirtbmc/chart
+        token: ${{ secrets.CHART_REPO_TOKEN }}
+        path: chart
+
+    - name: Copy CRDs into chart repo
+      run: |
+        cp kubevirtbmc/config/crd/bases/*.yaml chart/charts/kubevirtbmc/crds/
+
+    - name: Open PR against chart repo
+      env:
+        GH_TOKEN: ${{ secrets.CHART_REPO_TOKEN }}
+        COMMIT_SHA: ${{ github.sha }}
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      run: |
+        cd chart
+        if git diff --quiet; then
+          echo "No CRD changes to sync"
+          exit 0
+        fi
+
+        BRANCH="sync-crds-${COMMIT_SHA}"
+        git config user.name "kubevirtbmc-bot"
+        git config user.email "actions@github.com"
+        git checkout -b "$BRANCH"
+        git add charts/kubevirtbmc/crds/
+        git commit -m "sync CRDs from kubevirtbmc@${COMMIT_SHA}"
+        git push origin "$BRANCH"
+
+        gh pr create \
+          --repo kubevirtbmc/chart \
+          --base main \
+          --head "$BRANCH" \
+          --title "sync CRDs from kubevirtbmc@${COMMIT_SHA}" \
+          --body "Automated sync of \`config/crd/bases/**\` from kubevirtbmc/kubevirtbmc@${COMMIT_SHA} (${COMMIT_MESSAGE})."
