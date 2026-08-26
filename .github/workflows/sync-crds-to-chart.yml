@@ -6,6 +6,7 @@ on:
     - main
     paths:
     - config/crd/bases/**
+    - .github/workflows/sync-crds-to-chart.yml
 
 permissions:
   contents: read
@@ -49,7 +50,7 @@ jobs:
         git config user.name "$BOT_NAME"
         git config user.email "$BOT_EMAIL"
         git checkout -b "$BRANCH"
-        git commit -m "sync CRDs from kubevirtbmc@${COMMIT_SHA}"
+        git commit -s -m "sync CRDs from kubevirtbmc@${COMMIT_SHA}"
         git push origin "$BRANCH"
 
         gh pr create \
