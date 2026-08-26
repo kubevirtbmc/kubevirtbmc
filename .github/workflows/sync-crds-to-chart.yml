@@ -50,7 +50,7 @@ jobs:
         git config user.name "$BOT_NAME"
         git config user.email "$BOT_EMAIL"
         git checkout -b "$BRANCH"
-        git commit -s -m "sync CRDs from kubevirtbmc@${COMMIT_SHA}"
+        git commit -s -m "chore: sync CRDs from kubevirtbmc/kubevirtbmc@${COMMIT_SHA}"
         git push origin "$BRANCH"
 
         gh pr create \
