@@ -692,7 +692,8 @@ func (m *VirtualMachineResourceManager) handleBootOrderBackup(
 	ifaces []kubevirtv1.Interface,
 	opts *BootOptions,
 ) error {
-	if opts.Mode == BootModeOneshot {
+	switch opts.Mode {
+	case BootModeOneshot:
 		// Preserve an existing oneshot backup (issued before the VM
 		// rebooted): the boot order captured on the first oneshot is the
 		// state to restore. A persistent marker carries no boot order
@@ -734,7 +735,7 @@ func (m *VirtualMachineResourceManager) handleBootOrderBackup(
 		if err := m.saveBootOverride(override); err != nil {
 			return fmt.Errorf("failed to save boot override: %w", err)
 		}
-	} else if opts.Mode == BootModePersistent {
+	case BootModePersistent:
 		if err := m.saveBootOverride(&bmcv1.BootOverrideStatus{
 			Mode: bmcv1.BootOverrideModePersistent,
 		}); err != nil {

@@ -3,33 +3,13 @@ run:
   allow-parallel-runners: true
 
 linters:
-  default: none
-  enable:
-    - copyloopvar
-    - errcheck
-    - goconst
-    - gocyclo
-    - govet
-    - ineffassign
-    - misspell
-    - nakedret
-    - prealloc
-    - unconvert
-    - unparam
-    - unused
-    # disabled: dupl, ginkgolinter, lll, revive, staticcheck
-  disable:
-    - dupl
-    - ginkgolinter
-    - lll
-    - revive
-    - staticcheck
+  default: standard
 
   settings:
-    revive:
-      rules:
-        - name: comment-spacings
-        - name: import-shadowing
+    staticcheck:
+      dot-import-whitelist:
+        - github.com/onsi/gomega
+        - github.com/onsi/ginkgo/v2
 
   exclusions:
     generated: lax
