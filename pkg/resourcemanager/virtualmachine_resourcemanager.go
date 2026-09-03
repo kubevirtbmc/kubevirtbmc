@@ -9,15 +9,12 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
 	kvclient "kubevirt.io/client-go/kubevirt"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/generated/redfish/server"
@@ -48,8 +45,7 @@ type VirtualMachineResourceManager struct {
 	ctx        context.Context
 	virtClient kvclient.Interface
 	cdiClient  cdiclient.Interface
-	bmcClient  client.Client
-	bmcName    string
+	store      StateStore
 
 	namespace  string
 	name       string
@@ -64,15 +60,13 @@ func NewVirtualMachineResourceManager(
 	ctx context.Context,
 	virtClient kvclient.Interface,
 	cdiClient cdiclient.Interface,
-	bmcClient client.Client,
-	bmcName string,
+	store StateStore,
 ) *VirtualMachineResourceManager {
 	return &VirtualMachineResourceManager{
 		ctx:        ctx,
 		virtClient: virtClient,
 		cdiClient:  cdiClient,
-		bmcClient:  bmcClient,
-		bmcName:    bmcName,
+		store:      store,
 	}
 }
 
@@ -223,18 +217,9 @@ func (m *VirtualMachineResourceManager) InsertMedia(imageURL string) error {
 		return err
 	}
 
-	// A missing BMC client/object means no StorageClassName override is configured, not a failure.
-	var storageClassName string
-
-	if m.bmcClient != nil {
-		var bmc bmcv1.VirtualMachineBMC
-		if err := m.bmcClient.Get(m.ctx, types.NamespacedName{Namespace: m.namespace, Name: m.bmcName}, &bmc); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return err
-			}
-		} else if bmc.Spec.StorageClassName != nil {
-			storageClassName = *bmc.Spec.StorageClassName
-		}
+	storageClassName, err := m.store.GetStorageClassName()
+	if err != nil {
+		return err
 	}
 
 	// Create DataVolume
@@ -480,8 +465,8 @@ func (m *VirtualMachineResourceManager) restartOrVerify(opts *kubevirtv1.Restart
 }
 
 // GetBootFlags derives the current boot flags — boot device (lowest bootOrder),
-// firmware type, and persistence mode — from the VM template spec and
-// status.bootOverride on the VirtualMachineBMC CR.
+// firmware type, and persistence mode — from the VM template spec and the boot
+// override recorded in the state store.
 func (m *VirtualMachineResourceManager) GetBootFlags() (*BootFlagsState, error) {
 	disks, ifaces := m.getBootDevices()
 	if len(disks) == 0 && len(ifaces) == 0 {
@@ -699,7 +684,7 @@ func (m *VirtualMachineResourceManager) SetBootDevice(bootDevice BootDevice, opt
 }
 
 // handleBootOrderBackup saves a oneshot backup or a persistent override marker
-// to status.bootOverride based on the boot mode. Call after the VM patch succeeds.
+// to the state store based on the boot mode. Call after the VM patch succeeds.
 func (m *VirtualMachineResourceManager) handleBootOrderBackup(
 	vm *kubevirtv1.VirtualMachine,
 	disks []kubevirtv1.Disk,
@@ -828,8 +813,8 @@ func (m *VirtualMachineResourceManager) SetFirmwareMode(mode FirmwareMode) error
 
 // ClearBootOverrides cancels the current boot override. If a oneshot backup
 // exists (the override hasn't been consumed yet), it restores the original boot
-// order from the backup. It always clears status.bootOverride and resets the
-// ComputerSystem boot override state to Disabled.
+// order from the backup. It always clears the stored boot override and resets
+// the ComputerSystem boot override state to Disabled.
 //
 // Note: if the override was persistent (no backup), device bootOrders are left
 // as-is since there is no saved "original" state to restore to. The
@@ -871,7 +856,7 @@ func (m *VirtualMachineResourceManager) ClearBootOverrides() error {
 		}
 	}
 
-	if err := m.clearBootOverride(); err != nil {
+	if err := m.ClearBootOverride(); err != nil {
 		logrus.WithError(err).Warn("failed to clear boot override during ClearBootOverrides")
 	}
 
@@ -882,43 +867,16 @@ func (m *VirtualMachineResourceManager) ClearBootOverrides() error {
 	return nil
 }
 
-// saveBootOverride writes the boot override to status.bootOverride on the
-// VirtualMachineBMC CR. Read-modify-write with conflict retry REPLACES the
-// whole bootOverride value — a merge patch would linger stale keys from a
-// previous override (e.g. bootOrders surviving a oneshot→persistent overwrite).
+// saveBootOverride persists the boot override through the state store (the
+// VirtualMachineBMC CR in cluster mode, a local file in standalone mode).
 func (m *VirtualMachineResourceManager) saveBootOverride(override *bmcv1.BootOverrideStatus) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		bmc := &bmcv1.VirtualMachineBMC{}
-		if err := m.bmcClient.Get(m.ctx, client.ObjectKey{Namespace: m.namespace, Name: m.bmcName}, bmc); err != nil {
-			return fmt.Errorf("failed to get VirtualMachineBMC: %w", err)
-		}
-		bmc.Status.BootOverride = override
-		if err := m.bmcClient.Status().Update(m.ctx, bmc); err != nil {
-			return fmt.Errorf("failed to update VirtualMachineBMC status: %w", err)
-		}
-		return nil
-	})
+	return m.store.SaveBootOverride(override)
 }
 
-// clearBootOverride removes status.bootOverride from the VirtualMachineBMC CR.
-func (m *VirtualMachineResourceManager) clearBootOverride() error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		bmc := &bmcv1.VirtualMachineBMC{}
-		if err := m.bmcClient.Get(m.ctx, client.ObjectKey{Namespace: m.namespace, Name: m.bmcName}, bmc); err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil
-			}
-			return fmt.Errorf("failed to get VirtualMachineBMC: %w", err)
-		}
-		if bmc.Status.BootOverride == nil {
-			return nil
-		}
-		bmc.Status.BootOverride = nil
-		if err := m.bmcClient.Status().Update(m.ctx, bmc); err != nil {
-			return fmt.Errorf("failed to update VirtualMachineBMC status: %w", err)
-		}
-		return nil
-	})
+// ClearBootOverride removes the boot override from the state store. Clearing
+// an absent override is not an error.
+func (m *VirtualMachineResourceManager) ClearBootOverride() error {
+	return m.store.ClearBootOverride()
 }
 
 // currentFirmwareType returns the VM firmware bootloader type (Legacy when
@@ -1174,12 +1132,8 @@ func buildBootOrderRestoreOps(path string, currentOrder, savedOrder *uint, saved
 	}}
 }
 
-// GetBootOverride reads status.bootOverride from the VirtualMachineBMC CR.
+// GetBootOverride reads the boot override from the state store.
 // Returns nil (without error) when no override is recorded.
 func (m *VirtualMachineResourceManager) GetBootOverride() (*bmcv1.BootOverrideStatus, error) {
-	bmc := &bmcv1.VirtualMachineBMC{}
-	if err := m.bmcClient.Get(m.ctx, client.ObjectKey{Namespace: m.namespace, Name: m.bmcName}, bmc); err != nil {
-		return nil, err
-	}
-	return bmc.Status.BootOverride, nil
+	return m.store.GetBootOverride()
 }

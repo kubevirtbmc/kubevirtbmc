@@ -29,6 +29,15 @@ type Options struct {
 	BMCPassword    string
 	EnableIPMI     bool
 	PodName        string
+	// Standalone runs without the VirtualMachineBMC CRD: no owning CR, no
+	// controller. Boot override state is kept in StateFile and the oneshot
+	// restore loop runs in-process.
+	Standalone bool
+	// StateFile is where boot override state is persisted in standalone mode.
+	StateFile string
+	// StorageClass is used for virtual media DataVolumes in standalone mode;
+	// empty falls back to the cluster default.
+	StorageClass string
 }
 
 type VirtBMC struct {
@@ -38,7 +47,7 @@ type VirtBMC struct {
 	redfishPort int
 	vmNamespace string
 	vmName      string
-	bmcName     string
+	standalone  bool
 
 	virtClient kvclient.Interface
 	cdiClient  cdiclient.Interface
@@ -53,15 +62,26 @@ type VirtBMC struct {
 func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC, error) {
 	virtClient := NewVirtClient(options)
 	cdiClient := NewCdiClient(options)
-	bmcClient := NewBMCClient(options)
 
 	vmNamespace := ctx.Value(VMNamespaceKey{}).(string)
 	vmName := ctx.Value(VMNameKey{}).(string)
-	bmcName, err := virtualMachineBMCNameFromPodLabel(ctx, bmcClient, vmNamespace, options.PodName)
-	if err != nil {
-		return nil, err
+
+	var store resourcemanager.StateStore
+	if options.Standalone {
+		var err error
+		store, err = resourcemanager.NewFileStateStore(options.StateFile, options.StorageClass)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		bmcClient := NewBMCClient(options)
+		bmcName, err := virtualMachineBMCNameFromPodLabel(ctx, bmcClient, vmNamespace, options.PodName)
+		if err != nil {
+			return nil, err
+		}
+		store = resourcemanager.NewClusterStateStore(ctx, bmcClient, vmNamespace, bmcName)
 	}
-	resourceManager := resourcemanager.NewVirtualMachineResourceManager(ctx, virtClient, cdiClient, bmcClient, bmcName)
+	resourceManager := resourcemanager.NewVirtualMachineResourceManager(ctx, virtClient, cdiClient, store)
 
 	var ipmiSimulator *ipmi.Simulator
 	if options.EnableIPMI {
@@ -75,7 +95,7 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 		redfishPort:     options.RedfishPort,
 		vmNamespace:     vmNamespace,
 		vmName:          vmName,
-		bmcName:         bmcName,
+		standalone:      options.Standalone,
 		virtClient:      virtClient,
 		cdiClient:       cdiClient,
 		resourceManager: resourceManager,
@@ -123,6 +143,12 @@ func (b *VirtBMC) Run() error {
 		return fmt.Errorf("unable to run the redfish emulator: %v", err)
 	}
 	logrus.Infof("Redfish service listens on %s:%d", b.address, b.redfishPort)
+
+	// In standalone mode there is no bootorderrestore controller; restore
+	// consumed oneshot overrides in-process.
+	if b.standalone {
+		go b.runOneshotRestore()
+	}
 
 	<-b.context.Done()
 	logrus.Info("Gracefully shutting down the VirtBMC agent...")

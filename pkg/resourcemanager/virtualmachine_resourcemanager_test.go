@@ -490,8 +490,10 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			}
 
 			if tc.bmc != nil {
-				vmrm.bmcClient = newTestBMCClient(tc.bmc)
-				vmrm.bmcName = tc.bmc.Name
+				vmrm.store = NewClusterStateStore(context.TODO(), newTestBMCClient(tc.bmc), testNamespace, tc.bmc.Name)
+			} else {
+				// No CR: falls back to the cluster default StorageClass.
+				vmrm.store = NewClusterStateStore(context.TODO(), newTestBMCClient(), testNamespace, testBMCName)
 			}
 
 			err := vmrm.InsertMedia(tc.imageURL)
@@ -1446,10 +1448,9 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 			vmrm := &VirtualMachineResourceManager{
 				ctx:        context.TODO(),
 				virtClient: fakeVirtClient,
-				bmcClient:  fakeBMCClient,
+				store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 				namespace:  testNamespace,
 				name:       testVMName,
-				bmcName:    testBMCName,
 			}
 
 			err := vmrm.SetBootDevice(tc.bootDevice, &BootOptions{Mode: BootModePersistent})
@@ -1471,9 +1472,8 @@ func TestVirtualMachineResourceManager_BootOverrideStatus(t *testing.T) {
 	fakeBMCClient := newTestBMCClient(newTestBMC())
 	vmrm := &VirtualMachineResourceManager{
 		ctx:       context.TODO(),
-		bmcClient: fakeBMCClient,
+		store:     NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace: testNamespace,
-		bmcName:   testBMCName,
 	}
 
 	override := &bmcv1.BootOverrideStatus{
@@ -1489,7 +1489,7 @@ func TestVirtualMachineResourceManager_BootOverrideStatus(t *testing.T) {
 	require.Equal(t, override.VMIUID, saved.VMIUID)
 	require.Equal(t, override.BootOrders, saved.BootOrders)
 
-	require.NoError(t, vmrm.clearBootOverride())
+	require.NoError(t, vmrm.ClearBootOverride())
 	saved, err = vmrm.GetBootOverride()
 	require.NoError(t, err)
 	require.Nil(t, saved)
@@ -1507,10 +1507,9 @@ func TestVirtualMachineResourceManager_SetBootDevicePersistentSavesOverrideMarke
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	require.NoError(t, vmrm.saveBootOverride(&bmcv1.BootOverrideStatus{
@@ -1544,10 +1543,9 @@ func TestVirtualMachineResourceManager_OneshotOverwritesPersistentMarker(t *test
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	require.NoError(t, vmrm.saveBootOverride(&bmcv1.BootOverrideStatus{
@@ -1582,10 +1580,9 @@ func TestVirtualMachineResourceManager_SetBootDeviceAllowsFirmwareTemplateChange
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	err := vmrm.SetBootDevice(BootDevicePxe, &BootOptions{Mode: BootModeOneshot, EFIBoot: util.Ptr(true)})
@@ -1627,10 +1624,9 @@ func TestVirtualMachineResourceManager_DoubleOneshotPreservesOriginalBackup(t *t
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	err := vmrm.SetBootDevice(BootDevicePxe, &BootOptions{Mode: BootModeOneshot})
@@ -1691,10 +1687,9 @@ func TestVirtualMachineResourceManager_DoubleOneshotRestoresLateFirmwareChange(t
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	require.NoError(t, vmrm.SetBootDevice(BootDevicePxe, &BootOptions{Mode: BootModeOneshot}))
@@ -1954,10 +1949,9 @@ func TestVirtualMachineResourceManager_ClearBootOverrides_WithBackup(t *testing.
 	vmrm := &VirtualMachineResourceManager{
 		ctx:        context.TODO(),
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(context.TODO(), fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	err := vmrm.ClearBootOverrides()
