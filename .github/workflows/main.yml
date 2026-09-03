@@ -7,7 +7,30 @@ on:
     - "v*"
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: Lint
+      run: make lint
+    - name: Run tests
+      run: make test
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v7
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: kubevirtbmc/kubevirtbmc
+        files: ./cover.out
+
   build-main:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
