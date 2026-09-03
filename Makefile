@@ -164,6 +164,11 @@ endif
 e2e-test: generate fmt vet kind ## Run end-to-end tests (controller first, then agent: IPMI, Redfish, Virtual Media).
 	go test -v -timeout 15m ./test/virtbmc-controller/...
 	go test -v -timeout 15m ./test/virtbmc-agent/...
+	$(MAKE) e2e-test-standalone
+
+.PHONY: e2e-test-standalone
+e2e-test-standalone: generate fmt vet kind ## Run agent end-to-end tests in standalone mode (no CRD/controller).
+	AGENT_STANDALONE=true go test -v -timeout 15m ./test/virtbmc-agent/...
 
 .PHONY: local-e2e-test
 local-e2e-test: e2e-setup e2e-test e2e-teardown ## Run end-to-end tests locally.

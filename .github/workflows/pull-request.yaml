@@ -73,5 +73,15 @@ jobs:
         load: true
         tags: ${{ env.REPO }}/${{ env.AGENT }}:${{ env.VERSION }}
         labels: ${{ steps.meta.outputs.labels }}
-    - name: Run end-to-end testing
-      run: make local-e2e-test
+    - name: Set up e2e environment
+      run: make e2e-setup
+    - name: Run controller e2e tests
+      run: go test -v -timeout 15m ./test/virtbmc-controller/...
+    - name: Run agent e2e tests
+      run: go test -v -timeout 15m ./test/virtbmc-agent/...
+    - name: Run standalone agent e2e tests
+      run: AGENT_STANDALONE=true go test -v -timeout 15m ./test/virtbmc-agent/...
+    # if: always() so the Kind cluster is also torn down when a suite fails.
+    - name: Teardown e2e environment
+      if: always()
+      run: make e2e-teardown

@@ -75,6 +75,15 @@ func ensureAgentTestEnv(ctx context.Context, namespace string, k8sClient client.
 		return nil, err
 	}
 
+	// Standalone mode has no Secret/VirtualMachineBMC; credentials are passed
+	// to the agent as environment variables and the test owns the Deployment.
+	if standaloneMode {
+		env.Username = standaloneUsername
+		env.Password = standalonePassword
+		waitForAgentDeploymentReady(ctx, k8sClient, namespace, agentDeploymentName)
+		return env, nil
+	}
+
 	if err := env.ensureSecretExists(ctx, k8sClient, namespace); err != nil {
 		return nil, err
 	}
@@ -211,8 +220,16 @@ func verifyVMBootOrder(ctx context.Context, k8sClient client.Client, namespace s
 }
 
 // resetBootState clears all bootOrder fields and firmware from the test VM
-// and clears status.bootOverride, so each boot test starts from a clean slate.
+// and clears the recorded boot override, so each boot test starts from a
+// clean slate.
 func resetBootState(ctx context.Context, k8sClient client.Client, namespace string) {
+	// Standalone: clear the override through the Redfish protocol first, so
+	// ClearBootOverrides can't restore backed-up boot orders after the VM
+	// cleanup below removed them.
+	if standaloneMode {
+		clearStandaloneBootOverride(ctx, namespace)
+	}
+
 	vm := &kubevirtv1.VirtualMachine{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
 		return
@@ -266,6 +283,12 @@ func resetBootState(ctx context.Context, k8sClient client.Client, namespace stri
 	if len(vmPatch) > 0 {
 		patchJSON, _ := json.Marshal(vmPatch)
 		_ = k8sClient.Patch(ctx, vm, client.RawPatch(types.JSONPatchType, patchJSON))
+	}
+
+	// Standalone state was already cleared through the protocol above; there
+	// is no VirtualMachineBMC CR to reset.
+	if standaloneMode {
+		return
 	}
 
 	bmc := &bmcv1.VirtualMachineBMC{}
@@ -449,9 +472,14 @@ func verifyVMFirmware(ctx context.Context, k8sClient client.Client, namespace st
 		"VM %s/%s firmware should be EFI=%v", namespace, agentVMName, expectEFI)
 }
 
-// verifyBMCBootOverride checks whether status.bootOverride exists or not on
-// the VirtualMachineBMC CR.
+// verifyBMCBootOverride checks whether a boot override is recorded — on
+// status.bootOverride of the VirtualMachineBMC CR, or through the IPMI
+// protocol in standalone mode (where the state lives in the agent's file).
 func verifyBMCBootOverride(ctx context.Context, k8sClient client.Client, namespace string, shouldExist bool) {
+	if standaloneMode {
+		verifyStandaloneBootOverride(ctx, namespace, shouldExist)
+		return
+	}
 	Eventually(func() bool {
 		bmc := &bmcv1.VirtualMachineBMC{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {
@@ -466,6 +494,10 @@ func verifyBMCBootOverride(ctx context.Context, k8sClient client.Client, namespa
 // expected persistence mode. A presence-only check cannot catch a mis-parsed
 // persist bit: the override is still written, just with the wrong mode.
 func verifyBMCBootOverrideMode(ctx context.Context, k8sClient client.Client, namespace string, mode bmcv1.BootOverrideMode) {
+	if standaloneMode {
+		verifyStandaloneBootOverrideMode(ctx, namespace, mode)
+		return
+	}
 	Eventually(func() bmcv1.BootOverrideMode {
 		bmc := &bmcv1.VirtualMachineBMC{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {

@@ -34,8 +34,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("ensuring IPMI is disabled for a clean starting state")
-		env.BMC.Spec.IPMI = nil
-		Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
+		if !standaloneMode {
+			env.BMC.Spec.IPMI = nil
+			Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
+		}
 
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
@@ -73,6 +75,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 	Context("IPMI enable/disable toggle", func() {
 		It("should start with IPMI disabled by default, verify failure, then enable", func() {
+			if standaloneMode {
+				Skip("IPMI is toggled via --enable-ipmi at process start in standalone mode; there is no CR to flip")
+			}
 			By("verifying IPMI commands fail when disabled by default")
 			_, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
 			Expect(err).To(HaveOccurred(), "IPMI command should fail when IPMI is disabled")
@@ -1050,6 +1055,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			const wantClass = "kubevirtbmc-e2e-override-sc"
 
 			BeforeAll(func() {
+				if standaloneMode {
+					Skip("the virtual media StorageClass comes from --storage-class in standalone mode, not the CR")
+				}
 				By("creating a dedicated StorageClass")
 				Expect(k8sClient.Create(ctx, newStorageClass(wantClass))).To(Succeed())
 				DeferCleanup(func() {
