@@ -217,17 +217,14 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		return err
 	}
 
-	imageSize, err := util.GetRemoteFileSize(imageURL)
-	if err != nil {
-		return err
-	}
-
-	// A missing BMC client/object means no StorageClassName/VolumeMode/size-margin override is
-	// configured, not a failure.
+	// A missing BMC client/object means no StorageClassName/VolumeMode/size-margin/VirtualMedia
+	// override is configured, not a failure.
 	var (
-		storageClassName  string
-		volumeMode        *corev1.PersistentVolumeMode
-		sizeMarginPercent int
+		storageClassName   string
+		volumeMode         *corev1.PersistentVolumeMode
+		sizeMarginPercent  int
+		insecureSkipVerify bool
+		caBundleConfigMap  string
 	)
 
 	if m.bmcClient != nil {
@@ -249,19 +246,42 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 					sizeMarginPercent = parsed
 				}
 			}
+			if bmc.Spec.Redfish != nil && bmc.Spec.Redfish.VirtualMedia != nil {
+				if bmc.Spec.Redfish.VirtualMedia.InsecureSkipVerify != nil {
+					insecureSkipVerify = *bmc.Spec.Redfish.VirtualMedia.InsecureSkipVerify
+				}
+				if bmc.Spec.Redfish.VirtualMedia.CABundleConfigMapRef != nil {
+					caBundleConfigMap = bmc.Spec.Redfish.VirtualMedia.CABundleConfigMapRef.Name
+				}
+			}
 		}
 	}
 
+	var caBundle []byte
+	if caBundleConfigMap != "" {
+		var cm corev1.ConfigMap
+		if err := m.bmcClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: caBundleConfigMap}, &cm); err != nil {
+			return fmt.Errorf("failed to get CA bundle ConfigMap %q: %w", caBundleConfigMap, err)
+		}
+		caBundle = []byte(cm.Data[util.CABundleConfigMapKey])
+	}
+
+	imageSize, err := util.GetRemoteFileSize(imageURL, insecureSkipVerify, caBundle)
+	if err != nil {
+		return err
+	}
 	imageSize = util.WithImportMargin(imageSize, sizeMarginPercent)
 
 	// Create DataVolume
 	dv := util.ConstructDataVolume(util.DataVolumeOptions{
-		Namespace:        m.namespace,
-		Name:             m.name,
-		URL:              imageURL,
-		Size:             imageSize,
-		StorageClassName: storageClassName,
-		VolumeMode:       volumeMode,
+		Namespace:          m.namespace,
+		Name:               m.name,
+		URL:                imageURL,
+		Size:               imageSize,
+		StorageClassName:   storageClassName,
+		VolumeMode:         volumeMode,
+		InsecureSkipVerify: insecureSkipVerify,
+		CertConfigMap:      caBundleConfigMap,
 	})
 	_, err = m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Create(ctx, dv, metav1.CreateOptions{})
 	if err != nil {

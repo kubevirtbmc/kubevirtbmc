@@ -2,8 +2,14 @@ package virtbmcagent
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"time"
 
 	kvclient "kubevirt.io/client-go/kubevirt"
@@ -553,6 +559,53 @@ func newStorageClass(name string) *storagev1.StorageClass {
 		ObjectMeta:  metav1.ObjectMeta{Name: name},
 		Provisioner: "kubevirtbmc.io/e2e-test",
 	}
+}
+
+func verifyDataVolumeInsecureSkipVerify(ctx context.Context, k8sClient client.Client, namespace, name string, want bool) {
+	Eventually(func() bool {
+		dv := &cdiv1.DataVolume{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv); err != nil {
+			return false
+		}
+		if dv.Spec.Source == nil || dv.Spec.Source.HTTP == nil || dv.Spec.Source.HTTP.InsecureSkipVerify == nil {
+			return false
+		}
+		return *dv.Spec.Source.HTTP.InsecureSkipVerify
+	}, agentTestTimeout, agentTestInterval).Should(Equal(want),
+		"DataVolume %s/%s should have InsecureSkipVerify %v", namespace, name, want)
+}
+
+func generateTestCABundlePEM() []byte {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "kubevirtbmc-e2e-ca"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	Expect(err).NotTo(HaveOccurred())
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+func verifyDataVolumeCertConfigMap(ctx context.Context, k8sClient client.Client, namespace, name, want string) {
+	Eventually(func() string {
+		dv := &cdiv1.DataVolume{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv); err != nil {
+			return ""
+		}
+		if dv.Spec.Source == nil || dv.Spec.Source.HTTP == nil {
+			return ""
+		}
+		return dv.Spec.Source.HTTP.CertConfigMap
+	}, agentTestTimeout, agentTestInterval).Should(Equal(want),
+		"DataVolume %s/%s should reference CertConfigMap %q", namespace, name, want)
 }
 
 func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, namespace, name string) {

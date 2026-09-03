@@ -7,6 +7,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1085,6 +1087,45 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 				verifyDataVolumeExists(ctx, k8sClient, ns, agentVMName)
 				verifyDataVolumeStorageClass(ctx, k8sClient, ns, agentVMName, wantClass)
+			})
+		})
+
+		Context("Virtual Media TLS overrides", func() {
+			const caBundleConfigMapName = "kubevirtbmc-e2e-ca-bundle"
+
+			BeforeAll(func() {
+				By("creating a CA bundle ConfigMap")
+				cm := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: caBundleConfigMapName},
+					Data:       map[string]string{util.CABundleConfigMapKey: string(generateTestCABundlePEM())},
+				}
+				Expect(k8sClient.Create(ctx, cm)).To(Succeed())
+				DeferCleanup(func() {
+					_ = k8sClient.Delete(ctx, cm)
+				})
+
+				By("setting VirtualMedia TLS overrides on the VirtualMachineBMC")
+				bmc := &bmcv1.VirtualMachineBMC{}
+				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
+				orig := bmc.DeepCopy()
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
+					VirtualMedia: &bmcv1.VirtualMediaSpec{
+						InsecureSkipVerify:   util.Ptr(true),
+						CABundleConfigMapRef: &corev1.LocalObjectReference{Name: caBundleConfigMapName},
+					},
+				}
+				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
+			})
+
+			It("should insert media and create a DataVolume carrying the TLS overrides", func() {
+				body := `{"Image":"https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso","Inserted":true}`
+				out, err := testutil.RunCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia", body))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(out)).To(ContainSubstring("200"))
+
+				verifyDataVolumeExists(ctx, k8sClient, ns, agentVMName)
+				verifyDataVolumeInsecureSkipVerify(ctx, k8sClient, ns, agentVMName, true)
+				verifyDataVolumeCertConfigMap(ctx, k8sClient, ns, agentVMName, caBundleConfigMapName)
 			})
 		})
 	})

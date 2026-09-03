@@ -77,7 +77,8 @@ func (s VirtualMachineBMCSpec) VirtualMediaVolumeMode() *corev1.PersistentVolume
 
 // RedfishSpec configures Redfish-specific behavior.
 type RedfishSpec struct {
-	// VirtualMedia configures the DataVolume created on virtual media insert.
+	// VirtualMedia configures the DataVolume created on virtual media insert and TLS behavior when
+	// fetching virtual media images over https.
 	// +optional
 	VirtualMedia *VirtualMediaSpec `json:"virtualMedia,omitempty"`
 }
@@ -87,6 +88,15 @@ type VirtualMediaSpec struct {
 	// Storage configures the storage backing the DataVolume.
 	// +optional
 	Storage *VirtualMediaStorageSpec `json:"storage,omitempty"`
+
+	// InsecureSkipVerify disables TLS certificate verification when fetching a virtual media image over https.
+	// +optional
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
+
+	// CABundleConfigMapRef references a ConfigMap, in the same namespace as the VirtualMachineBMC, containing a
+	// CA bundle (key "ca.pem") trusted when fetching a virtual media image over https.
+	// +optional
+	CABundleConfigMapRef *corev1.LocalObjectReference `json:"caBundleConfigMapRef,omitempty"`
 }
 
 // VirtualMediaStorageSpec configures the DataVolume's storage.
