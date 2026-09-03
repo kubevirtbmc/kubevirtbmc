@@ -45,6 +45,12 @@ jobs:
       run: make lint
     - name: Run tests
       run: make test
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v7
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: kubevirtbmc/kubevirtbmc
+        files: ./cover.out
     - name: Build binaries
       run: make build
     # The docker daemon does not support tags pointing at a manifest list, rather than a manifest. Ref: https://github.com/docker/buildx/issues/59
