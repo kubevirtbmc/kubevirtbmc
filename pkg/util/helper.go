@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
@@ -19,6 +20,12 @@ const AnnStorageBindImmediateRequested = "cdi.kubevirt.io/storage.bind.immediate
 
 func Ptr[T any](value T) *T {
 	return &value
+}
+
+// SystemSerial returns the host serial as "<namespace>/<name>".
+// Redfish ComputerSystem.SerialNumber has no length limit, so this is untruncated.
+func SystemSerial(namespace, name string) string {
+	return types.NamespacedName{Namespace: namespace, Name: name}.String()
 }
 
 func GetRemoteFileSize(url string) (int64, error) {

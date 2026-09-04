@@ -29,6 +29,7 @@ type Options struct {
 	BMCPassword    string
 	EnableIPMI     bool
 	PodName        string
+	GitCommit      string
 }
 
 type VirtBMC struct {
@@ -61,11 +62,15 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 	if err != nil {
 		return nil, err
 	}
-	resourceManager := resourcemanager.NewVirtualMachineResourceManager(virtClient, cdiClient, bmcClient, bmcName)
+	resourceManager := resourcemanager.NewVirtualMachineResourceManager(virtClient, cdiClient, bmcClient, bmcName, options.GitCommit)
 
 	var ipmiSimulator *ipmi.Simulator
 	if options.EnableIPMI {
-		ipmiSimulator = ipmi.NewSimulator(options.Address, options.IPMIPort, resourceManager, options.BMCUser, options.BMCPassword)
+		ipmiSimulator = ipmi.NewSimulator(
+			options.Address, options.IPMIPort, resourceManager,
+			options.BMCUser, options.BMCPassword,
+			ipmi.FRUSerial(vmNamespace, vmName), options.GitCommit,
+		)
 	}
 
 	return &VirtBMC{

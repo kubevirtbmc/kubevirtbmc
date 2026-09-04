@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
+	"kubevirt.io/kubevirtbmc/pkg/ipmi"
 	"kubevirt.io/kubevirtbmc/pkg/util"
 	testutil "kubevirt.io/kubevirtbmc/test/util"
 )
@@ -725,6 +726,45 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		})
 	})
 
+	Context("BMC information", func() {
+		It("should advertise FRU inventory support in mc info", func() {
+			out, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("mc", "info"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(ContainSubstring("Additional Device Support"))
+			Expect(out).To(ContainSubstring("FRU Inventory Device"))
+			Expect(out).To(ContainSubstring("SDR Repository Device"))
+		})
+
+		It("should return FRU inventory via fru list", func() {
+			out, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("fru", "list"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(And(
+				ContainSubstring("FRU Device Description"),
+				ContainSubstring("Product Manufacturer"),
+				ContainSubstring("KubeVirt"),
+				ContainSubstring("Product Name"),
+				ContainSubstring("KubeVirtBMC"),
+				ContainSubstring("Product Version"),
+				ContainSubstring("Product Serial"),
+				ContainSubstring(ipmi.FRUSerial(agentNamespace, agentVMName)),
+			))
+		})
+
+		It("should return FRU inventory via fru print 0", func() {
+			out, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("fru", "print", "0"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(And(
+				ContainSubstring("Product Manufacturer"),
+				ContainSubstring("KubeVirt"),
+				ContainSubstring("Product Name"),
+				ContainSubstring("KubeVirtBMC"),
+				ContainSubstring("Product Version"),
+				ContainSubstring("Product Serial"),
+				ContainSubstring(ipmi.FRUSerial(agentNamespace, agentVMName)),
+			))
+		})
+	})
+
 	Context("Redfish operations", func() {
 		Context("Authentication", func() {
 			It("should allow access with basic auth", func() {
@@ -772,6 +812,16 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				Expect(out).To(ContainSubstring("RedfishVersion"))
 				Expect(out).To(ContainSubstring("Systems"))
 				Expect(out).To(ContainSubstring("Managers"))
+			})
+
+			It("should return system identity with namespace/name serial", func() {
+				serial := util.SystemSerial(agentNamespace, agentVMName)
+				out, err := testutil.RunCurlRedfish(ctx, config, ns, redfishSession("GET", "/Systems/1", ""))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(out).To(And(
+					ContainSubstring(`"Name":"`+serial+`"`),
+					ContainSubstring(`"SerialNumber":"`+serial+`"`),
+				))
 			})
 		})
 

@@ -61,7 +61,7 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *C
 		Manufacturer: util.Ptr("KubeVirt"),
 		Model:        util.Ptr("KubeVirt"),
 		PartNumber:   util.Ptr(""),
-		SerialNumber: util.Ptr("000000000000"),
+		SerialNumber: util.Ptr(name),
 		SKU:          util.Ptr(""),
 		Status:       server.ResourceStatus{},
 		SystemType:   server.COMPUTERSYSTEMV1220SYSTEMTYPE_VIRTUAL,

@@ -2,6 +2,7 @@ package ipmi
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,12 +10,13 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/bougou/go-ipmi/pkg/bmc"
+	"github.com/bougou/go-ipmi/pkg/types"
 
 	"kubevirt.io/kubevirtbmc/pkg/resourcemanager"
 )
 
 func TestBuildBMCRegistersUser(t *testing.T) {
-	s := NewSimulator("127.0.0.1", 623, nil, "admin", "secret")
+	s := NewSimulator("127.0.0.1", 623, nil, "admin", "secret", "default/testvm", "1.0")
 
 	b := s.buildBMC()
 
@@ -27,7 +29,7 @@ func TestBuildBMCRegistersUser(t *testing.T) {
 }
 
 func TestBuildBMCNoUserWhenUsernameEmpty(t *testing.T) {
-	s := NewSimulator("127.0.0.1", 623, nil, "", "")
+	s := NewSimulator("127.0.0.1", 623, nil, "", "", "default/testvm", "")
 
 	b := s.buildBMC()
 
@@ -46,7 +48,7 @@ func TestBuildBMCHALExposesChassis(t *testing.T) {
 	rm := resourcemanager.NewMockResourceManager(gomock.NewController(t))
 	rm.EXPECT().GetSystemUUID(gomock.Any()).Return("00000000-0000-0000-0000-000000000000", nil)
 	rm.EXPECT().GetPowerStatus(gomock.Any()).Return(true, nil)
-	s := NewSimulator("127.0.0.1", 623, rm, "admin", "secret")
+	s := NewSimulator("127.0.0.1", 623, rm, "admin", "secret", "default/testvm", "1.0")
 
 	b := s.buildBMC()
 	ch := b.HAL().Chassis()
@@ -57,13 +59,44 @@ func TestBuildBMCHALExposesChassis(t *testing.T) {
 	assert.True(t, on)
 }
 
+func TestBuildBMCSeedsFRU(t *testing.T) {
+	s := NewSimulator("127.0.0.1", 623, nil, "admin", "secret", "ns/my-vm", "2.0")
+	b := s.buildBMC()
+
+	store := b.HAL().Storage()
+	assert.NotNil(t, store)
+
+	raw, err := store.FRU().Read(context.Background(), 0)
+	assert.NoError(t, err)
+
+	fru, err := types.ParseFRU(raw)
+	assert.NoError(t, err)
+	assert.NotNil(t, fru.ProductInfoArea)
+	p := fru.ProductInfoArea
+	assert.Equal(t, "KubeVirt", types.FRUFieldString(p.ManufacturerTypeLength, p.Manufacturer))
+	assert.Equal(t, "KubeVirtBMC", types.FRUFieldString(p.NameTypeLength, p.Name))
+	assert.Equal(t, "2.0", types.FRUFieldString(p.VersionTypeLength, p.Version))
+	assert.Equal(t, "ns/my-vm", types.FRUFieldString(p.SerialNumberTypeLength, p.SerialNumber))
+
+	ids, err := store.SDR().RecordIDs(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, []uint16{1}, ids)
+}
+
+func TestFRUSerial(t *testing.T) {
+	assert.Equal(t, "default/vm1", FRUSerial("default", "vm1"))
+	// Overlong "namespace/name" is truncated at 63 bytes, keeping the
+	// namespace prefix rather than falling back to the bare name.
+	assert.Equal(t, strings.Repeat("a", 40)+"/"+strings.Repeat("b", 22), FRUSerial(strings.Repeat("a", 40), strings.Repeat("b", 40)))
+}
+
 // TestRunDoesNotBlockCaller is a regression test: Simulator.Run must return
 // after binding so the caller (VirtBMC.Run) can start sibling services such
 // as Redfish. The blocking Serve loop runs in a background goroutine, and
 // Stop must wait for that goroutine to exit.
 func TestRunDoesNotBlockCaller(t *testing.T) {
 	// Bind to an ephemeral port on loopback so concurrent test runs don't clash.
-	s := NewSimulator("127.0.0.1", 0, nil, "admin", "secret")
+	s := NewSimulator("127.0.0.1", 0, nil, "admin", "secret", "default/testvm", "1.0")
 
 	done := make(chan error, 1)
 	go func() { done <- s.Run() }()

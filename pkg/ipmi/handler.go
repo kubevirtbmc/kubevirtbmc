@@ -2,6 +2,8 @@ package ipmi
 
 import (
 	"context"
+	"sort"
+	"sync"
 
 	"github.com/bougou/go-ipmi/pkg/hal"
 	"github.com/bougou/go-ipmi/pkg/types"
@@ -10,21 +12,120 @@ import (
 )
 
 // noopHAL implements hal.HAL returning nil for every sub-interface except
-// Chassis, which is backed by vmChassis so go-ipmi's typed chassis handlers
-// (Chassis Control, Set/Get System Boot Options, Get Chassis Status) can drive
-// the KubeVirt ResourceManager through the typed HAL contract.
+// Chassis (vmChassis -> ResourceManager) and Storage (in-memory FRU/SDR seed
+// for ipmitool fru list). Other sub-interfaces stay nil.
 type noopHAL struct {
 	chassis hal.ChassisHAL
+	storage hal.StorageHAL
 }
 
 func (h noopHAL) Chassis() hal.ChassisHAL { return h.chassis }
 func (noopHAL) Sensors() hal.SensorHAL    { return nil }
-func (noopHAL) Storage() hal.StorageHAL   { return nil }
+func (h noopHAL) Storage() hal.StorageHAL { return h.storage }
 func (noopHAL) Network() hal.NetworkHAL   { return nil }
+func (noopHAL) Console() hal.ConsoleHAL   { return nil }
 func (noopHAL) GPIO() hal.GPIOHAL         { return nil }
 func (noopHAL) I2C() hal.I2CHAL           { return nil }
-func (noopHAL) Console() hal.ConsoleHAL   { return nil }
 func (noopHAL) Close() error              { return nil }
+
+// memoryStorage is an in-memory [hal.StorageHAL] for the virtbmc FRU/SDR seed.
+type memoryStorage struct {
+	mu  sync.RWMutex
+	fru map[uint8][]byte
+	sdr map[uint16][]byte
+}
+
+func newMemoryStorage() *memoryStorage {
+	return &memoryStorage{
+		fru: map[uint8][]byte{},
+		sdr: map[uint16][]byte{},
+	}
+}
+
+func (s *memoryStorage) FRU() hal.FRUStore { return (*memoryFRUStore)(s) }
+func (s *memoryStorage) SDR() hal.SDRStore { return (*memorySDRStore)(s) }
+
+type memoryFRUStore memoryStorage
+
+func (f *memoryFRUStore) Read(_ context.Context, deviceID uint8) ([]byte, error) {
+	s := (*memoryStorage)(f)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.fru[deviceID]
+	if !ok {
+		return nil, hal.ErrNotFound
+	}
+	return append([]byte(nil), v...), nil
+}
+
+func (f *memoryFRUStore) Write(_ context.Context, deviceID uint8, data []byte) error {
+	s := (*memoryStorage)(f)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fru[deviceID] = append([]byte(nil), data...)
+	return nil
+}
+
+func (f *memoryFRUStore) Delete(_ context.Context, deviceID uint8) error {
+	s := (*memoryStorage)(f)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.fru, deviceID)
+	return nil
+}
+
+func (f *memoryFRUStore) DeviceIDs(_ context.Context) ([]uint8, error) {
+	s := (*memoryStorage)(f)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]uint8, 0, len(s.fru))
+	for id := range s.fru {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
+
+type memorySDRStore memoryStorage
+
+func (d *memorySDRStore) Read(_ context.Context, recordID uint16) ([]byte, error) {
+	s := (*memoryStorage)(d)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.sdr[recordID]
+	if !ok {
+		return nil, hal.ErrNotFound
+	}
+	return append([]byte(nil), v...), nil
+}
+
+func (d *memorySDRStore) Write(_ context.Context, recordID uint16, data []byte) error {
+	s := (*memoryStorage)(d)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sdr[recordID] = append([]byte(nil), data...)
+	return nil
+}
+
+func (d *memorySDRStore) Delete(_ context.Context, recordID uint16) error {
+	s := (*memoryStorage)(d)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sdr, recordID)
+	return nil
+}
+
+func (d *memorySDRStore) RecordIDs(_ context.Context) ([]uint16, error) {
+	s := (*memoryStorage)(d)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]uint16, 0, len(s.sdr))
+	for id := range s.sdr {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
 
 // vmChassis implements hal.ChassisHAL by mapping the spec Table 28-3 chassis
 // actions and §28.12 Set System Boot Options onto KubeVirt ResourceManager
