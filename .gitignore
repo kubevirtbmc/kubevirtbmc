@@ -27,3 +27,6 @@ Dockerfile.cross
 
 # Redfish schema bundle files
 hack/DSP8010_*
+
+# Local Redfish interop validator output (make redfish-interop)
+logs/

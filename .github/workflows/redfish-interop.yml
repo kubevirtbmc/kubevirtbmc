@@ -1,0 +1,109 @@
+name: Redfish Interop
+
+# Runs the DMTF Redfish-Interop-Validator against the Redfish API served by
+# hack/redfish/interopserver (the real VirtualMachineResourceManager on
+# in-memory fake clients — no cluster, no KubeVirt). On PRs the base ref is
+# validated too, and the step summary diffs the two runs: regressions
+# introduced vs. failures fixed by the PR.
+# Gating: the job fails when the PR introduces NEW failures vs. the base run
+# (--fail-on-introduced). Without a base run (workflow_dispatch, or a base ref
+# predating the interop tooling) the report is informational only.
+# Local equivalent: make redfish-interop.
+
+on:
+  pull_request:
+    paths:
+      - "pkg/redfish/**"
+      - "pkg/resourcemanager/**"
+      - "pkg/generated/redfish/**"
+      - "pkg/session/**"
+      - "hack/redfish/**"
+      - ".github/workflows/redfish-interop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redfish-interop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROFILE: hack/redfish/profiles/OpenStackIronicProfile.v1_2_0.json
+  VALIDATOR_VERSION: "2.3.6"
+
+jobs:
+  interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # On pull_request events this is the synthetic merge commit, i.e. the
+      # post-merge result.
+      - name: Check out PR head
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Redfish-Interop-Validator
+        run: pip install "redfish_interop_validator==${{ env.VALIDATOR_VERSION }}"
+
+      - name: Validate PR head
+        env:
+          LOGDIR: logs/head
+          # A failed validation must not fail this step: the base run and the
+          # Report gate come after. Build/readiness failures still fail it.
+          EXIT_WITH_VALIDATOR: "0"
+        run: hack/redfish/run-interop.sh
+
+      - name: Check out base ref
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
+
+      - name: Validate base ref
+        if: github.event_name == 'pull_request'
+        env:
+          # Absolute paths: the script cds into base/, and base refs may not
+          # carry the vendored profile yet.
+          LOGDIR: ${{ github.workspace }}/logs/base
+          PROFILE: ${{ github.workspace }}/${{ env.PROFILE }}
+          EXIT_WITH_VALIDATOR: "0"
+        run: |
+          # Base refs from before the interop tooling existed can't be compared.
+          if [ ! -x base/hack/redfish/run-interop.sh ]; then
+            echo "Base ref has no hack/redfish/run-interop.sh; skipping base run."
+            exit 0
+          fi
+          base/hack/redfish/run-interop.sh
+
+      - name: Report
+        # pipefail: the default `bash -e` would let tee swallow the diff's
+        # exit code and the regression gate would never fail the step.
+        shell: bash -eo pipefail {0}
+        # tee: also keep the report in the step log — a bare "exit code 1"
+        # with the detail only on the Job Summary page reads like an
+        # infrastructure error, not a gate decision.
+        run: |
+          if [ -d logs/base ]; then
+            python3 hack/redfish/interop-diff.py --fail-on-introduced logs/head logs/base | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            python3 hack/redfish/interop-diff.py logs/head | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload validator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redfish-interop-logs
+          path: logs/
+          retention-days: 14

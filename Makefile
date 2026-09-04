@@ -109,6 +109,10 @@ download-schema: ## Download the Redfish schema.
 generate-redfish-api: ## Generate Redfish API server.
 	./hack/redfish/generate.sh
 
+.PHONY: redfish-interop
+redfish-interop: ## Run the Redfish Interop Validator locally against the fake-client interopserver.
+	./hack/redfish/run-interop.sh
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
