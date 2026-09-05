@@ -25,7 +25,4 @@ resources:
 - bmc_virtualmachinebmc_admin_role.yaml
 - bmc_virtualmachinebmc_editor_role.yaml
 - bmc_virtualmachinebmc_viewer_role.yaml
-- virtualmachinebmc_admin_role.yaml
-- virtualmachinebmc_editor_role.yaml
-- virtualmachinebmc_viewer_role.yaml
 

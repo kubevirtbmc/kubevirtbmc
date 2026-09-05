@@ -86,6 +86,40 @@ var _ = BeforeSuite(func() {
 		}
 	}
 
+	ctx := context.Background()
+
+	if standaloneMode {
+		By("standalone mode: skipping cert-manager, controller-manager and CRD setup")
+
+		By("ensuring the test VM exists and the VMI is running")
+		vm := util.E2EVM(agentNamespace)
+		existing := &kubevirtv1.VirtualMachine{}
+		err = k8sClient.Get(ctx, client.ObjectKeyFromObject(vm), existing)
+		switch {
+		case apierrors.IsNotFound(err):
+			Expect(k8sClient.Create(ctx, vm)).To(Succeed())
+		case err != nil:
+			Expect(err).ToNot(HaveOccurred())
+		case existing.DeletionTimestamp != nil:
+			// The managed suite's AfterSuite deletes the VM asynchronously. A
+			// terminating VM would vanish under us with nothing left to
+			// recreate it, so wait it out and create fresh — same pattern as
+			// ensureHelperPod for the helper pods.
+			Eventually(func() bool {
+				getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(vm), &kubevirtv1.VirtualMachine{})
+				return apierrors.IsNotFound(getErr)
+			}, suiteInitTimeout, agentTestInterval).Should(BeTrue(),
+				"leftover VM %s/%s should finish terminating", agentNamespace, agentVMName)
+			Expect(k8sClient.Create(ctx, vm)).To(Succeed())
+		}
+		Eventually(util.VMIRunning(ctx, k8sClient, util.E2EVMName, agentNamespace), suiteInitTimeout, agentTestInterval).Should(BeTrue(),
+			"VMI %s/%s should reach Running", agentNamespace, util.E2EVMName)
+
+		By("creating the standalone agent Deployment and Service")
+		Expect(ensureStandaloneAgent(ctx, k8sClient, agentNamespace)).To(Succeed())
+		return
+	}
+
 	if !skipCertManagerInstall {
 		By("checking if cert-manager is installed already")
 		isCertManagerAlreadyInstalled = util.IsCertManagerCRDsInstalled()
@@ -103,7 +137,6 @@ var _ = BeforeSuite(func() {
 	_, err2 = util.Run(cmd)
 	Expect(err2).ToNot(HaveOccurred())
 
-	ctx := context.Background()
 	By("waiting for the controller-manager to be up and running")
 	util.WaitForControllerManagerReady(ctx, k8sClient, agentTestTimeout, agentTestInterval)
 
@@ -123,13 +156,15 @@ var _ = AfterSuite(func() {
 		_, _ = fmt.Fprintf(GinkgoWriter, "KEEP_ENV=true, skipping teardown\n")
 		return
 	}
-	By("undeploying the controller-manager")
-	cmd := exec.Command("make", "undeploy")
-	_, _ = util.Run(cmd)
+	if !standaloneMode {
+		By("undeploying the controller-manager")
+		cmd := exec.Command("make", "undeploy")
+		_, _ = util.Run(cmd)
 
-	if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
-		_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling cert-manager (was installed by this suite)...\n")
-		util.UninstallCertManager()
+		if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
+			_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling cert-manager (was installed by this suite)...\n")
+			util.UninstallCertManager()
+		}
 	}
 
 	if k8sClient != nil {
@@ -150,12 +185,6 @@ var _ = AfterSuite(func() {
 					Namespace: agentNamespace,
 				},
 			},
-			&bmcv1.VirtualMachineBMC{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      agentBMCName,
-					Namespace: agentNamespace,
-				},
-			},
 			&corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      ipmitoolPodName,
@@ -170,22 +199,31 @@ var _ = AfterSuite(func() {
 			},
 		}
 
+		// The CRD is not installed in standalone mode; deleting a
+		// VirtualMachineBMC would fail on REST mapping, not IsNotFound.
+		if !standaloneMode {
+			objs = append(objs, &bmcv1.VirtualMachineBMC{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      agentBMCName,
+					Namespace: agentNamespace,
+				},
+			})
+		}
+
 		for _, obj := range objs {
 			if err := k8sClient.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
 				Expect(err).ToNot(HaveOccurred())
 			}
 		}
 
-		By("deleting KubeVirt custom resource (kubevirt/kubevirt)")
-		kv := &kubevirtv1.KubeVirt{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "kubevirt",
-				Namespace: "kubevirt",
-			},
+		if standaloneMode {
+			By("deleting the standalone agent and its state volume")
+			deleteStandaloneAgent(ctx, k8sClient, agentNamespace)
 		}
-		if err := k8sClient.Delete(ctx, kv); err != nil && !apierrors.IsNotFound(err) {
-			Expect(err).ToNot(HaveOccurred())
-		}
+
+		// KubeVirt stays installed (same as the controller suite): deleting the
+		// kubevirt CR starts an async CRD teardown that races the next suite's
+		// setup, and e2e-teardown deletes the whole Kind cluster anyway.
 	}
 })
 

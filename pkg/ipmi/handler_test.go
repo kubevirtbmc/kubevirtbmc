@@ -317,7 +317,7 @@ func TestVMChassisGetBootFlags(t *testing.T) {
 			},
 		},
 		{
-			name:      "resource manager error returns ErrNotSupported",
+			name:      "resource manager error is propagated",
 			stateErr:  assert.AnError,
 			expectErr: true,
 		},
@@ -339,7 +339,11 @@ func TestVMChassisGetBootFlags(t *testing.T) {
 
 			flags, err := c.GetBootFlags(context.Background())
 			if tc.expectErr {
-				assert.Error(t, err)
+				if tc.stateErr != nil {
+					assert.ErrorIs(t, err, tc.stateErr)
+				} else {
+					assert.Error(t, err)
+				}
 				assert.Nil(t, flags)
 				return
 			}
