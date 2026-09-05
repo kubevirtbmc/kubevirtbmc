@@ -21,12 +21,14 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
+	pkgutil "kubevirt.io/kubevirtbmc/pkg/util"
 	"kubevirt.io/kubevirtbmc/test/util"
 )
 
@@ -575,23 +577,211 @@ func verifyDataVolumeInsecureSkipVerify(ctx context.Context, k8sClient client.Cl
 		"DataVolume %s/%s should have InsecureSkipVerify %v", namespace, name, want)
 }
 
-func generateTestCABundlePEM() []byte {
+// testCA doubles as an unsigned "wrong" CA for negative trust tests.
+type testCA struct {
+	certPEM []byte
+	cert    *x509.Certificate
+	key     *rsa.PrivateKey
+}
+
+func generateTestCA(commonName string) testCA {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	Expect(err).NotTo(HaveOccurred())
 
 	template := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "kubevirtbmc-e2e-ca"},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour),
+		SerialNumber:          big.NewInt(time.Now().UnixNano()),
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
 		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	Expect(err).NotTo(HaveOccurred())
+	cert, err := x509.ParseCertificate(der)
+	Expect(err).NotTo(HaveOccurred())
 
-	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	return testCA{
+		certPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		cert:    cert,
+		key:     key,
+	}
+}
+
+// generateTestServerCert issues a leaf cert with the ServerAuth EKU required by Go's TLS client verification.
+func generateTestServerCert(ca testCA, dnsName string) (certPEM, keyPEM []byte) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	Expect(err).NotTo(HaveOccurred())
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: dnsName},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		DNSNames:     []string{dnsName},
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, ca.cert, &key.PublicKey, ca.key)
+	Expect(err).NotTo(HaveOccurred())
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	return certPEM, keyPEM
+}
+
+// virtualMediaTLSServer is the in-cluster nginx Deployment/Service that serves
+// a test payload over HTTPS with a self-signed cert, used to exercise
+// VirtualMediaSpec's insecureSkipVerify/caBundleConfigMapRef against a real
+// TLS handshake instead of a publicly-trusted URL.
+const virtualMediaTLSServerName = "kubevirtbmc-e2e-vm-media-tls"
+
+// setupVirtualMediaTLSServer also returns a ConfigMap for an unrelated CA, for negative trust tests.
+func setupVirtualMediaTLSServer(ctx context.Context, k8sClient client.Client, namespace string) (imageURL, correctCAConfigMap, wrongCAConfigMap string, cleanup func()) {
+	dnsName := fmt.Sprintf("%s.%s.svc.cluster.local", virtualMediaTLSServerName, namespace)
+
+	serverCA := generateTestCA("kubevirtbmc-e2e-server-ca")
+	wrongCA := generateTestCA("kubevirtbmc-e2e-wrong-ca")
+	certPEM, keyPEM := generateTestServerCert(serverCA, dnsName)
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName, Namespace: namespace},
+		Type:       corev1.SecretTypeTLS,
+		Data: map[string][]byte{
+			corev1.TLSCertKey:       certPEM,
+			corev1.TLSPrivateKeyKey: keyPEM,
+		},
+	}
+	Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+	confCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName + "-conf", Namespace: namespace},
+		Data: map[string]string{
+			"default.conf": fmt.Sprintf(`server {
+  listen 443 ssl;
+  server_name %s;
+  ssl_certificate     /etc/nginx/tls/tls.crt;
+  ssl_certificate_key /etc/nginx/tls/tls.key;
+  location / {
+    root /usr/share/nginx/html;
+  }
+}
+`, dnsName),
+		},
+	}
+	Expect(k8sClient.Create(ctx, confCM)).To(Succeed())
+
+	contentCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName + "-content", Namespace: namespace},
+		Data: map[string]string{
+			"test.iso": "kubevirtbmc-e2e-virtual-media-tls-test-payload",
+		},
+	}
+	Expect(k8sClient.Create(ctx, contentCM)).To(Succeed())
+
+	deployment := newVirtualMediaTLSDeployment(namespace)
+	Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
+
+	service := newVirtualMediaTLSService(namespace)
+	Expect(k8sClient.Create(ctx, service)).To(Succeed())
+
+	waitForAgentDeploymentReady(ctx, k8sClient, namespace, virtualMediaTLSServerName)
+
+	correctCACM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName + "-ca-correct", Namespace: namespace},
+		Data:       map[string]string{pkgutil.CABundleConfigMapKey: string(serverCA.certPEM)},
+	}
+	Expect(k8sClient.Create(ctx, correctCACM)).To(Succeed())
+
+	wrongCACM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName + "-ca-wrong", Namespace: namespace},
+		Data:       map[string]string{pkgutil.CABundleConfigMapKey: string(wrongCA.certPEM)},
+	}
+	Expect(k8sClient.Create(ctx, wrongCACM)).To(Succeed())
+
+	cleanup = func() {
+		for _, obj := range []client.Object{secret, confCM, contentCM, deployment, service, correctCACM, wrongCACM} {
+			_ = k8sClient.Delete(ctx, obj)
+		}
+	}
+
+	return fmt.Sprintf("https://%s/test.iso", dnsName), correctCACM.Name, wrongCACM.Name, cleanup
+}
+
+func newVirtualMediaTLSDeployment(namespace string) *appsv1.Deployment {
+	replicas := int32(1)
+	name := virtualMediaTLSServerName
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": name}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": name}},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:  "nginx",
+						Image: "nginx:stable",
+						Ports: []corev1.ContainerPort{{ContainerPort: 443}},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "tls", MountPath: "/etc/nginx/tls", ReadOnly: true},
+							{Name: "conf", MountPath: "/etc/nginx/conf.d", ReadOnly: true},
+							{Name: "content", MountPath: "/usr/share/nginx/html/test.iso", SubPath: "test.iso", ReadOnly: true},
+						},
+					}},
+					Volumes: []corev1.Volume{
+						{Name: "tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: name}}},
+						{Name: "conf", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: name + "-conf"},
+						}}},
+						{Name: "content", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: name + "-content"},
+						}}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func newVirtualMediaTLSService(namespace string) *corev1.Service {
+	name := virtualMediaTLSServerName
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": name},
+			Ports:    []corev1.ServicePort{{Port: 443, TargetPort: intstr.FromInt32(443)}},
+		},
+	}
+}
+
+// dataVolumeImportTimeout allows for CDI importer pod scheduling/image pull
+// plus the (tiny) test payload transfer, longer than agentTestTimeout which
+// covers plain API-object propagation.
+const dataVolumeImportTimeout = 3 * time.Minute
+
+func verifyDataVolumeSucceeded(ctx context.Context, k8sClient client.Client, namespace, name string) {
+	Eventually(func() cdiv1.DataVolumePhase {
+		dv := &cdiv1.DataVolume{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv); err != nil {
+			return ""
+		}
+		return dv.Status.Phase
+	}, dataVolumeImportTimeout, agentTestInterval).Should(Equal(cdiv1.Succeeded),
+		"DataVolume %s/%s should reach phase Succeeded", namespace, name)
+}
+
+// InsertMedia fails before ever creating a DataVolume, so a plain Get check is enough (no race to poll for).
+func verifyDataVolumeAbsent(ctx context.Context, k8sClient client.Client, namespace, name string) {
+	Consistently(func() bool {
+		dv := &cdiv1.DataVolume{}
+		err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv)
+		return apierrors.IsNotFound(err)
+	}, 2*time.Second, 250*time.Millisecond).Should(BeTrue(),
+		"DataVolume %s/%s should not have been created", namespace, name)
 }
 
 func verifyDataVolumeCertConfigMap(ctx context.Context, k8sClient client.Client, namespace, name, want string) {
