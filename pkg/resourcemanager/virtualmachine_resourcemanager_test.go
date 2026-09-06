@@ -2,15 +2,23 @@ package resourcemanager
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
@@ -53,11 +61,33 @@ func newTestBMC() *bmcv1.VirtualMachineBMC {
 func newTestBMCClient(objects ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
 	_ = bmcv1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithStatusSubresource(&bmcv1.VirtualMachineBMC{}).
 		WithObjects(objects...).
 		Build()
+}
+
+func generateTestCAPEM(t *testing.T) []byte {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }
 
 func (f *fakeVirtualMedia) Id() string {
@@ -295,6 +325,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 	defer server.Close()
 
 	imageURL := server.URL + "/test.iso"
+	caPEM := generateTestCAPEM(t)
 
 	testCases := []struct {
 		name                 string
@@ -303,6 +334,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 		dv                   *cdiv1.DataVolume
 		vm                   *kubevirtv1.VirtualMachine
 		bmc                  *bmcv1.VirtualMachineBMC
+		caBundleConfigMap    *corev1.ConfigMap
 		expectedVirtualMedia VirtualMediaInterface
 		expectedDV           *cdiv1.DataVolume
 		expectedVM           *kubevirtv1.VirtualMachine
@@ -373,6 +405,109 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 					},
 				}).Build(),
 			shouldError: false,
+		},
+		{
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.InsecureSkipVerify set should mark the DataVolume insecure",
+			imageURL:     imageURL,
+			virtualMedia: &fakeVirtualMedia{},
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			bmc: func() *bmcv1.VirtualMachineBMC {
+				bmc := newTestBMC()
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
+					VirtualMedia: &bmcv1.VirtualMediaSpec{InsecureSkipVerify: util.Ptr(true)},
+				}
+				return bmc
+			}(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: imageURL,
+				inserted: true,
+			},
+			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(imageURL).
+				WithStorage(testImageSizeBytes).
+				WithInsecureSkipVerify(true).
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			shouldError: false,
+		},
+		{
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.CABundleConfigMapRef set should reference the ConfigMap on the DataVolume",
+			imageURL:     imageURL,
+			virtualMedia: &fakeVirtualMedia{},
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			bmc: func() *bmcv1.VirtualMachineBMC {
+				bmc := newTestBMC()
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
+					VirtualMedia: &bmcv1.VirtualMediaSpec{
+						CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "custom-ca"},
+					},
+				}
+				return bmc
+			}(),
+			caBundleConfigMap: &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "custom-ca"},
+				Data:       map[string]string{util.CABundleConfigMapKey: string(caPEM)},
+			},
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: imageURL,
+				inserted: true,
+			},
+			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(imageURL).
+				WithStorage(testImageSizeBytes).
+				WithCertConfigMap("custom-ca").
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			shouldError: false,
+		},
+		{
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.CABundleConfigMapRef pointing to a missing ConfigMap should fail",
+			imageURL:     imageURL,
+			virtualMedia: &fakeVirtualMedia{},
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			bmc: func() *bmcv1.VirtualMachineBMC {
+				bmc := newTestBMC()
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
+					VirtualMedia: &bmcv1.VirtualMediaSpec{
+						CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "missing-ca"},
+					},
+				}
+				return bmc
+			}(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			shouldError: true,
 		},
 		{
 			name:     "Insert media into a virtual machine who has uninitialized virtual media should fail",
@@ -491,7 +626,11 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			}
 
 			if tc.bmc != nil {
-				vmrm.bmcClient = newTestBMCClient(tc.bmc)
+				objs := []client.Object{tc.bmc}
+				if tc.caBundleConfigMap != nil {
+					objs = append(objs, tc.caBundleConfigMap)
+				}
+				vmrm.bmcClient = newTestBMCClient(objs...)
 				vmrm.bmcName = tc.bmc.Name
 			}
 

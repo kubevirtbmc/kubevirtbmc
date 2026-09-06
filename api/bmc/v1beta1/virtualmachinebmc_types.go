@@ -52,6 +52,29 @@ type VirtualMachineBMCSpec struct {
 	// StorageClassName is the StorageClass for the DataVolume created on virtual media insert; unset falls back to the cluster default.
 	// +optional
 	StorageClassName *string `json:"storageClassName,omitempty"`
+
+	// Redfish configures Redfish-specific behavior.
+	// +optional
+	Redfish *RedfishSpec `json:"redfish,omitempty"`
+}
+
+// RedfishSpec defines the Redfish-specific configuration.
+type RedfishSpec struct {
+	// VirtualMedia configures TLS behavior when fetching virtual media images over https.
+	// +optional
+	VirtualMedia *VirtualMediaSpec `json:"virtualMedia,omitempty"`
+}
+
+// VirtualMediaSpec defines virtual media TLS configuration.
+type VirtualMediaSpec struct {
+	// InsecureSkipVerify disables TLS certificate verification when fetching a virtual media image over https.
+	// +optional
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
+
+	// CABundleConfigMapRef references a ConfigMap, in the same namespace as the VirtualMachineBMC, containing a
+	// CA bundle (key "ca.pem") trusted when fetching a virtual media image over https.
+	// +optional
+	CABundleConfigMapRef *corev1.LocalObjectReference `json:"caBundleConfigMapRef,omitempty"`
 }
 
 // Service configuration for the BMC service.

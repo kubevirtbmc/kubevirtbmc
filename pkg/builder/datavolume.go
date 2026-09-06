@@ -61,3 +61,13 @@ func (b *DataVolumeBuilder) WithStorageClass(name string) *DataVolumeBuilder {
 	b.dv.Spec.Storage.StorageClassName = &name
 	return b
 }
+
+func (b *DataVolumeBuilder) WithInsecureSkipVerify(insecureSkipVerify bool) *DataVolumeBuilder {
+	b.dv.Spec.Source.HTTP.InsecureSkipVerify = &insecureSkipVerify
+	return b
+}
+
+func (b *DataVolumeBuilder) WithCertConfigMap(name string) *DataVolumeBuilder {
+	b.dv.Spec.Source.HTTP.CertConfigMap = name
+	return b
+}
