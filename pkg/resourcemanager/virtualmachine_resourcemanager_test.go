@@ -456,7 +456,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.InsecureSkipVerify set should mark the DataVolume insecure",
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.TLS.InsecureSkipVerify set should mark the DataVolume insecure",
 			imageURL:     imageURL,
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
@@ -465,7 +465,9 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			bmc: func() *bmcv1.VirtualMachineBMC {
 				bmc := newTestBMC()
 				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
-					VirtualMedia: &bmcv1.VirtualMediaSpec{InsecureSkipVerify: util.Ptr(true)},
+					VirtualMedia: &bmcv1.VirtualMediaSpec{
+						TLS: &bmcv1.VirtualMediaTLSSpec{InsecureSkipVerify: util.Ptr(true)},
+					},
 				}
 				return bmc
 			}(),
@@ -494,7 +496,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.CABundleConfigMapRef set should reference the ConfigMap on the DataVolume",
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.TLS.CABundleConfigMapRef set should reference the ConfigMap on the DataVolume",
 			imageURL:     imageURL,
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
@@ -504,7 +506,9 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				bmc := newTestBMC()
 				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
 					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "custom-ca"},
+						TLS: &bmcv1.VirtualMediaTLSSpec{
+							CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "custom-ca"},
+						},
 					},
 				}
 				return bmc
@@ -608,7 +612,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.CABundleConfigMapRef pointing to a missing ConfigMap should fail",
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.TLS.CABundleConfigMapRef pointing to a missing ConfigMap should fail",
 			imageURL:     imageURL,
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
@@ -618,7 +622,9 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				bmc := newTestBMC()
 				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
 					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "missing-ca"},
+						TLS: &bmcv1.VirtualMediaTLSSpec{
+							CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "missing-ca"},
+						},
 					},
 				}
 				return bmc

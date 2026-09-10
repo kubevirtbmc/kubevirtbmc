@@ -89,6 +89,13 @@ type VirtualMediaSpec struct {
 	// +optional
 	Storage *VirtualMediaStorageSpec `json:"storage,omitempty"`
 
+	// TLS configures TLS behavior when fetching virtual media images over https.
+	// +optional
+	TLS *VirtualMediaTLSSpec `json:"tls,omitempty"`
+}
+
+// VirtualMediaTLSSpec configures TLS behavior when fetching virtual media images over https.
+type VirtualMediaTLSSpec struct {
 	// InsecureSkipVerify disables TLS certificate verification when fetching a virtual media image over https.
 	// +optional
 	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`

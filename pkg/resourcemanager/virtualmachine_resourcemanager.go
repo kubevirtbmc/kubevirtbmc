@@ -246,12 +246,13 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 					sizeMarginPercent = parsed
 				}
 			}
-			if bmc.Spec.Redfish != nil && bmc.Spec.Redfish.VirtualMedia != nil {
-				if bmc.Spec.Redfish.VirtualMedia.InsecureSkipVerify != nil {
-					insecureSkipVerify = *bmc.Spec.Redfish.VirtualMedia.InsecureSkipVerify
+			if bmc.Spec.Redfish != nil && bmc.Spec.Redfish.VirtualMedia != nil && bmc.Spec.Redfish.VirtualMedia.TLS != nil {
+				tls := bmc.Spec.Redfish.VirtualMedia.TLS
+				if tls.InsecureSkipVerify != nil {
+					insecureSkipVerify = *tls.InsecureSkipVerify
 				}
-				if bmc.Spec.Redfish.VirtualMedia.CABundleConfigMapRef != nil {
-					caBundleConfigMap = bmc.Spec.Redfish.VirtualMedia.CABundleConfigMapRef.Name
+				if tls.CABundleConfigMapRef != nil {
+					caBundleConfigMap = tls.CABundleConfigMapRef.Name
 				}
 			}
 		}

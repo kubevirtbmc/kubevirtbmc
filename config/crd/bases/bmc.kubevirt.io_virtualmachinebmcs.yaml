@@ -84,26 +84,6 @@ spec:
                       VirtualMedia configures the DataVolume created on virtual media insert and TLS behavior when
                       fetching virtual media images over https.
                     properties:
-                      caBundleConfigMapRef:
-                        description: |-
-                          CABundleConfigMapRef references a ConfigMap, in the same namespace as the VirtualMachineBMC, containing a
-                          CA bundle (key "ca.pem") trusted when fetching a virtual media image over https.
-                        properties:
-                          name:
-                            default: ""
-                            description: |-
-                              Name of the referent.
-                              This field is effectively required, but due to backwards compatibility is
-                              allowed to be empty. Instances of this type with an empty value here are
-                              almost certainly wrong.
-                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                            type: string
-                        type: object
-                        x-kubernetes-map-type: atomic
-                      insecureSkipVerify:
-                        description: InsecureSkipVerify disables TLS certificate verification
-                          when fetching a virtual media image over https.
-                        type: boolean
                       storage:
                         description: Storage configures the storage backing the DataVolume.
                         properties:
@@ -122,6 +102,32 @@ spec:
                             - Filesystem
                             - Block
                             type: string
+                        type: object
+                      tls:
+                        description: TLS configures TLS behavior when fetching virtual
+                          media images over https.
+                        properties:
+                          caBundleConfigMapRef:
+                            description: |-
+                              CABundleConfigMapRef references a ConfigMap, in the same namespace as the VirtualMachineBMC, containing a
+                              CA bundle (key "ca.pem") trusted when fetching a virtual media image over https.
+                            properties:
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          insecureSkipVerify:
+                            description: InsecureSkipVerify disables TLS certificate
+                              verification when fetching a virtual media image over
+                              https.
+                            type: boolean
                         type: object
                     type: object
                 type: object

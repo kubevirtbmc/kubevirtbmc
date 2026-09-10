@@ -1104,11 +1104,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				DeferCleanup(cleanup)
 			})
 
-			setVirtualMedia := func(vm *bmcv1.VirtualMediaSpec) {
+			setVirtualMediaTLS := func(tls *bmcv1.VirtualMediaTLSSpec) {
 				bmc := &bmcv1.VirtualMachineBMC{}
 				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
 				orig := bmc.DeepCopy()
-				bmc.Spec.Redfish = &bmcv1.RedfishSpec{VirtualMedia: vm}
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{VirtualMedia: &bmcv1.VirtualMediaSpec{TLS: tls}}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
 			}
 
@@ -1127,7 +1127,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			}
 
 			It("accepts the self-signed server when insecureSkipVerify is true", func() {
-				setVirtualMedia(&bmcv1.VirtualMediaSpec{InsecureSkipVerify: util.Ptr(true)})
+				setVirtualMediaTLS(&bmcv1.VirtualMediaTLSSpec{InsecureSkipVerify: util.Ptr(true)})
 
 				Expect(insertMedia()).To(ContainSubstring("200"))
 
@@ -1139,7 +1139,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("accepts the self-signed server when caBundleConfigMapRef points to the signing CA", func() {
-				setVirtualMedia(&bmcv1.VirtualMediaSpec{
+				setVirtualMediaTLS(&bmcv1.VirtualMediaTLSSpec{
 					CABundleConfigMapRef: &corev1.LocalObjectReference{Name: correctCAConfigMap},
 				})
 
@@ -1153,7 +1153,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("rejects the self-signed server when caBundleConfigMapRef points to an unrelated CA", func() {
-				setVirtualMedia(&bmcv1.VirtualMediaSpec{
+				setVirtualMediaTLS(&bmcv1.VirtualMediaTLSSpec{
 					CABundleConfigMapRef: &corev1.LocalObjectReference{Name: wrongCAConfigMap},
 				})
 
@@ -1165,7 +1165,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("rejects when caBundleConfigMapRef points to a ConfigMap that does not exist", func() {
-				setVirtualMedia(&bmcv1.VirtualMediaSpec{
+				setVirtualMediaTLS(&bmcv1.VirtualMediaTLSSpec{
 					CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "kubevirtbmc-e2e-nonexistent-ca-bundle"},
 				})
 
@@ -1177,7 +1177,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			})
 
 			It("rejects the self-signed server when no TLS override is configured", func() {
-				setVirtualMedia(nil)
+				setVirtualMediaTLS(nil)
 
 				out := insertMedia()
 				Expect(out).To(ContainSubstring("500"))
