@@ -304,11 +304,18 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				_, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
 				Expect(err).NotTo(HaveOccurred())
 
-				// Second power-off while VMI is being torn down should
-				// succeed idempotently.
-				_, stderr, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
-				Expect(err).NotTo(HaveOccurred(),
-					"repeated power-off should succeed; stderr=%q", stderr)
+				// Power off again while the first stop is still tearing the VMI
+				// down: the handler returns Node Busy (0xC0) until vm.Status.Ready
+				// flips, and a retry then succeeds.
+				Eventually(func() error {
+					_, stderr, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("power", "off"))
+					if err != nil {
+						Expect(stderr).To(ContainSubstring("Node busy"),
+							"only the retryable Node Busy error is tolerated; stderr=%q", stderr)
+					}
+					return err
+				}, vmPowerStatusTimeout, agentTestInterval).Should(Succeed(),
+					"repeated power-off should eventually succeed")
 
 				waitForVMIDeleted(ctx, k8sClient, ns)
 			})
