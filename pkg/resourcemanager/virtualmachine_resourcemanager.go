@@ -227,27 +227,26 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		caBundleConfigMap  string
 	)
 
+	var bmc bmcv1.VirtualMachineBMC
 	if m.bmcClient != nil {
-		var bmc bmcv1.VirtualMachineBMC
-		if err := m.bmcClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: m.bmcName}, &bmc); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return err
-			}
-		} else {
+		err := m.bmcClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: m.bmcName}, &bmc)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if err == nil {
 			if name := bmc.Spec.VirtualMediaStorageClassName(); name != nil {
 				storageClassName = *name
 			}
 			volumeMode = bmc.Spec.VirtualMediaVolumeMode()
 			if margin, ok := bmc.Annotations[bmcv1.AnnotationDataVolumeSizeMargin]; ok {
-				parsed, err := strconv.Atoi(margin)
-				if err != nil {
-					accesslog.Logger(ctx).WithError(err).Warnf("invalid %s annotation %q on BMC %s, defaulting to 0", bmcv1.AnnotationDataVolumeSizeMargin, margin, m.bmcName)
+				parsed, parseErr := strconv.Atoi(margin)
+				if parseErr != nil {
+					accesslog.Logger(ctx).WithError(parseErr).Warnf("invalid %s annotation %q on BMC %s, defaulting to 0", bmcv1.AnnotationDataVolumeSizeMargin, margin, m.bmcName)
 				} else {
 					sizeMarginPercent = parsed
 				}
 			}
-			if bmc.Spec.Redfish != nil && bmc.Spec.Redfish.VirtualMedia != nil && bmc.Spec.Redfish.VirtualMedia.TLS != nil {
-				tls := bmc.Spec.Redfish.VirtualMedia.TLS
+			if tls := bmc.Spec.RedfishVirtualMediaTLS(); tls != nil {
 				if tls.InsecureSkipVerify != nil {
 					insecureSkipVerify = *tls.InsecureSkipVerify
 				}

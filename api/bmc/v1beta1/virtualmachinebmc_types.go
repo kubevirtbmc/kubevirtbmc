@@ -75,6 +75,15 @@ func (s VirtualMachineBMCSpec) VirtualMediaVolumeMode() *corev1.PersistentVolume
 	return s.Redfish.VirtualMedia.Storage.VolumeMode
 }
 
+// RedfishVirtualMediaTLS returns the configured TLS behavior for fetching virtual
+// media images over https, or nil if unset at any level.
+func (s VirtualMachineBMCSpec) RedfishVirtualMediaTLS() *VirtualMediaTLSSpec {
+	if s.Redfish == nil || s.Redfish.VirtualMedia == nil {
+		return nil
+	}
+	return s.Redfish.VirtualMedia.TLS
+}
+
 // RedfishSpec configures Redfish-specific behavior.
 type RedfishSpec struct {
 	// VirtualMedia configures the DataVolume created on virtual media insert and TLS behavior when
