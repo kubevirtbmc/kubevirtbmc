@@ -1063,11 +1063,17 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					_ = k8sClient.Delete(ctx, newStorageClass(wantClass))
 				})
 
-				By("setting storageClassName on the VirtualMachineBMC")
+				By("setting spec.redfish.virtualMedia.storage.storageClassName on the VirtualMachineBMC")
 				bmc := &bmcv1.VirtualMachineBMC{}
 				Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: ns, Name: agentBMCName}, bmc)).To(Succeed())
 				orig := bmc.DeepCopy()
-				bmc.Spec.StorageClassName = util.Ptr(wantClass)
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
+					VirtualMedia: &bmcv1.VirtualMediaSpec{
+						Storage: &bmcv1.VirtualMediaStorageSpec{
+							StorageClassName: util.Ptr(wantClass),
+						},
+					},
+				}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
 			})
 

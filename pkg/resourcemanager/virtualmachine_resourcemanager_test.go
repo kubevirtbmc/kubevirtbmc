@@ -340,7 +340,7 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.StorageClassName set should use that StorageClass",
+			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.Storage.StorageClassName set should use that StorageClass",
 			imageURL:     imageURL,
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
@@ -348,7 +348,13 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				WithCDRomDisk("cdrom", nil).Build(),
 			bmc: func() *bmcv1.VirtualMachineBMC {
 				bmc := newTestBMC()
-				bmc.Spec.StorageClassName = util.Ptr("custom-storage-class")
+				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
+					VirtualMedia: &bmcv1.VirtualMediaSpec{
+						Storage: &bmcv1.VirtualMediaStorageSpec{
+							StorageClassName: util.Ptr("custom-storage-class"),
+						},
+					},
+				}
 				return bmc
 			}(),
 			expectedVirtualMedia: &fakeVirtualMedia{

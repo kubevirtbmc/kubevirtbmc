@@ -237,8 +237,8 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 				return err
 			}
 		} else {
-			if bmc.Spec.StorageClassName != nil {
-				storageClassName = *bmc.Spec.StorageClassName
+			if name := bmc.Spec.VirtualMediaStorageClassName(); name != nil {
+				storageClassName = *name
 			}
 			volumeMode = bmc.Spec.VirtualMediaVolumeMode()
 			if margin, ok := bmc.Annotations[bmcv1.AnnotationDataVolumeSizeMargin]; ok {

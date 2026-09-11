@@ -52,13 +52,18 @@ type VirtualMachineBMCSpec struct {
 	// +optional
 	IPMI *IPMISpec `json:"ipmi,omitempty"`
 
-	// StorageClassName is the StorageClass for the DataVolume created on virtual media insert; unset falls back to the cluster default.
-	// +optional
-	StorageClassName *string `json:"storageClassName,omitempty"`
-
 	// Redfish configures Redfish-specific behavior.
 	// +optional
 	Redfish *RedfishSpec `json:"redfish,omitempty"`
+}
+
+// VirtualMediaStorageClassName returns the configured StorageClass for the DataVolume
+// created on virtual media insert, or nil if unset at any level.
+func (s VirtualMachineBMCSpec) VirtualMediaStorageClassName() *string {
+	if s.Redfish == nil || s.Redfish.VirtualMedia == nil || s.Redfish.VirtualMedia.Storage == nil {
+		return nil
+	}
+	return s.Redfish.VirtualMedia.Storage.StorageClassName
 }
 
 // VirtualMediaVolumeMode returns the configured volume mode for the DataVolume
@@ -86,6 +91,11 @@ type VirtualMediaSpec struct {
 
 // VirtualMediaStorageSpec configures the DataVolume's storage.
 type VirtualMediaStorageSpec struct {
+	// StorageClassName is the StorageClass for the DataVolume created on virtual media insert; unset
+	// falls back to the cluster default.
+	// +optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
+
 	// VolumeMode is the volume mode for the DataVolume created on virtual media insert; unset keeps
 	// today's behavior (Filesystem, CDI's own default). Block requests a raw block device instead,
 	// which has no filesystem overhead and so isn't subject to the StorageClass's CDI
