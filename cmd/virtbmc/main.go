@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"kubevirt.io/kubevirtbmc/pkg/virtbmc"
 )
 
@@ -20,7 +20,7 @@ var (
 func main() {
 	var options virtbmc.Options
 
-	app := &cli.App{
+	cmd := &cli.Command{
 		Name:  "virtbmc",
 		Usage: "receive ipmi requests and traslate them into native k8s api calls",
 		Flags: []cli.Flag{
@@ -102,7 +102,7 @@ func main() {
 				Name:    "version",
 				Aliases: []string{"v"},
 				Usage:   "print the version",
-				Action: func(c *cli.Context, b bool) error {
+				Action: func(ctx context.Context, cmd *cli.Command, b bool) error {
 					if b {
 						fmt.Println("Version:", AppVersion)
 						fmt.Println("Git commit:", GitCommit)
@@ -112,8 +112,8 @@ func main() {
 				},
 			},
 		},
-		Action: func(cCtx *cli.Context) error {
-			level, err := logrus.ParseLevel(cCtx.String("log-level"))
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			level, err := logrus.ParseLevel(cmd.String("log-level"))
 			if err != nil {
 				return fmt.Errorf("invalid --log-level: %w", err)
 			}
@@ -126,13 +126,13 @@ func main() {
 				panic("BMC credentials missing: both BMC_USERNAME and BMC_PASSWORD must be provided")
 			}
 
-			vmNamespace := cCtx.Args().Get(0)
-			vmName := cCtx.Args().Get(1)
+			vmNamespace := cmd.Args().Get(0)
+			vmName := cmd.Args().Get(1)
 			if options.Standalone && options.StateFile == "" {
 				options.StateFile = defaultStateFilePath(vmNamespace, vmName)
 			}
 
-			ctx := context.WithValue(cCtx.Context, virtbmc.VMNamespaceKey{}, vmNamespace)
+			ctx = context.WithValue(ctx, virtbmc.VMNamespaceKey{}, vmNamespace)
 			ctx = context.WithValue(ctx, virtbmc.VMNameKey{}, vmName)
 			options.PodName = os.Getenv("POD_NAME")
 			options.GitCommit = GitCommit
@@ -140,7 +140,7 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
 		logrus.Fatal(err)
 	}
 }
