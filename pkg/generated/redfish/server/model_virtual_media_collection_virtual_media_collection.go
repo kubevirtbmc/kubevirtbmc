@@ -10,7 +10,7 @@
 
 package server
 
-// VirtualMediaCollectionVirtualMediaCollection - The collection of `VirtualMedia` resource instances.
+// VirtualMediaCollectionVirtualMediaCollection - The VirtualMediaCollection schema describes a collection of virtual media instances.
 type VirtualMediaCollectionVirtualMediaCollection struct {
 
 	// The OData description of a payload.
@@ -44,35 +44,13 @@ type VirtualMediaCollectionVirtualMediaCollection struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertVirtualMediaCollectionVirtualMediaCollectionRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaCollectionVirtualMediaCollectionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaCollectionVirtualMediaCollectionRequired(obj VirtualMediaCollectionVirtualMediaCollection) error {
-	elements := map[string]interface{}{
-		"@odata.id":           obj.OdataId,
-		"@odata.type":         obj.OdataType,
-		"Members":             obj.Members,
-		"Members@odata.count": obj.MembersodataCount,
-		"Name":                obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
-	for _, el := range obj.Members {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
 // AssertVirtualMediaCollectionVirtualMediaCollectionConstraints checks if the values respects the defined constraints
 func AssertVirtualMediaCollectionVirtualMediaCollectionConstraints(obj VirtualMediaCollectionVirtualMediaCollection) error {
-	for _, el := range obj.Members {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
 	return nil
 }

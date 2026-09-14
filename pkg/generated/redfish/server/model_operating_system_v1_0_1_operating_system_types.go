@@ -72,7 +72,8 @@ func NewOperatingSystemV101OperatingSystemTypesFromValue(v string) (OperatingSys
 	return "", fmt.Errorf("invalid value '%v' for OperatingSystemV101OperatingSystemTypes: valid values are %v", v, AllowedOperatingSystemV101OperatingSystemTypesEnumValues)
 }
 
-// AssertOperatingSystemV101OperatingSystemTypesRequired checks if the required fields are not zero-ed
+// AssertOperatingSystemV101OperatingSystemTypesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertOperatingSystemV101OperatingSystemTypesRequired(obj OperatingSystemV101OperatingSystemTypes) error {
 	return nil
 }

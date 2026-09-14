@@ -51,7 +51,8 @@ func NewManagerV1190GraphicalConnectTypesSupportedFromValue(v string) (ManagerV1
 	return "", fmt.Errorf("invalid value '%v' for ManagerV1190GraphicalConnectTypesSupported: valid values are %v", v, AllowedManagerV1190GraphicalConnectTypesSupportedEnumValues)
 }
 
-// AssertManagerV1190GraphicalConnectTypesSupportedRequired checks if the required fields are not zero-ed
+// AssertManagerV1190GraphicalConnectTypesSupportedRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190GraphicalConnectTypesSupportedRequired(obj ManagerV1190GraphicalConnectTypesSupported) error {
 	return nil
 }

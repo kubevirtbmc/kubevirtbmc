@@ -51,7 +51,8 @@ func NewComputerSystemV1220CompositionUseCaseFromValue(v string) (ComputerSystem
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220CompositionUseCase: valid values are %v", v, AllowedComputerSystemV1220CompositionUseCaseEnumValues)
 }
 
-// AssertComputerSystemV1220CompositionUseCaseRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220CompositionUseCaseRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220CompositionUseCaseRequired(obj ComputerSystemV1220CompositionUseCase) error {
 	return nil
 }

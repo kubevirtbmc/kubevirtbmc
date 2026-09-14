@@ -20,7 +20,8 @@ type ComputerSystemV1220AddResourceBlock struct {
 	Title string `json:"title,omitempty"`
 }
 
-// AssertComputerSystemV1220AddResourceBlockRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220AddResourceBlockRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220AddResourceBlockRequired(obj ComputerSystemV1220AddResourceBlock) error {
 	return nil
 }

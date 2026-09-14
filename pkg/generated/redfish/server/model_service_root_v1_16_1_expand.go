@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ServiceRootV1161Expand - The information about the use of `$expand` in the service.
 type ServiceRootV1161Expand struct {
 
@@ -33,15 +29,13 @@ type ServiceRootV1161Expand struct {
 	NoLinks bool `json:"NoLinks,omitempty"`
 }
 
-// AssertServiceRootV1161ExpandRequired checks if the required fields are not zero-ed
+// AssertServiceRootV1161ExpandRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertServiceRootV1161ExpandRequired(obj ServiceRootV1161Expand) error {
 	return nil
 }
 
 // AssertServiceRootV1161ExpandConstraints checks if the values respects the defined constraints
 func AssertServiceRootV1161ExpandConstraints(obj ServiceRootV1161Expand) error {
-	if obj.MaxLevels < 1 {
-		return &ParsingError{Param: "MaxLevels", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	return nil
 }

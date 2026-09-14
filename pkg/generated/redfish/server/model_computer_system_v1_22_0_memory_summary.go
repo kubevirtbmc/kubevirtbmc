@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ComputerSystemV1220MemorySummary - The memory of the system in general detail.
 type ComputerSystemV1220MemorySummary struct {
 	MemoryMirroring ComputerSystemV1220MemoryMirroring `json:"MemoryMirroring,omitempty"`
@@ -29,7 +25,8 @@ type ComputerSystemV1220MemorySummary struct {
 	TotalSystemPersistentMemoryGiB *float32 `json:"TotalSystemPersistentMemoryGiB,omitempty"`
 }
 
-// AssertComputerSystemV1220MemorySummaryRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220MemorySummaryRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220MemorySummaryRequired(obj ComputerSystemV1220MemorySummary) error {
 	if err := AssertOdataV4IdRefRequired(obj.Metrics); err != nil {
 		return err
@@ -47,12 +44,6 @@ func AssertComputerSystemV1220MemorySummaryConstraints(obj ComputerSystemV1220Me
 	}
 	if err := AssertResourceStatusConstraints(obj.Status); err != nil {
 		return err
-	}
-	if obj.TotalSystemMemoryGiB != nil && *obj.TotalSystemMemoryGiB < 0 {
-		return &ParsingError{Param: "TotalSystemMemoryGiB", Err: errors.New(errMsgMinValueConstraint)}
-	}
-	if obj.TotalSystemPersistentMemoryGiB != nil && *obj.TotalSystemPersistentMemoryGiB < 0 {
-		return &ParsingError{Param: "TotalSystemPersistentMemoryGiB", Err: errors.New(errMsgMinValueConstraint)}
 	}
 	return nil
 }

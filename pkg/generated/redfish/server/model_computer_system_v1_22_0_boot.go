@@ -57,7 +57,8 @@ type ComputerSystemV1220Boot struct {
 	UefiTargetBootSourceOverride *string `json:"UefiTargetBootSourceOverride,omitempty"`
 }
 
-// AssertComputerSystemV1220BootRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220BootRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220BootRequired(obj ComputerSystemV1220Boot) error {
 	if err := AssertOdataV4IdRefRequired(obj.BootOptions); err != nil {
 		return err
@@ -78,9 +79,6 @@ func AssertComputerSystemV1220BootConstraints(obj ComputerSystemV1220Boot) error
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.Certificates); err != nil {
 		return err
-	}
-	if obj.RemainingAutomaticRetryAttempts != nil && *obj.RemainingAutomaticRetryAttempts < 0 {
-		return &ParsingError{Param: "RemainingAutomaticRetryAttempts", Err: errors.New(errMsgMinValueConstraint)}
 	}
 	return nil
 }

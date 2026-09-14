@@ -32,7 +32,8 @@ type ComputerSystemV1220BootProgress struct {
 	OemLastState *string `json:"OemLastState,omitempty"`
 }
 
-// AssertComputerSystemV1220BootProgressRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220BootProgressRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220BootProgressRequired(obj ComputerSystemV1220BootProgress) error {
 	return nil
 }

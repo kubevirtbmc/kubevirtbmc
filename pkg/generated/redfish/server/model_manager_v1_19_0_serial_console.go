@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ManagerV1190SerialConsole - The information about a serial console service that this manager provides.
 type ManagerV1190SerialConsole struct {
 
@@ -27,15 +23,13 @@ type ManagerV1190SerialConsole struct {
 	ServiceEnabled bool `json:"ServiceEnabled,omitempty"`
 }
 
-// AssertManagerV1190SerialConsoleRequired checks if the required fields are not zero-ed
+// AssertManagerV1190SerialConsoleRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190SerialConsoleRequired(obj ManagerV1190SerialConsole) error {
 	return nil
 }
 
 // AssertManagerV1190SerialConsoleConstraints checks if the values respects the defined constraints
 func AssertManagerV1190SerialConsoleConstraints(obj ManagerV1190SerialConsole) error {
-	if obj.MaxConcurrentSessions < 0 {
-		return &ParsingError{Param: "MaxConcurrentSessions", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	return nil
 }

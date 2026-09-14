@@ -72,20 +72,9 @@ type SessionV171Session struct {
 	UserName *string `json:"UserName,omitempty"`
 }
 
-// AssertSessionV171SessionRequired checks if the required fields are not zero-ed
+// AssertSessionV171SessionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertSessionV171SessionRequired(obj SessionV171Session) error {
-	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Name":        obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertSessionV171ActionsRequired(obj.Actions); err != nil {
 		return err
 	}

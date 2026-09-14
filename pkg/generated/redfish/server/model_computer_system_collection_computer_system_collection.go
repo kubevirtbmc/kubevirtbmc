@@ -10,7 +10,7 @@
 
 package server
 
-// ComputerSystemCollectionComputerSystemCollection - The collection of `ComputerSystem` resource instances.
+// ComputerSystemCollectionComputerSystemCollection - The collection of ComputerSystem resource instances.
 type ComputerSystemCollectionComputerSystemCollection struct {
 
 	// The OData description of a payload.
@@ -44,35 +44,13 @@ type ComputerSystemCollectionComputerSystemCollection struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertComputerSystemCollectionComputerSystemCollectionRequired checks if the required fields are not zero-ed
+// AssertComputerSystemCollectionComputerSystemCollectionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemCollectionComputerSystemCollectionRequired(obj ComputerSystemCollectionComputerSystemCollection) error {
-	elements := map[string]interface{}{
-		"@odata.id":           obj.OdataId,
-		"@odata.type":         obj.OdataType,
-		"Members":             obj.Members,
-		"Members@odata.count": obj.MembersodataCount,
-		"Name":                obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
-	for _, el := range obj.Members {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
 // AssertComputerSystemCollectionComputerSystemCollectionConstraints checks if the values respects the defined constraints
 func AssertComputerSystemCollectionComputerSystemCollectionConstraints(obj ComputerSystemCollectionComputerSystemCollection) error {
-	for _, el := range obj.Members {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
 	return nil
 }

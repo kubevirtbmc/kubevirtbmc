@@ -29,7 +29,8 @@ type SoftwareInventoryV1101AdditionalVersions struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertSoftwareInventoryV1101AdditionalVersionsRequired checks if the required fields are not zero-ed
+// AssertSoftwareInventoryV1101AdditionalVersionsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertSoftwareInventoryV1101AdditionalVersionsRequired(obj SoftwareInventoryV1101AdditionalVersions) error {
 	return nil
 }

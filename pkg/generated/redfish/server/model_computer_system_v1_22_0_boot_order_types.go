@@ -52,7 +52,8 @@ func NewComputerSystemV1220BootOrderTypesFromValue(v string) (ComputerSystemV122
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220BootOrderTypes: valid values are %v", v, AllowedComputerSystemV1220BootOrderTypesEnumValues)
 }
 
-// AssertComputerSystemV1220BootOrderTypesRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220BootOrderTypesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220BootOrderTypesRequired(obj ComputerSystemV1220BootOrderTypes) error {
 	return nil
 }

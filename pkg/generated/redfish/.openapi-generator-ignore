@@ -22,6 +22,4 @@
 # Then explicitly reverse the ignore rule for a single file:
 #!docs/README.md
 
-server/api_default.go
-server/router.go
 server/logger.go

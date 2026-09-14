@@ -34,26 +34,18 @@ type MessageV120Message struct {
 	Resolution string `json:"Resolution,omitempty"`
 
 	// The list of recommended steps to resolve the situation that caused the message.
-	ResolutionSteps []ResolutionStepResolutionStep `json:"ResolutionSteps,omitempty"`
+	ResolutionSteps []ResolutionStepV100ResolutionStep `json:"ResolutionSteps,omitempty"`
 
 	// The severity of the message.
 	// Deprecated
 	Severity string `json:"Severity,omitempty"`
 }
 
-// AssertMessageV120MessageRequired checks if the required fields are not zero-ed
+// AssertMessageV120MessageRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertMessageV120MessageRequired(obj MessageV120Message) error {
-	elements := map[string]interface{}{
-		"MessageId": obj.MessageId,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	for _, el := range obj.ResolutionSteps {
-		if err := AssertResolutionStepResolutionStepRequired(el); err != nil {
+		if err := AssertResolutionStepV100ResolutionStepRequired(el); err != nil {
 			return err
 		}
 	}
@@ -63,7 +55,7 @@ func AssertMessageV120MessageRequired(obj MessageV120Message) error {
 // AssertMessageV120MessageConstraints checks if the values respects the defined constraints
 func AssertMessageV120MessageConstraints(obj MessageV120Message) error {
 	for _, el := range obj.ResolutionSteps {
-		if err := AssertResolutionStepResolutionStepConstraints(el); err != nil {
+		if err := AssertResolutionStepV100ResolutionStepConstraints(el); err != nil {
 			return err
 		}
 	}

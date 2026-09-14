@@ -1,0 +1,329 @@
+components:
+  schemas:
+    VirtualMedia_v1_6_3_Actions:
+      additionalProperties: false
+      description: The available actions for this resource.
+      properties:
+        '#VirtualMedia.EjectMedia':
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_EjectMedia'
+        '#VirtualMedia.InsertMedia':
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_InsertMedia'
+        Oem:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_OemActions'
+          description: The available OEM-specific actions for this resource.
+          x-longDescription: This property shall contain the available OEM-specific actions for this resource.
+          x-versionAdded: v1_1_0
+      type: object
+      x-longDescription: This type shall contain the available actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    VirtualMedia_v1_6_3_ConnectedVia:
+      enum:
+        - NotConnected
+        - URI
+        - Applet
+        - Oem
+      type: string
+      x-enumDescriptions:
+        Applet: Connected to a client application.
+        NotConnected: No current connection.
+        Oem: Connected through an OEM-defined method.
+        URI: Connected to a URI location.
+    VirtualMedia_v1_6_3_EjectMedia:
+      additionalProperties: false
+      description: This action detaches remote media from virtual media.
+      properties:
+        target:
+          description: Link to invoke action
+          format: uri-reference
+          type: string
+        title:
+          description: Friendly action name
+          type: string
+      type: object
+      x-longDescription: This action shall detach the remote media from the virtual media.  At the completion of the operation, inserted shall be set to `false` and the image name shall be cleared.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+      x-versionAdded: v1_2_0
+    VirtualMedia_v1_6_3_EjectMediaRequestBody:
+      additionalProperties: false
+      description: This action detaches remote media from virtual media.
+      properties: {}
+      type: object
+      x-longDescription: This action shall detach the remote media from the virtual media.  At the completion of the operation, inserted shall be set to `false` and the image name shall be cleared.
+    VirtualMedia_v1_6_3_EjectPolicy:
+      enum:
+        - OnPowerOff
+        - Session
+        - Timed
+        - AfterUse
+        - Persistent
+      type: string
+      x-enumDescriptions:
+        AfterUse: The virtual media ejection occurs after the media is used.
+        OnPowerOff: The virtual media ejection occurs during a system power or reset event.
+        Persistent: The virtual media mount information persists indefinitely.
+        Session: The virtual media ejection occurs when a session is terminated.  The session might be outside the Redfish service.
+        Timed: The virtual media ejection occurs when a timer configured by the EjectTimeout property expires.
+    VirtualMedia_v1_6_3_InsertMedia:
+      additionalProperties: false
+      description: This action attaches remote media to virtual media.
+      properties:
+        target:
+          description: Link to invoke action
+          format: uri-reference
+          type: string
+        title:
+          description: Friendly action name
+          type: string
+      type: object
+      x-longDescription: This action shall attach remote media to virtual media.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+      x-versionAdded: v1_2_0
+    VirtualMedia_v1_6_3_InsertMediaRequestBody:
+      additionalProperties: false
+      description: This action attaches remote media to virtual media.
+      properties:
+        Image:
+          description: The URI of the media to attach to the virtual media.
+          type: string
+          x-longDescription: This parameter shall contain the URI of the media to be attached to the virtual media.  This parameter may specify an absolute URI to remote media or a relative URI to media local to the implementation.  A service may allow a relative URI to reference a SoftwareInventory resource.
+        Inserted:
+          description: An indication of whether the image is treated as inserted upon completion of the action.  The default is `true`.
+          type: boolean
+          x-longDescription: This parameter shall contain whether the image is treated as inserted upon completion of the action.  If the client does not provide this parameter, the service shall default this value to `true`.
+        Password:
+          description: The password to access the URI specified by the Image parameter.
+          type: string
+          x-longDescription: This parameter shall contain the password to access the URI specified by the Image parameter.
+          x-versionAdded: v1_3_0
+        TransferMethod:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_TransferMethod'
+          description: The transfer method to use with the image.
+          x-longDescription: This parameter shall contain the transfer method to use with the specified image URI.
+          x-versionAdded: v1_3_0
+        TransferProtocolType:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_TransferProtocolType'
+          description: The network protocol to use with the image.
+          x-longDescription: This parameter shall contain the network protocol to use with the specified image URI.
+          x-versionAdded: v1_3_0
+        UserName:
+          description: The username to access the URI specified by the Image parameter.
+          type: string
+          x-longDescription: This parameter shall contain the username to access the URI specified by the Image parameter.
+          x-versionAdded: v1_3_0
+        WriteProtected:
+          description: An indication of whether the remote media is treated as write-protected.  The default is `true`.
+          type: boolean
+          x-longDescription: This parameter shall contain whether the remote media is treated as write-protected.  If the client does not provide this parameter, the service shall default this value to `true`.
+      required:
+        - Image
+      type: object
+      x-longDescription: This action shall attach remote media to virtual media.
+    VirtualMedia_v1_6_3_MediaType:
+      enum:
+        - CD
+        - Floppy
+        - USBStick
+        - DVD
+      type: string
+      x-enumDescriptions:
+        CD: A CD-ROM format (ISO) image.
+        DVD: A DVD-ROM format image.
+        Floppy: A floppy disk image.
+        USBStick: An emulation of a USB storage device.
+    VirtualMedia_v1_6_3_OemActions:
+      additionalProperties: true
+      description: The available OEM-specific actions for this resource.
+      properties: {}
+      type: object
+      x-longDescription: This type shall contain the available OEM-specific actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    VirtualMedia_v1_6_3_TransferMethod:
+      enum:
+        - Stream
+        - Upload
+      type: string
+      x-enumDescriptions:
+        Stream: Stream image file data from the source URI.
+        Upload: Upload the entire image file from the source URI to the service.
+    VirtualMedia_v1_6_3_TransferProtocolType:
+      enum:
+        - CIFS
+        - FTP
+        - SFTP
+        - HTTP
+        - HTTPS
+        - NFS
+        - SCP
+        - TFTP
+        - OEM
+      type: string
+      x-enumDescriptions:
+        CIFS: Common Internet File System (CIFS).
+        FTP: File Transfer Protocol (FTP).
+        HTTP: Hypertext Transfer Protocol (HTTP).
+        HTTPS: Hypertext Transfer Protocol Secure (HTTPS).
+        NFS: Network File System (NFS).
+        OEM: A manufacturer-defined protocol.
+        SCP: Secure Copy Protocol (SCP).
+        SFTP: Secure File Transfer Protocol (SFTP).
+        TFTP: Trivial File Transfer Protocol (TFTP).
+    VirtualMedia_v1_6_3_VirtualMedia:
+      additionalProperties: false
+      description: The VirtualMedia schema contains properties related to the monitor and control of an instance of virtual media, such as a remote CD, DVD, or USB device.  A manager for a system or device provides virtual media functionality.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Actions:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_Actions'
+          description: The available actions for this resource.
+          x-longDescription: This property shall contain the available actions for this resource.
+          x-versionAdded: v1_1_0
+        Certificates:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to a collection of server certificates for the server referenced by the Image property.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource collection of type CertificateCollection that represents the server certificates for the server referenced by the Image property.  If VerifyCertificate is `true`, services shall compare the certificates in this collection with the certificate obtained during handshaking with the image server in order to verify the identity of the image server prior to completing the remote media connection.  If the server cannot be verified, the service shall not complete the remote media connection.  If VerifyCertificate is `false`, the service shall not perform certificate verification with certificates in this collection.  Regardless of the contents of this collection, services may perform additional verification based on other factors, such as the configuration of the SecurityPolicy resource.
+          x-versionAdded: v1_4_0
+        ClientCertificates:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to a collection of client identity certificates provided to the server referenced by the Image property.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource collection of type CertificateCollection that represents the client identity certificates that are provided to the server referenced by the Image property as part of TLS handshaking.
+          x-versionAdded: v1_5_0
+        ConnectedVia:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_ConnectedVia'
+          description: The current virtual media connection method.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the current connection method from a client to the virtual media that this resource represents.
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        EjectPolicy:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_EjectPolicy'
+          description: The ejection policy for the virtual media.
+          nullable: true
+          readOnly: false
+          x-longDescription: This property shall contain the ejection policy for the virtual media.
+          x-versionAdded: v1_6_0
+        EjectTimeout:
+          description: Timeout value before the virtual media is automatically ejected.
+          nullable: true
+          pattern: ^P(\d+D)?(T(\d+H)?(\d+M)?(\d+(.\d+)?S)?)?$
+          readOnly: false
+          type: string
+          x-longDescription: This property shall indicate the amount of time before virtual media is automatically ejected when EjectPolicy contains `Timed`.
+          x-versionAdded: v1_6_0
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        Image:
+          description: The URI of the location of the selected image.
+          format: uri-reference
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the URI of the media attached to the virtual media.  This value may specify an absolute URI to remote media or a relative URI to media local to the implementation.  A service may allow a relative URI to reference a SoftwareInventory resource.  The value `null` shall indicate no image connection.
+        ImageName:
+          description: The current image name.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the name of the image.
+        Inserted:
+          description: An indication of whether virtual media is inserted into the virtual device.
+          nullable: true
+          readOnly: false
+          type: boolean
+          x-longDescription: This property shall indicate whether media is present in the virtual media device.
+        MediaTypes:
+          description: The media types supported as virtual media.
+          items:
+            $ref: '#/components/schemas/VirtualMedia_v1_6_3_MediaType'
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of the supported media types for this connection.
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        Password:
+          description: The password to access the Image parameter-specified URI.  This property is`null` in responses.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This parameter shall represent the password to access the Image parameter-specified URI.  The value shall be `null` in responses.
+          x-versionAdded: v1_3_0
+        Status:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Status
+          description: The status and health of the resource and its subordinate or dependent resources.
+          x-longDescription: This property shall contain any status or health properties of the resource.
+          x-versionAdded: v1_4_0
+        TransferMethod:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_TransferMethod'
+          description: The transfer method to use with the Image.
+          nullable: true
+          readOnly: false
+          x-longDescription: This parameter shall describe how the image transfer occurs.
+          x-versionAdded: v1_3_0
+        TransferProtocolType:
+          $ref: '#/components/schemas/VirtualMedia_v1_6_3_TransferProtocolType'
+          description: The network protocol to use with the image.
+          nullable: true
+          readOnly: false
+          x-longDescription: This parameter shall represent the network protocol to use with the specified image URI.
+          x-versionAdded: v1_3_0
+        UserName:
+          description: The user name to access the Image parameter-specified URI.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This parameter shall represent the user name to access the Image parameter-specified URI.
+          x-versionAdded: v1_3_0
+        VerifyCertificate:
+          description: An indication of whether the service will verify the certificate of the server referenced by the Image property prior to completing the remote media connection.
+          nullable: true
+          readOnly: false
+          type: boolean
+          x-longDescription: This property shall indicate whether the service will verify the certificate of the server referenced by the Image property prior to completing the remote media connection with the certificates found in the collection referenced by the Certificates property.  If this property is not supported by the service, it shall be assumed to be `false`.  This property should default to `false` in order to maintain compatibility with older clients.  Regardless of the value of this property, services may perform additional verification based on other factors, such as the configuration of the SecurityPolicy resource.
+          x-versionAdded: v1_4_0
+        WriteProtected:
+          description: An indication of whether the media is write-protected.
+          nullable: true
+          readOnly: false
+          type: boolean
+          x-longDescription: This property shall indicate whether the remote device media prevents writing to that media.
+      required:
+        - '@odata.id'
+        - '@odata.type'
+        - Id
+        - Name
+      type: object
+      x-longDescription: This resource shall represent a virtual media service for a Redfish implementation.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+title: '#VirtualMedia.v1_6_3.VirtualMedia'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2022.3'

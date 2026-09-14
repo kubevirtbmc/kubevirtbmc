@@ -85,62 +85,13 @@ type ComputerSystemV1220Links struct {
 	VirtualMachinesodataCount int64 `json:"VirtualMachines@odata.count,omitempty"`
 }
 
-// AssertComputerSystemV1220LinksRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220LinksRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220LinksRequired(obj ComputerSystemV1220Links) error {
-	for _, el := range obj.Chassis {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ConsumingComputerSystems {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.CooledBy {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.Endpoints {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
 	if err := AssertOdataV4IdRefRequired(obj.HostingComputerSystem); err != nil {
 		return err
 	}
-	for _, el := range obj.ManagedBy {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.OffloadedNetworkDeviceFunctions {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.PoweredBy {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
 	for _, el := range obj.ResourceBlocks {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.SupplyingComputerSystems {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.TrustedComponents {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.VirtualMachines {
 		if err := AssertOdataV4IdRefRequired(el); err != nil {
 			return err
 		}
@@ -150,60 +101,10 @@ func AssertComputerSystemV1220LinksRequired(obj ComputerSystemV1220Links) error 
 
 // AssertComputerSystemV1220LinksConstraints checks if the values respects the defined constraints
 func AssertComputerSystemV1220LinksConstraints(obj ComputerSystemV1220Links) error {
-	for _, el := range obj.Chassis {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ConsumingComputerSystems {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.CooledBy {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.Endpoints {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
 	if err := AssertOdataV4IdRefConstraints(obj.HostingComputerSystem); err != nil {
 		return err
 	}
-	for _, el := range obj.ManagedBy {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.OffloadedNetworkDeviceFunctions {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.PoweredBy {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
 	for _, el := range obj.ResourceBlocks {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.SupplyingComputerSystems {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.TrustedComponents {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.VirtualMachines {
 		if err := AssertOdataV4IdRefConstraints(el); err != nil {
 			return err
 		}

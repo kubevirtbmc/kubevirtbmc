@@ -55,7 +55,8 @@ func NewComputerSystemV1220PowerRestorePolicyTypesFromValue(v string) (ComputerS
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220PowerRestorePolicyTypes: valid values are %v", v, AllowedComputerSystemV1220PowerRestorePolicyTypesEnumValues)
 }
 
-// AssertComputerSystemV1220PowerRestorePolicyTypesRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220PowerRestorePolicyTypesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220PowerRestorePolicyTypesRequired(obj ComputerSystemV1220PowerRestorePolicyTypes) error {
 	return nil
 }

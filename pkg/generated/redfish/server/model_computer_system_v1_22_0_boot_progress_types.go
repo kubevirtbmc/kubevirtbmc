@@ -78,7 +78,8 @@ func NewComputerSystemV1220BootProgressTypesFromValue(v string) (ComputerSystemV
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220BootProgressTypes: valid values are %v", v, AllowedComputerSystemV1220BootProgressTypesEnumValues)
 }
 
-// AssertComputerSystemV1220BootProgressTypesRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220BootProgressTypesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220BootProgressTypesRequired(obj ComputerSystemV1220BootProgressTypes) error {
 	return nil
 }

@@ -71,13 +71,6 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *C
 			ComputerSystemReset: server.ComputerSystemV1220Reset{
 				Target: fmt.Sprintf("/redfish/v1/Systems/%s/Actions/ComputerSystem.Reset", id),
 				Title:  "Reset",
-				ResetTypeRedfishAllowableValues: []server.ResourceResetType{
-					server.RESOURCERESETTYPE_ON,
-					server.RESOURCERESETTYPE_FORCE_OFF,
-					server.RESOURCERESETTYPE_GRACEFUL_SHUTDOWN,
-					server.RESOURCERESETTYPE_GRACEFUL_RESTART,
-					server.RESOURCERESETTYPE_FORCE_RESTART,
-				},
 			},
 		},
 		Boot: server.ComputerSystemV1220Boot{
@@ -85,7 +78,9 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *C
 			BootSourceOverrideMode:    server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEMODE_LEGACY,
 			BootSourceOverrideTarget:  server.COMPUTERSYSTEMBOOTSOURCE_HDD,
 		},
-		OperatingSystem: fmt.Sprintf("/redfish/v1/Systems/%s/OperatingSystem", id),
+		OperatingSystem: server.OdataV4IdRef{
+			OdataId: fmt.Sprintf("/redfish/v1/Systems/%s/OperatingSystem", id),
+		},
 		// The VirtualMedia service is provided by the manager: the spec
 		// defines the collection only under /redfish/v1/Managers/{id}, and
 		// per the ComputerSystem CSDL this link points at the collection

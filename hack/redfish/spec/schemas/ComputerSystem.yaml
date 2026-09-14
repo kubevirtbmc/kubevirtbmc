@@ -1,0 +1,51 @@
+components:
+  schemas:
+    ComputerSystem_BootSource:
+      enum:
+        - None
+        - Pxe
+        - Floppy
+        - Cd
+        - Usb
+        - Hdd
+        - BiosSetup
+        - Utilities
+        - Diags
+        - UefiShell
+        - UefiTarget
+        - SDCard
+        - UefiHttp
+        - RemoteDrive
+        - UefiBootNext
+        - Recovery
+      type: string
+      x-enumDescriptions:
+        BiosSetup: Boot to the BIOS setup utility.
+        Cd: Boot from the CD or DVD.
+        Diags: Boot to the manufacturer's diagnostics program.
+        Floppy: Boot from the floppy disk drive.
+        Hdd: Boot from a hard drive.
+        None: Boot from the normal boot device.
+        Pxe: Boot from the Pre-boot eXecution Environment (PXE).
+        Recovery: Boot to a system-designated recovery process or image.
+        RemoteDrive: Boot from a remote drive, such as an iSCSI target.
+        SDCard: Boot from an SD card.
+        UefiBootNext: Boot to the UEFI device that the BootNext property specifies.
+        UefiHttp: Boot from a UEFI HTTP network location.
+        UefiShell: Boot to the UEFI Shell.
+        UefiTarget: Boot to the UEFI device specified in the UefiTargetBootSourceOverride property.
+        Usb: Boot from a system BIOS-specified USB device.
+        Utilities: Boot to the manufacturer's utilities program or programs.
+      x-enumVersionAdded:
+        Recovery: v1_19_0
+        RemoteDrive: v1_2_0
+        SDCard: v1_1_0
+        UefiBootNext: v1_5_0
+        UefiHttp: v1_1_0
+    ComputerSystem_ComputerSystem:
+      $ref: ./ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
+      description: The ComputerSystem schema represents a computer or system instance and the software-visible resources, or items within the data plane, such as memory, CPU, and other devices that it can access.  Details of those resources or subsystems are also linked through this resource.
+      x-longDescription: This resource shall represent a computing system in the Redfish Specification.
+title: '#ComputerSystem.ComputerSystem'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF

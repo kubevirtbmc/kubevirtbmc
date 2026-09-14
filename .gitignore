@@ -30,3 +30,5 @@ hack/DSP8010_*
 
 # Local Redfish interop validator output (make redfish-interop)
 logs/
+
+hack/redfish/spec/.trimmed.openapi.yaml

@@ -26,7 +26,8 @@ type TaskV173Payload struct {
 	TargetUri string `json:"TargetUri,omitempty"`
 }
 
-// AssertTaskV173PayloadRequired checks if the required fields are not zero-ed
+// AssertTaskV173PayloadRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertTaskV173PayloadRequired(obj TaskV173Payload) error {
 	return nil
 }

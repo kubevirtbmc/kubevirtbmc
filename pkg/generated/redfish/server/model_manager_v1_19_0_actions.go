@@ -24,7 +24,8 @@ type ManagerV1190Actions struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertManagerV1190ActionsRequired checks if the required fields are not zero-ed
+// AssertManagerV1190ActionsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190ActionsRequired(obj ManagerV1190Actions) error {
 	if err := AssertManagerV1190ForceFailoverRequired(obj.ManagerForceFailover); err != nil {
 		return err

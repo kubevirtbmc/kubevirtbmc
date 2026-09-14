@@ -30,7 +30,8 @@ type ManagerV1190DaylightSavingTime struct {
 	TimeZoneName string `json:"TimeZoneName,omitempty"`
 }
 
-// AssertManagerV1190DaylightSavingTimeRequired checks if the required fields are not zero-ed
+// AssertManagerV1190DaylightSavingTimeRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190DaylightSavingTimeRequired(obj ManagerV1190DaylightSavingTime) error {
 	return nil
 }

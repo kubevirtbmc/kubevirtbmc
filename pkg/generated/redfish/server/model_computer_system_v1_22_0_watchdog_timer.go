@@ -10,6 +10,11 @@
 
 package server
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // ComputerSystemV1220WatchdogTimer - This type describes the host watchdog timer functionality for this system.
 type ComputerSystemV1220WatchdogTimer struct {
 
@@ -21,23 +26,94 @@ type ComputerSystemV1220WatchdogTimer struct {
 
 	Status ResourceStatus `json:"Status,omitempty"`
 
-	TimeoutAction ComputerSystemV1220WatchdogTimeoutActions `json:"TimeoutAction"`
+	// The action to perform when the watchdog timer reaches its timeout value.
+	TimeoutAction *ComputerSystemV1220WatchdogTimeoutActions `json:"TimeoutAction"`
 
 	WarningAction ComputerSystemV1220WatchdogWarningActions `json:"WarningAction,omitempty"`
 }
 
-// AssertComputerSystemV1220WatchdogTimerRequired checks if the required fields are not zero-ed
-func AssertComputerSystemV1220WatchdogTimerRequired(obj ComputerSystemV1220WatchdogTimer) error {
-	elements := map[string]interface{}{
-		"FunctionEnabled": obj.FunctionEnabled,
-		"TimeoutAction":   obj.TimeoutAction,
+// UnmarshalJSON validates required property keys then unmarshals into ComputerSystemV1220WatchdogTimer
+func (o *ComputerSystemV1220WatchdogTimer) UnmarshalJSON(data []byte) (err error) {
+	// Presence is checked against required fields that exist on this struct,
+	// including fields promoted from embedded allOf parents.
+	requiredProperties := []string{
+		"FunctionEnabled",
+		"TimeoutAction",
 	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
+
+	requiredNullableProperties := map[string]bool{
+		"FunctionEnabled": true,
+		"TimeoutAction":   true,
+	}
+
+	allowedJsonKeys := map[string]struct{}{
+		"FunctionEnabled": {},
+		"Oem":             {},
+		"Status":          {},
+		"TimeoutAction":   {},
+		"WarningAction":   {},
+	}
+
+	allProperties := make(map[string]json.RawMessage)
+
+	err = json.Unmarshal(data, &allProperties)
+
+	if err != nil {
+		return err
+	}
+
+	for _, requiredProperty := range requiredProperties {
+		value, exists := allProperties[requiredProperty]
+		if !exists {
+			return &RequiredError{Field: requiredProperty}
+		}
+		if string(value) == "null" && !requiredNullableProperties[requiredProperty] {
+			return &RequiredError{Field: requiredProperty}
 		}
 	}
 
+	for key := range allProperties {
+		if _, exists := allowedJsonKeys[key]; !exists {
+			return fmt.Errorf("json: unknown field %q", key)
+		}
+	}
+
+	var decoded ComputerSystemV1220WatchdogTimer
+
+	if value, exists := allProperties["FunctionEnabled"]; exists {
+		if err = json.Unmarshal(value, &decoded.FunctionEnabled); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Oem"]; exists {
+		if err = json.Unmarshal(value, &decoded.Oem); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Status"]; exists {
+		if err = json.Unmarshal(value, &decoded.Status); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["TimeoutAction"]; exists {
+		if err = json.Unmarshal(value, &decoded.TimeoutAction); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["WarningAction"]; exists {
+		if err = json.Unmarshal(value, &decoded.WarningAction); err != nil {
+			return err
+		}
+	}
+
+	*o = decoded
+
+	return nil
+}
+
+// AssertComputerSystemV1220WatchdogTimerRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
+func AssertComputerSystemV1220WatchdogTimerRequired(obj ComputerSystemV1220WatchdogTimer) error {
 	if err := AssertResourceStatusRequired(obj.Status); err != nil {
 		return err
 	}

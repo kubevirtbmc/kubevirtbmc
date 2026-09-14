@@ -61,7 +61,8 @@ func NewComputerSystemV1220WatchdogTimeoutActionsFromValue(v string) (ComputerSy
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220WatchdogTimeoutActions: valid values are %v", v, AllowedComputerSystemV1220WatchdogTimeoutActionsEnumValues)
 }
 
-// AssertComputerSystemV1220WatchdogTimeoutActionsRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220WatchdogTimeoutActionsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220WatchdogTimeoutActionsRequired(obj ComputerSystemV1220WatchdogTimeoutActions) error {
 	return nil
 }

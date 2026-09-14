@@ -1,0 +1,782 @@
+components:
+  schemas:
+    Resource_v1_18_0_ContactInfo:
+      additionalProperties: false
+      description: Contact information for this resource.
+      properties:
+        ContactName:
+          description: Name of this contact.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the name of a person or organization to contact for information about this resource.
+          x-versionAdded: v1_7_0
+        EmailAddress:
+          description: Email address for this contact.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the email address for a person or organization to contact for information about this resource.
+          x-versionAdded: v1_7_0
+        PhoneNumber:
+          description: Phone number for this contact.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the phone number for a person or organization to contact for information about this resource.
+          x-versionAdded: v1_7_0
+      type: object
+      x-longDescription: This object shall contain contact information for an individual or organization responsible for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_DurableNameFormat:
+      enum:
+        - NAA
+        - iQN
+        - FC_WWN
+        - UUID
+        - EUI
+        - NQN
+        - NSID
+        - NGUID
+        - MACAddress
+        - GCXLID
+      type: string
+      x-enumDeprecated:
+        NSID: This value has been deprecated due to its non-uniqueness and `NGUID` should be used.
+      x-enumDescriptions:
+        EUI: The IEEE-defined 64-bit Extended Unique Identifier (EUI).
+        FC_WWN: The Fibre Channel (FC) World Wide Name (WWN).
+        GCXLID: The globally unique CXL logical device identifier (GCXLID).
+        MACAddress: The media access control address (MAC address).
+        NAA: The Name Address Authority (NAA) format.
+        NGUID: The Namespace Globally Unique Identifier (NGUID).
+        NQN: The NVMe Qualified Name (NQN).
+        NSID: The NVM Namespace Identifier (NSID).
+        UUID: The Universally Unique Identifier (UUID).
+        iQN: The iSCSI Qualified Name (iQN).
+      x-enumLongDescriptions:
+        EUI: This durable name shall contain the hexadecimal representation of the IEEE-defined 64-bit Extended Unique Identifier (EUI), as defined in the IEEE's Guidelines for 64-bit Global Identifier (EUI-64) Specification.  The DurableName property shall follow the regular expression pattern `^([0-9A-Fa-f]{2}[:-]){7}([0-9A-Fa-f]{2})$`, where the most significant octet is first.
+        FC_WWN: This durable name shall contain a hexadecimal representation of the World-Wide Name (WWN) format, as defined in the T11 Fibre Channel Physical and Signaling Interface Specification.  The DurableName property shall follow the regular expression pattern `^([0-9A-Fa-f]{2}[:-]){7}([0-9A-Fa-f]{2})$`, where the most significant octet is first.
+        GCXLID: This durable name shall be in the globally unique CXL logical device identifier (GCXLID).  The DurableName property shall follow the regular expression pattern `^([0-9A-Fa-f]{2}-){7}[0-9A-Fa-f]{2}:([0-9A-Fa-f]{4})$`, where the first eight hyphen-delimited octets contain the PCIe serial number, where the most significant octet is first, and the remaining 16-bit field contains the CXL Logical Device Identifier, with the most significant byte first.
+        MACAddress: This durable name shall be a media access control address (MAC address), which is a unique identifier assigned to a network interface controller (NIC) for use as a network address.  This value should not be used if a more specific type of identifier is available.  The DurableName property shall follow the regular expression pattern `^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`, where the most significant octet is first.
+        NAA: This durable name shall contain a hexadecimal representation of the Name Address Authority structure, as defined in the T11 Fibre Channel - Framing and Signaling - 3 (FC-FS-3) specification.  The DurableName property shall follow the regular expression pattern `^(([0-9A-Fa-f]{2}){8}){1,2}$`, where the most significant octet is first.
+        NGUID: This durable name shall be in the Namespace Globally Unique Identifier (NGUID), as defined in the NVN Express Specification.  The DurableName property shall follow the regular expression pattern `^([0-9A-Fa-f]{2}){16}$`, where the most significant octet is first.
+        NQN: This durable name shall be in the NVMe Qualified Name (NQN) format, as defined in the NVN Express over Fabric Specification.
+        NSID: This durable name shall be in the NVM Namespace Identifier (NSID) format, as defined in the NVN Express Specification.
+        UUID: This durable name shall contain the hexadecimal representation of the UUID, as defined by RFC4122.  The DurableName property shall follow the regular expression pattern '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'.
+        iQN: This durable name shall be in the iSCSI Qualified Name (iQN) format, as defined in RFC3720 and RFC3721.
+      x-enumVersionAdded:
+        GCXLID: v1_15_0
+        MACAddress: v1_14_0
+        NGUID: v1_10_0
+        NQN: v1_6_0
+        NSID: v1_6_0
+      x-enumVersionDeprecated:
+        NSID: v1_12_0
+    Resource_v1_18_0_Identifier:
+      additionalProperties: false
+      description: Any additional identifiers for a resource.
+      properties:
+        DurableName:
+          description: The world-wide, persistent name of the resource.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the world-wide unique identifier for the resource.  The string shall be in the Identifier.DurableNameFormat property value format.
+          x-versionAdded: v1_1_0
+        DurableNameFormat:
+          $ref: '#/components/schemas/Resource_v1_18_0_DurableNameFormat'
+          description: The format of the durable name property.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall represent the format of the DurableName property.
+          x-versionAdded: v1_1_0
+      type: object
+      x-longDescription: This type shall contain any additional identifiers for a resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_Location:
+      additionalProperties: false
+      description: The location of a resource.
+      properties:
+        AltitudeMeters:
+          description: The altitude of the resource in meters.
+          nullable: true
+          readOnly: false
+          type: number
+          x-longDescription: This property shall contain the altitude of the resource, in meter units, defined as the elevation above sea level.
+          x-units: m
+          x-versionAdded: v1_6_0
+        Contacts:
+          description: An array of contact information.
+          items:
+            $ref: '#/components/schemas/Resource_v1_18_0_ContactInfo'
+            nullable: true
+          type: array
+          x-longDescription: This property shall contain an array of contact information for an individual or organization responsible for this resource.
+          x-versionAdded: v1_7_0
+        Info:
+          deprecated: true
+          description: The location of the resource.
+          nullable: true
+          readOnly: true
+          type: string
+          x-deprecatedReason: This property has been deprecated in favor of the PostalAddress, Placement, and PartLocation properties.
+          x-longDescription: This property shall represent the location of the resource.
+          x-versionAdded: v1_1_0
+          x-versionDeprecated: v1_5_0
+        InfoFormat:
+          deprecated: true
+          description: The format of the Info property.
+          nullable: true
+          readOnly: true
+          type: string
+          x-deprecatedReason: This property has been deprecated in favor of the PostalAddress, Placement, and PartLocation properties.
+          x-longDescription: This property shall represent the Info property format.
+          x-versionAdded: v1_1_0
+          x-versionDeprecated: v1_5_0
+        Latitude:
+          description: The latitude of the resource.
+          nullable: true
+          readOnly: false
+          type: number
+          x-longDescription: This property shall contain the latitude of the resource specified in degree units using a decimal format and not minutes or seconds.
+          x-units: deg
+          x-versionAdded: v1_6_0
+        Longitude:
+          description: The longitude of the resource in degree units.
+          nullable: true
+          readOnly: false
+          type: number
+          x-longDescription: This property shall contain the longitude of the resource specified in degree units using a decimal format and not minutes or seconds.
+          x-units: deg
+          x-versionAdded: v1_6_0
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+          x-versionAdded: v1_1_0
+        PartLocation:
+          $ref: '#/components/schemas/Resource_v1_18_0_PartLocation'
+          description: The part location for a resource within an enclosure.
+          x-longDescription: This property shall contain the part location for a resource within an enclosure.  This representation shall indicate the location of a part within a location specified by the Placement property.
+          x-versionAdded: v1_5_0
+        PartLocationContext:
+          description: Human-readable string to enable differentiation between PartLocation values for parts in the same enclosure, which might include hierarchical information of containing PartLocation values for the part.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain a human-readable string to enable differentiation between PartLocation values for parts in the same enclosure, which may include hierarchical information of containing PartLocation values for the part.  The value of this property shall not include values of the PartLocation properties for the part itself.  The purpose of this value, in conjunction with the PartLocation of the part itself, is to allow clients to determine the physical location of the part without tracing through the PartLocation of multiple resources.
+          x-versionAdded: v1_16_0
+        PhysicalAddress:
+          $ref: '#/components/schemas/Resource_v1_18_0_PhysicalAddress'
+          description: The physical address for a resource.
+          x-longDescription: This property shall contain a physical address for a resource.  This property should be present for resources that represent physical objects that can operate without requiring physical containment by another resource.  For example, a server chassis might be contained by a rack, but it might also be deployed individually, while a drive is always contained by a chassis and therefore is described by the containing resource.
+          x-versionAdded: v1_17_0
+        Placement:
+          $ref: '#/components/schemas/Resource_v1_18_0_Placement'
+          description: A place within the addressed location.
+          x-longDescription: This property shall contain a place within the addressed location.
+          x-versionAdded: v1_3_0
+        PostalAddress:
+          $ref: '#/components/schemas/Resource_v1_18_0_PostalAddress'
+          description: The postal address of the addressed resource.
+          x-longDescription: This property shall contain a postal address of the resource.
+          x-versionAdded: v1_3_0
+      type: object
+      x-longDescription: This type shall describe the location of a resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_LocationType:
+      description: The types of locations for a part within an enclosure.
+      enum:
+        - Slot
+        - Bay
+        - Connector
+        - Socket
+        - Backplane
+        - Embedded
+      type: string
+      x-enumDescriptions:
+        Backplane: A backplane.
+        Bay: A bay.
+        Connector: A connector or port.
+        Embedded: Embedded within a part.
+        Slot: A slot.
+        Socket: A socket.
+      x-enumLongDescriptions:
+        Backplane: This value shall indicate the part is a backplane in an enclosure.
+        Bay: This value shall indicate the part is located in a bay.
+        Connector: This value shall indicate the part is located in a connector or port.
+        Embedded: This value shall indicate the part is embedded or otherwise permanently incorporated into a larger part or device.  This value shall not be used for parts that can be removed by a user or are considered field-replaceable.
+        Slot: This value shall indicate the part is located in a slot.
+        Socket: This value shall indicate the part is located in a socket.
+      x-enumVersionAdded:
+        Backplane: v1_12_0
+        Embedded: v1_13_0
+      x-longDescription: This enumeration shall list the types of locations for a part within an enclosure.
+    Resource_v1_18_0_Orientation:
+      description: The orientations for the ordering of the part location ordinal value.
+      enum:
+        - FrontToBack
+        - BackToFront
+        - TopToBottom
+        - BottomToTop
+        - LeftToRight
+        - RightToLeft
+      type: string
+      x-enumDescriptions:
+        BackToFront: The ordering for the LocationOrdinalValue is back to front.
+        BottomToTop: The ordering for LocationOrdinalValue is bottom to top.
+        FrontToBack: The ordering for LocationOrdinalValue is front to back.
+        LeftToRight: The ordering for the LocationOrdinalValue is left to right.
+        RightToLeft: The ordering for the LocationOrdinalValue is right to left.
+        TopToBottom: The ordering for the LocationOrdinalValue is top to bottom.
+      x-enumLongDescriptions:
+        BackToFront: This value shall indicate the ordering for LocationOrdinalValue is back to front.
+        BottomToTop: This value shall indicate the ordering for LocationOrdinalValue is bottom to top.
+        FrontToBack: This value shall indicate the ordering for LocationOrdinalValue is front to back.
+        LeftToRight: This value shall indicate the ordering for LocationOrdinalValue is left to right.
+        RightToLeft: This value shall indicate the ordering for LocationOrdinalValue is right to left.
+        TopToBottom: This value shall indicate the ordering for LocationOrdinalValue is top to bottom.
+      x-longDescription: This enumeration shall list the orientations for the ordering of the LocationOrdinalValue property.
+    Resource_v1_18_0_PartLocation:
+      additionalProperties: false
+      description: The part location for a resource within an enclosure.
+      properties:
+        LocationOrdinalValue:
+          description: The number that represents the location of the part.  For example, if LocationType is `Slot` and this unit is in slot 2, the LocationOrdinalValue is `2`.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the number that represents the location of the part based on the LocationType.  LocationOrdinalValue shall be measured based on the Orientation value starting with `0`.
+          x-versionAdded: v1_5_0
+        LocationType:
+          $ref: '#/components/schemas/Resource_v1_18_0_LocationType'
+          description: The type of location of the part.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the type of location of the part.
+          x-versionAdded: v1_5_0
+        Orientation:
+          $ref: '#/components/schemas/Resource_v1_18_0_Orientation'
+          description: The orientation for the ordering of the slot enumeration used by the LocationOrdinalValue property.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the orientation for the ordering used by the LocationOrdinalValue property.
+          x-versionAdded: v1_5_0
+        Reference:
+          $ref: '#/components/schemas/Resource_v1_18_0_Reference'
+          description: The reference point for the part location.  Provides guidance about the general location of the part.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the general location within the unit of the part.
+          x-versionAdded: v1_5_0
+        ServiceLabel:
+          description: The label of the part location, such as a silk-screened name or a printed label.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the label assigned for service at the part location.
+          x-versionAdded: v1_5_0
+      type: object
+      x-longDescription: This type shall describe a location for a resource within an enclosure.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_PhysicalAddress:
+      additionalProperties: false
+      description: The physical address for a resource.
+      properties:
+        City:
+          description: City, township, or shi (JP).
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the city, township, or shi (JP) location for this resource.
+          x-versionAdded: v1_17_0
+        Country:
+          description: The country.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the country location for this resource.
+          x-versionAdded: v1_17_0
+        ISOCountryCode:
+          description: The ISO 3166-1 country code.
+          nullable: true
+          pattern: ^([A-Z]{2}|[A-Z]{3})$
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the ISO 3166-1-defined alpha-2 or alpha-3 country code.
+          x-versionAdded: v1_17_0
+        ISOSubdivisionCode:
+          description: ISO 3166-2 subdivision code.
+          nullable: true
+          pattern: ^[A-Z0-9]{1,3}$
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the ISO 3166-2-defined state, province, or territory subdivision code for this resource.
+          x-versionAdded: v1_17_0
+        PostalCode:
+          description: The postal code.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The property shall contain the postal code for this resource.  The value shall conform to the RFC5139-defined requirements of the PC field.
+          x-versionAdded: v1_17_0
+        StateOrProvince:
+          description: State or province.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the state, province, or territory location within the country for this resource.
+          x-versionAdded: v1_17_0
+        StreetAddress:
+          description: The street-level address, including building, room, or other identifiers.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the street-level physical address of the resource, including identifiers such as apartment, room, or building to further locate the resource within a given street address.
+          x-versionAdded: v1_17_0
+      type: object
+      x-longDescription: This type shall contain a physical address for a resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_Placement:
+      additionalProperties: false
+      description: The placement within the addressed location.
+      properties:
+        AdditionalInfo:
+          description: Area designation or other additional info.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain additional information, such as Tile, Column (Post), Wall, or other designation that describes a location that cannot be conveyed with other properties defined for the Placement object.
+          x-versionAdded: v1_7_0
+        Rack:
+          description: The name of a rack location within a row.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the name of the rack within a row.
+          x-versionAdded: v1_3_0
+        RackOffset:
+          description: The vertical location of the item, in terms of RackOffsetUnits.
+          format: int64
+          nullable: true
+          readOnly: false
+          type: integer
+          x-longDescription: The vertical location of the item in the rack.  Rack offset units shall be measured from bottom to top, starting with 0.
+          x-versionAdded: v1_3_0
+        RackOffsetUnits:
+          $ref: '#/components/schemas/Resource_v1_18_0_RackUnits'
+          description: The type of rack units in use.
+          nullable: true
+          readOnly: false
+          x-longDescription: This property shall contain a RackUnit enumeration literal that indicates the type of rack units in use.
+          x-versionAdded: v1_3_0
+        Row:
+          description: The name of the row.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: This property shall contain the name of the row.
+          x-versionAdded: v1_3_0
+      type: object
+      x-longDescription: The value shall describe a location within a resource.  Examples include a shelf in a rack.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_PostalAddress:
+      additionalProperties: false
+      deprecated: true
+      description: The postal address for a resource.
+      properties:
+        AdditionalCode:
+          description: The additional code.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the ADDCODE field.
+          x-versionAdded: v1_3_0
+        AdditionalInfo:
+          description: The room designation or other additional information.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the requirements of the LOC field as defined in RFC5139.  Provides additional information.
+          x-versionAdded: v1_7_0
+        Building:
+          description: The name of the building.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the BLD field.  Names the building.
+          x-versionAdded: v1_3_0
+        City:
+          description: City, township, or shi (JP).
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the A3 field.  Names a city, township, or shi (JP).
+          x-versionAdded: v1_3_0
+        Community:
+          description: The postal community name.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the PCN field.  A postal community name.
+          x-versionAdded: v1_3_0
+        Country:
+          description: The country.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the Country field.
+          x-versionAdded: v1_3_0
+        District:
+          description: A county, parish, gun (JP), or district (IN).
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the A2 field.  Names a county, parish, gun (JP), or district (IN).
+          x-versionAdded: v1_3_0
+        Division:
+          description: City division, borough, city district, ward, or chou (JP).
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the A4 field.  Names a city division, borough, city district, ward, or chou (JP).
+          x-versionAdded: v1_3_0
+        Floor:
+          description: The floor.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the FLR field.  Provides a floor designation.
+          x-versionAdded: v1_3_0
+        GPSCoords:
+          deprecated: true
+          description: The GPS coordinates of the part.
+          nullable: true
+          readOnly: false
+          type: string
+          x-deprecatedReason: This property has been deprecated in favor of the Longitude and Latitude properties.
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the ADDCODE field.  Shall contain the GPS coordinates of the location.  If furnished, expressed in the `[-][nn]n.nnnnnn, [-][nn]n.nnnnn` format.  For example, two comma-separated positive or negative numbers with six decimal places of precision.
+          x-versionAdded: v1_3_0
+          x-versionDeprecated: v1_6_0
+        HouseNumber:
+          description: The numeric portion of house number.
+          format: int64
+          nullable: true
+          readOnly: false
+          type: integer
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the HNO field.  The numeric portion of the house number.
+          x-versionAdded: v1_3_0
+        HouseNumberSuffix:
+          description: The house number suffix.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the HNS field.  Provides a suffix to a house number, (F, B, or 1/2).
+          x-versionAdded: v1_3_0
+        Landmark:
+          description: The landmark.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the LMK field.  Identifies a landmark or vanity address.
+          x-versionAdded: v1_3_0
+        LeadingStreetDirection:
+          description: A leading street direction.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the requirements of the PRD field as defined in RFC5139.  Names a leading street direction, (N, W, or SE).
+          x-versionAdded: v1_3_0
+        Location:
+          deprecated: true
+          description: The room designation or other additional information.
+          nullable: true
+          readOnly: false
+          type: string
+          x-deprecatedReason: This property has been deprecated in favor of the AdditionalInfo property.
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the LOC field.  Provides additional information.
+          x-versionAdded: v1_3_0
+          x-versionDeprecated: v1_7_0
+        Name:
+          description: The name.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the NAM field.  Names the occupant.
+          x-versionAdded: v1_3_0
+        Neighborhood:
+          description: Neighborhood or block.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the A5 field.  Names a neighborhood or block.
+          x-versionAdded: v1_3_0
+        POBox:
+          description: The post office box (PO box).
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the POBOX field.  A post office box (PO box).
+          x-versionAdded: v1_3_0
+        PlaceType:
+          description: The description of the type of place that is addressed.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the PLC field.  Examples include office and residence.
+          x-versionAdded: v1_3_0
+        PostalCode:
+          description: The postal code or zip code.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the PC field.  A postal code (or zip code).
+          x-versionAdded: v1_3_0
+        Road:
+          description: The primary road or street.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the RD field.  Designates a primary road or street.
+          x-versionAdded: v1_3_0
+        RoadBranch:
+          description: The road branch.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the RDBR field.  Shall contain a post office box (PO box) road branch.
+          x-versionAdded: v1_3_0
+        RoadPostModifier:
+          description: The road post-modifier.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the POM field.  For example, Extended.
+          x-versionAdded: v1_3_0
+        RoadPreModifier:
+          description: The road pre-modifier.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the PRM field.  For example, Old or New.
+          x-versionAdded: v1_3_0
+        RoadSection:
+          description: The road section.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the RDSEC field.  A road section.
+          x-versionAdded: v1_3_0
+        RoadSubBranch:
+          description: The road sub branch.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the RDSUBBR field.
+          x-versionAdded: v1_3_0
+        Room:
+          description: The name or number of the room.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the ROOM field.  A name or number of a room to locate the resource within the unit.
+          x-versionAdded: v1_3_0
+        Seat:
+          description: The seat, such as the desk, cubicle, or workstation.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the SEAT field.  A name or number of a seat, such as the desk, cubicle, or workstation.
+          x-versionAdded: v1_3_0
+        Street:
+          description: Street name.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the A6 field.  Names a street.
+          x-versionAdded: v1_3_0
+        StreetSuffix:
+          description: Avenue, Platz, Street, Circle.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the STS field.  Names a street suffix.
+          x-versionAdded: v1_3_0
+        Territory:
+          description: A top-level subdivision within a country.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the A1 field when it names a territory, state, region, province, or prefecture within a country.
+          x-versionAdded: v1_3_0
+        TrailingStreetSuffix:
+          description: A trailing street suffix.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the POD field.  Names a trailing street suffix.
+          x-versionAdded: v1_3_0
+        Unit:
+          description: The name or number of the apartment unit or suite.
+          nullable: true
+          readOnly: false
+          type: string
+          x-longDescription: The value shall conform to the RFC5139-defined requirements of the UNIT field.  The name or number of a unit, such as the apartment or suite, to locate the resource.
+          x-versionAdded: v1_3_0
+      type: object
+      x-deprecatedReason: This object and its properties have been deprecated in favor of PhysicalAddress.
+      x-longDescription: Instances shall describe a postal address for a resource.  For more information, see RFC5139.  Depending on use, the instance can represent a past, current, or future location.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+      x-versionDeprecated: v1_17_0
+    Resource_v1_18_0_RackUnits:
+      description: The type of rack unit in use.
+      enum:
+        - OpenU
+        - EIA_310
+      type: string
+      x-enumDescriptions:
+        EIA_310: A rack unit that is equal to 1.75 in (44.45 mm).
+        OpenU: A rack unit that is equal to 48 mm (1.89 in).
+      x-enumLongDescriptions:
+        EIA_310: Rack units shall conform to the EIA-310 standard.
+        OpenU: Rack units shall be specified in terms of the Open Compute Open Rack Specification.
+      x-longDescription: Enumeration literals shall name the type of rack unit in use.
+    Resource_v1_18_0_Reference:
+      description: The reference areas for the location of the part within an enclosure.
+      enum:
+        - Top
+        - Bottom
+        - Front
+        - Rear
+        - Left
+        - Right
+        - Middle
+      type: string
+      x-enumDescriptions:
+        Bottom: The part is in the bottom of the unit.
+        Front: The part is in the front of the unit.
+        Left: The part is on the left side of the unit.
+        Middle: The part is in the middle of the unit.
+        Rear: The part is in the rear of the unit.
+        Right: The part is on the right side of the unit.
+        Top: The part is in the top of the unit.
+      x-enumLongDescriptions:
+        Bottom: This value shall indicate the part is in the bottom of the unit.
+        Front: This value shall indicate the part is in the front of the unit.
+        Left: This value shall indicate the part is on the left side of the unit.
+        Middle: This value shall indicate the part is in the middle of the unit.
+        Rear: This value shall indicate the part is in the rear of the unit.
+        Right: This value shall indicate the part is on the right side of the unit.
+        Top: This value shall indicate the part is in the top of the unit.
+      x-longDescription: This enumeration shall list the reference areas for the location of the part within an enclosure.
+    Resource_v1_18_0_ReferenceableMember:
+      additionalProperties: false
+      description: The base type for addressable members of an array.
+      properties:
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        MemberId:
+          description: The unique identifier for the member within an array.
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the unique identifier for this member within an array.  For services supporting Redfish v1.6 or higher, this value shall contain the zero-based array index.
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+      required:
+        - MemberId
+        - '@odata.id'
+      type: object
+      x-longDescription: References array members by using the value returned in the @odata.id property, which can be a dereferenceable URL.  The @odata.id of this entity shall contain the location of this element within an item.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_Resource:
+      additionalProperties: false
+      description: The base type for resources and members that can be linked to.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+      required:
+        - Id
+        - Name
+        - '@odata.id'
+        - '@odata.type'
+      type: object
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Resource_v1_18_0_ResourceCollection:
+      additionalProperties: false
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+      required:
+        - Name
+        - '@odata.id'
+        - '@odata.type'
+      type: object
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+title: '#Resource.v1_18_0'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2023.3'

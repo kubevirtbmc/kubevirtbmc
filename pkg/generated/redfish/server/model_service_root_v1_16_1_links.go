@@ -17,24 +17,14 @@ type ServiceRootV1161Links struct {
 	// The OEM extension.
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 
+	// The link to a collection of sessions.
 	Sessions OdataV4IdRef `json:"Sessions"`
 }
 
-// AssertServiceRootV1161LinksRequired checks if the required fields are not zero-ed
+// AssertServiceRootV1161LinksRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertServiceRootV1161LinksRequired(obj ServiceRootV1161Links) error {
-	elements := map[string]interface{}{
-		"Sessions": obj.Sessions,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertOdataV4IdRefRequired(obj.ManagerProvidingService); err != nil {
-		return err
-	}
-	if err := AssertOdataV4IdRefRequired(obj.Sessions); err != nil {
 		return err
 	}
 	return nil
@@ -43,9 +33,6 @@ func AssertServiceRootV1161LinksRequired(obj ServiceRootV1161Links) error {
 // AssertServiceRootV1161LinksConstraints checks if the values respects the defined constraints
 func AssertServiceRootV1161LinksConstraints(obj ServiceRootV1161Links) error {
 	if err := AssertOdataV4IdRefConstraints(obj.ManagerProvidingService); err != nil {
-		return err
-	}
-	if err := AssertOdataV4IdRefConstraints(obj.Sessions); err != nil {
 		return err
 	}
 	return nil

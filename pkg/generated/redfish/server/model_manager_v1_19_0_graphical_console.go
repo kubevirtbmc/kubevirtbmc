@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ManagerV1190GraphicalConsole - The information about a graphical console service that this manager provides.
 type ManagerV1190GraphicalConsole struct {
 
@@ -27,15 +23,13 @@ type ManagerV1190GraphicalConsole struct {
 	ServiceEnabled bool `json:"ServiceEnabled,omitempty"`
 }
 
-// AssertManagerV1190GraphicalConsoleRequired checks if the required fields are not zero-ed
+// AssertManagerV1190GraphicalConsoleRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190GraphicalConsoleRequired(obj ManagerV1190GraphicalConsole) error {
 	return nil
 }
 
 // AssertManagerV1190GraphicalConsoleConstraints checks if the values respects the defined constraints
 func AssertManagerV1190GraphicalConsoleConstraints(obj ManagerV1190GraphicalConsole) error {
-	if obj.MaxConcurrentSessions < 0 {
-		return &ParsingError{Param: "MaxConcurrentSessions", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	return nil
 }

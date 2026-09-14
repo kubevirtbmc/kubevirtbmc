@@ -18,7 +18,8 @@ type ComputerSystemV1220KeyManagement struct {
 	KMIPServers []ComputerSystemV1220KmipServer `json:"KMIPServers,omitempty"`
 }
 
-// AssertComputerSystemV1220KeyManagementRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220KeyManagementRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220KeyManagementRequired(obj ComputerSystemV1220KeyManagement) error {
 	if err := AssertOdataV4IdRefRequired(obj.KMIPCertificates); err != nil {
 		return err

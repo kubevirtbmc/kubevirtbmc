@@ -63,20 +63,9 @@ type OperatingSystemV101OperatingSystem struct {
 	VirtualMachineEngines []OperatingSystemV101VirtualMachineEngine `json:"VirtualMachineEngines,omitempty"`
 }
 
-// AssertOperatingSystemV101OperatingSystemRequired checks if the required fields are not zero-ed
+// AssertOperatingSystemV101OperatingSystemRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertOperatingSystemV101OperatingSystemRequired(obj OperatingSystemV101OperatingSystem) error {
-	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Name":        obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertOperatingSystemV101ActionsRequired(obj.Actions); err != nil {
 		return err
 	}

@@ -18,12 +18,10 @@ type ComputerSystemV1220Reset struct {
 
 	// Friendly action name
 	Title string `json:"title,omitempty"`
-
-	// Supported reset types for this action
-	ResetTypeRedfishAllowableValues []ResourceResetType `json:"ResetType@Redfish.AllowableValues,omitempty"`
 }
 
-// AssertComputerSystemV1220ResetRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220ResetRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220ResetRequired(obj ComputerSystemV1220Reset) error {
 	return nil
 }

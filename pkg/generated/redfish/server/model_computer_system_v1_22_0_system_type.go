@@ -66,7 +66,8 @@ func NewComputerSystemV1220SystemTypeFromValue(v string) (ComputerSystemV1220Sys
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220SystemType: valid values are %v", v, AllowedComputerSystemV1220SystemTypeEnumValues)
 }
 
-// AssertComputerSystemV1220SystemTypeRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220SystemTypeRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220SystemTypeRequired(obj ComputerSystemV1220SystemType) error {
 	return nil
 }

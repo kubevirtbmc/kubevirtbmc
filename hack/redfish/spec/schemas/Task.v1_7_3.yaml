@@ -1,0 +1,258 @@
+components:
+  schemas:
+    Task_v1_7_3_Actions:
+      additionalProperties: false
+      description: The available actions for this resource.
+      properties:
+        Oem:
+          $ref: '#/components/schemas/Task_v1_7_3_OemActions'
+          description: The available OEM-specific actions for this resource.
+          x-longDescription: This property shall contain the available OEM-specific actions for this resource.
+          x-versionAdded: v1_1_0
+      type: object
+      x-longDescription: This type shall contain the available actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Task_v1_7_3_Links:
+      additionalProperties: false
+      description: The links to other resources that are related to this resource.
+      properties:
+        CreatedResources:
+          description: An array of URIs referencing the resources created as the result of the operation that produced this task.
+          items:
+            $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of links to resources indicating the resources created as the result of the operation that produced this task.  Services shall set this property prior to the task entering its final state.
+          x-versionAdded: v1_7_0
+        CreatedResources@odata.count:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_count
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+      type: object
+      x-longDescription: This Redfish Specification-described type shall contain links to resources that are related to but are not contained by, or subordinate to, this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Task_v1_7_3_OemActions:
+      additionalProperties: true
+      description: The available OEM-specific actions for this resource.
+      properties: {}
+      type: object
+      x-longDescription: This type shall contain the available OEM-specific actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Task_v1_7_3_Payload:
+      additionalProperties: false
+      description: The HTTP and JSON payload details for this Task.
+      properties:
+        HttpHeaders:
+          description: An array of HTTP headers that this task includes.
+          items:
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of HTTP headers that this task includes.
+          x-versionAdded: v1_3_0
+        HttpOperation:
+          description: The HTTP operation to perform to execute this task.
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the HTTP operation to execute for this task.
+          x-versionAdded: v1_3_0
+        JsonBody:
+          description: The JSON payload to use in the execution of this task.
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the JSON-formatted payload used for this task.
+          x-versionAdded: v1_3_0
+        TargetUri:
+          description: The URI of the target for this task.
+          format: uri-reference
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain a link to the location to use as the target for an HTTP operation.
+          x-versionAdded: v1_3_0
+      type: object
+      x-longDescription: This type shall contain information detailing the HTTP and JSON payload information for executing this task.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Task_v1_7_3_Task:
+      additionalProperties: false
+      description: The Task schema contains information about a task that the Redfish task service schedules or executes.  Tasks represent operations that take more time than a client typically wants to wait.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Actions:
+          $ref: '#/components/schemas/Task_v1_7_3_Actions'
+          description: The available actions for this resource.
+          x-longDescription: This property shall contain the available actions for this resource.
+          x-versionAdded: v1_1_0
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        EndTime:
+          description: The date and time when the task was completed.  This property will only appear when the task is complete.
+          format: date-time
+          readOnly: true
+          type: string
+          x-longDescription: This property shall indicate the date and time when the task was completed.  This property shall not appear if the task is running or otherwise has not been completed.  This property shall appear only if the TaskState is Completed, Killed, Cancelled, or Exception.
+        EstimatedDuration:
+          description: The estimated total time required to complete the task.
+          nullable: true
+          pattern: ^P(\d+D)?(T(\d+H)?(\d+M)?(\d+(.\d+)?S)?)?$
+          readOnly: true
+          type: string
+          x-longDescription: This property shall indicate the estimated total time needed to complete the task.  The value is not expected to change while the task is in progress, but the service may update the value if it obtains new information that significantly changes the expected duration.  Services should be conservative in the reported estimate and clients should treat this value as an estimate.
+          x-versionAdded: v1_6_0
+        HidePayload:
+          description: An indication of whether the contents of the payload are hidden from view after the task has been created.  If `true`, responses do not return the payload.  If `false`, responses return the payload.  If this property is not present when the task is created, the default is `false`.
+          readOnly: true
+          type: boolean
+          x-longDescription: This property shall indicate whether the contents of the payload should be hidden from view after the task has been created.  If `true`, responses shall not return the Payload property.  If `false`, responses shall return the Payload property.  If this property is not present when the task is created, the default is `false`.  This property shall be supported if the Payload property is supported.
+          x-versionAdded: v1_3_0
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        Links:
+          $ref: '#/components/schemas/Task_v1_7_3_Links'
+          description: Contains references to other resources that are related to this resource.
+          x-longDescription: The Links property, as described by the Redfish Specification, shall contain references to resources that are related to but are not contained by, or subordinate to, this resource.
+          x-versionAdded: v1_7_0
+        Messages:
+          description: An array of messages associated with the task.
+          items:
+            $ref: ./Message.yaml#/components/schemas/Message_Message
+          type: array
+          x-longDescription: This property shall contain an array of messages associated with the task.
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        Payload:
+          $ref: '#/components/schemas/Task_v1_7_3_Payload'
+          description: The HTTP and JSON request payload details for this task, unless they are hidden from view by the service.
+          x-longDescription: This object shall contain information detailing the HTTP and JSON request payload information for executing this task.  This property shall not be included in the response if the HidePayload property is `true`.
+          x-versionAdded: v1_3_0
+        PercentComplete:
+          description: The completion percentage of this task.
+          format: int64
+          maximum: 100
+          minimum: 0
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall indicate the completion progress of the task, reported in percent of completion, `0` to `100`.  If the task has not been started, the value shall be zero.
+          x-units: '%'
+          x-versionAdded: v1_4_0
+        StartTime:
+          description: The date and time when the task was started.
+          format: date-time
+          readOnly: true
+          type: string
+          x-longDescription: This property shall indicate the date and time when the task was started.
+        SubTasks:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to a collection of sub-tasks for this task.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource collection of type TaskCollection.  This property shall not be present if this resource represents a sub-task for a task.
+          x-versionAdded: v1_5_0
+        TaskMonitor:
+          description: The URI of the Task Monitor for this task.
+          format: uri-reference
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain a URI to task monitor as defined in the Redfish Specification.
+          x-versionAdded: v1_2_0
+        TaskState:
+          $ref: '#/components/schemas/Task_v1_7_3_TaskState'
+          description: The state of the task.
+          readOnly: true
+          x-longDescription: This property shall indicate the state of the task.
+        TaskStatus:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Health
+          description: The completion status of the task.
+          readOnly: true
+          x-longDescription: This property shall contain the completion status of the task and shall not be set until the task completes.  This property should contain `Critical` if one or more messages in the Messages array contains the severity `Critical`.  This property should contain `Warning` if one or more messages in the Messages array contains the severity `Warning` and if no messages contain the severity `Critical`.  This property should contain `OK` if all messages in the Messages array contain the severity `OK` or if the array is empty.
+      required:
+        - '@odata.id'
+        - '@odata.type'
+        - Id
+        - Name
+      type: object
+      x-longDescription: This resource contains a task for a Redfish implementation.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Task_v1_7_3_TaskState:
+      enum:
+        - New
+        - Starting
+        - Running
+        - Suspended
+        - Interrupted
+        - Pending
+        - Stopping
+        - Completed
+        - Killed
+        - Exception
+        - Service
+        - Cancelling
+        - Cancelled
+      type: string
+      x-enumDeprecated:
+        Killed: This value has been deprecated and is being replaced by the `Cancelled` value, which has more determinate semantics.
+      x-enumDescriptions:
+        Cancelled: Task has been cancelled by an operator or internal process.
+        Cancelling: Task is in the process of being cancelled.
+        Completed: Task was completed.
+        Exception: Task has stopped due to an exception condition.
+        Interrupted: Task has been interrupted.
+        Killed: Task was terminated.
+        New: A new task.
+        Pending: Task is pending and has not started.
+        Running: Task is running normally.
+        Service: Task is running as a service.
+        Starting: Task is starting.
+        Stopping: Task is in the process of stopping.
+        Suspended: Task has been suspended.
+      x-enumLongDescriptions:
+        Cancelled: This value shall represent that either a DELETE operation on a task monitor or Task resource or by an internal process cancelled the task.
+        Cancelling: This value shall represent that the task is in the process of being cancelled.
+        Completed: This value shall represent that the task completed successfully or with warnings.
+        Exception: This value shall represent that the task completed with errors.
+        Interrupted: This value shall represent that the task has been interrupted but is expected to restart and is therefore not complete.
+        Killed: This value shall represent that the task is complete because an operator killed it.
+        New: This value shall represent that the task is newly created but has not started.
+        Pending: This value shall represent that the task is pending some condition and has not yet begun to execute.
+        Running: This value shall represent that the task is executing.
+        Service: This value shall represent that the task is now running as a service and expected to continue operation until stopped or killed.
+        Starting: This value shall represent that the task is starting.
+        Stopping: This value shall represent that the task is stopping but is not yet complete.
+        Suspended: This value shall represent that the task has been suspended but is expected to restart and is therefore not complete.
+      x-enumVersionAdded:
+        Cancelled: v1_2_0
+        Cancelling: v1_2_0
+      x-enumVersionDeprecated:
+        Killed: v1_2_0
+title: '#Task.v1_7_3.Task'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2022.3'

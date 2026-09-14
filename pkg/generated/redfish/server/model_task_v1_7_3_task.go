@@ -11,7 +11,6 @@
 package server
 
 import (
-	"errors"
 	"time"
 )
 
@@ -39,7 +38,7 @@ type TaskV173Task struct {
 	EndTime time.Time `json:"EndTime,omitempty"`
 
 	// The estimated total time required to complete the task.
-	EstimatedDuration *string `json:"EstimatedDuration,omitempty" validate:"regexp=^P(\\\\d+D)?(T(\\\\d+H)?(\\\\d+M)?(\\\\d+(.\\\\d+)?S)?)?$"`
+	EstimatedDuration *string `json:"EstimatedDuration,omitempty" validate:"regexp=^P(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+(.\\d+)?S)?)?$"`
 
 	// An indication of whether the contents of the payload are hidden from view after the task has been created.  If `true`, responses do not return the payload.  If `false`, responses return the payload.  If this property is not present when the task is created, the default is `false`.
 	HidePayload bool `json:"HidePayload,omitempty"`
@@ -50,7 +49,7 @@ type TaskV173Task struct {
 	Links TaskV173Links `json:"Links,omitempty"`
 
 	// An array of messages associated with the task.
-	Messages []MessageMessage `json:"Messages,omitempty"`
+	Messages []MessageV120Message1 `json:"Messages,omitempty"`
 
 	// The name of the resource or array member.
 	Name string `json:"Name"`
@@ -76,20 +75,9 @@ type TaskV173Task struct {
 	TaskStatus ResourceHealth `json:"TaskStatus,omitempty"`
 }
 
-// AssertTaskV173TaskRequired checks if the required fields are not zero-ed
+// AssertTaskV173TaskRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertTaskV173TaskRequired(obj TaskV173Task) error {
-	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Name":        obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertTaskV173ActionsRequired(obj.Actions); err != nil {
 		return err
 	}
@@ -97,7 +85,7 @@ func AssertTaskV173TaskRequired(obj TaskV173Task) error {
 		return err
 	}
 	for _, el := range obj.Messages {
-		if err := AssertMessageMessageRequired(el); err != nil {
+		if err := AssertMessageV120Message1Required(el); err != nil {
 			return err
 		}
 	}
@@ -119,18 +107,12 @@ func AssertTaskV173TaskConstraints(obj TaskV173Task) error {
 		return err
 	}
 	for _, el := range obj.Messages {
-		if err := AssertMessageMessageConstraints(el); err != nil {
+		if err := AssertMessageV120Message1Constraints(el); err != nil {
 			return err
 		}
 	}
 	if err := AssertTaskV173PayloadConstraints(obj.Payload); err != nil {
 		return err
-	}
-	if obj.PercentComplete != nil && *obj.PercentComplete < 0 {
-		return &ParsingError{Param: "PercentComplete", Err: errors.New(errMsgMinValueConstraint)}
-	}
-	if obj.PercentComplete != nil && *obj.PercentComplete > 100 {
-		return &ParsingError{Param: "PercentComplete", Err: errors.New(errMsgMaxValueConstraint)}
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.SubTasks); err != nil {
 		return err

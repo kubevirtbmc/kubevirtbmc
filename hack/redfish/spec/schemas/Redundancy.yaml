@@ -1,0 +1,13 @@
+components:
+  schemas:
+    Redundancy_Redundancy:
+      $ref: ./Redundancy.v1_4_1.yaml#/components/schemas/Redundancy_v1_4_1_Redundancy
+      description: The common redundancy definition and structure used in other Redfish schemas.
+      x-longDescription: This object represents the redundancy element property.
+    Redundancy_RedundantGroup:
+      $ref: ./Redundancy.v1_4_1.yaml#/components/schemas/Redundancy_v1_4_1_RedundantGroup
+      description: The redundancy information for the devices in a redundancy group.
+      x-longDescription: This type shall contain redundancy information for the set of devices in this redundancy group.
+title: '#Redundancy'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF

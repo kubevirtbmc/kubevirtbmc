@@ -57,7 +57,8 @@ func NewVirtualMediaV163MediaTypeFromValue(v string) (VirtualMediaV163MediaType,
 	return "", fmt.Errorf("invalid value '%v' for VirtualMediaV163MediaType: valid values are %v", v, AllowedVirtualMediaV163MediaTypeEnumValues)
 }
 
-// AssertVirtualMediaV163MediaTypeRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaV163MediaTypeRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaV163MediaTypeRequired(obj VirtualMediaV163MediaType) error {
 	return nil
 }

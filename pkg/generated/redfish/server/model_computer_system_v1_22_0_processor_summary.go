@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ComputerSystemV1220ProcessorSummary - The central processors of the system in general detail.
 type ComputerSystemV1220ProcessorSummary struct {
 
@@ -37,7 +33,8 @@ type ComputerSystemV1220ProcessorSummary struct {
 	ThreadingEnabled bool `json:"ThreadingEnabled,omitempty"`
 }
 
-// AssertComputerSystemV1220ProcessorSummaryRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220ProcessorSummaryRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220ProcessorSummaryRequired(obj ComputerSystemV1220ProcessorSummary) error {
 	if err := AssertOdataV4IdRefRequired(obj.Metrics); err != nil {
 		return err
@@ -50,15 +47,6 @@ func AssertComputerSystemV1220ProcessorSummaryRequired(obj ComputerSystemV1220Pr
 
 // AssertComputerSystemV1220ProcessorSummaryConstraints checks if the values respects the defined constraints
 func AssertComputerSystemV1220ProcessorSummaryConstraints(obj ComputerSystemV1220ProcessorSummary) error {
-	if obj.CoreCount != nil && *obj.CoreCount < 0 {
-		return &ParsingError{Param: "CoreCount", Err: errors.New(errMsgMinValueConstraint)}
-	}
-	if obj.Count != nil && *obj.Count < 0 {
-		return &ParsingError{Param: "Count", Err: errors.New(errMsgMinValueConstraint)}
-	}
-	if obj.LogicalProcessorCount != nil && *obj.LogicalProcessorCount < 0 {
-		return &ParsingError{Param: "LogicalProcessorCount", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	if err := AssertOdataV4IdRefConstraints(obj.Metrics); err != nil {
 		return err
 	}

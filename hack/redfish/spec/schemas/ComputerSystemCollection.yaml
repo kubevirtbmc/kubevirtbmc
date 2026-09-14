@@ -1,0 +1,51 @@
+components:
+  schemas:
+    ComputerSystemCollection_ComputerSystemCollection:
+      additionalProperties: false
+      description: The collection of ComputerSystem resource instances.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Members:
+          description: The members of this collection.
+          items:
+            $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of links to the members of this collection.
+        Members@odata.count:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_count
+        Members@odata.nextLink:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_nextLink
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+      required:
+        - Members
+        - Members@odata.count
+        - '@odata.id'
+        - '@odata.type'
+        - Name
+      type: object
+      x-longDescription: This resource shall represent a resource collection of ComputerSystem instances for a Redfish implementation.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+title: '#ComputerSystemCollection.ComputerSystemCollection'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF

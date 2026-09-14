@@ -51,7 +51,8 @@ func NewComputerSystemV1220BootSourceOverrideModeFromValue(v string) (ComputerSy
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220BootSourceOverrideMode: valid values are %v", v, AllowedComputerSystemV1220BootSourceOverrideModeEnumValues)
 }
 
-// AssertComputerSystemV1220BootSourceOverrideModeRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220BootSourceOverrideModeRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220BootSourceOverrideModeRequired(obj ComputerSystemV1220BootSourceOverrideMode) error {
 	return nil
 }

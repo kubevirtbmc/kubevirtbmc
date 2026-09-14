@@ -58,7 +58,8 @@ func NewComputerSystemV1220InterfaceTypeSelectionFromValue(v string) (ComputerSy
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220InterfaceTypeSelection: valid values are %v", v, AllowedComputerSystemV1220InterfaceTypeSelectionEnumValues)
 }
 
-// AssertComputerSystemV1220InterfaceTypeSelectionRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220InterfaceTypeSelectionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220InterfaceTypeSelectionRequired(obj ComputerSystemV1220InterfaceTypeSelection) error {
 	return nil
 }

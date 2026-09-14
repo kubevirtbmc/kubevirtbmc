@@ -19,7 +19,8 @@ type SessionV171Links struct {
 	OutboundConnection OdataV4IdRef `json:"OutboundConnection,omitempty"`
 }
 
-// AssertSessionV171LinksRequired checks if the required fields are not zero-ed
+// AssertSessionV171LinksRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertSessionV171LinksRequired(obj SessionV171Links) error {
 	if err := AssertOdataV4IdRefRequired(obj.OutboundConnection); err != nil {
 		return err

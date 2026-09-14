@@ -20,7 +20,8 @@ type VirtualMediaV163Actions struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertVirtualMediaV163ActionsRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaV163ActionsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaV163ActionsRequired(obj VirtualMediaV163Actions) error {
 	if err := AssertVirtualMediaV163EjectMediaRequired(obj.VirtualMediaEjectMedia); err != nil {
 		return err

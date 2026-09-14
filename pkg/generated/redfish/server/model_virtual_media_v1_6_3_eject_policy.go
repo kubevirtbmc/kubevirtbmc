@@ -60,7 +60,8 @@ func NewVirtualMediaV163EjectPolicyFromValue(v string) (VirtualMediaV163EjectPol
 	return "", fmt.Errorf("invalid value '%v' for VirtualMediaV163EjectPolicy: valid values are %v", v, AllowedVirtualMediaV163EjectPolicyEnumValues)
 }
 
-// AssertVirtualMediaV163EjectPolicyRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaV163EjectPolicyRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaV163EjectPolicyRequired(obj VirtualMediaV163EjectPolicy) error {
 	return nil
 }

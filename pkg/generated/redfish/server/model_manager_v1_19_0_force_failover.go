@@ -20,7 +20,8 @@ type ManagerV1190ForceFailover struct {
 	Title string `json:"title,omitempty"`
 }
 
-// AssertManagerV1190ForceFailoverRequired checks if the required fields are not zero-ed
+// AssertManagerV1190ForceFailoverRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190ForceFailoverRequired(obj ManagerV1190ForceFailover) error {
 	return nil
 }

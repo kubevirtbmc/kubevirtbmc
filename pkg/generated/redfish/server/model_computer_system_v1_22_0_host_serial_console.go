@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ComputerSystemV1220HostSerialConsole - The information about the serial console services that this system provides.
 type ComputerSystemV1220HostSerialConsole struct {
 	IPMI ComputerSystemV1220SerialConsoleProtocol `json:"IPMI,omitempty"`
@@ -26,7 +22,8 @@ type ComputerSystemV1220HostSerialConsole struct {
 	Telnet ComputerSystemV1220SerialConsoleProtocol `json:"Telnet,omitempty"`
 }
 
-// AssertComputerSystemV1220HostSerialConsoleRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220HostSerialConsoleRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220HostSerialConsoleRequired(obj ComputerSystemV1220HostSerialConsole) error {
 	if err := AssertComputerSystemV1220SerialConsoleProtocolRequired(obj.IPMI); err != nil {
 		return err
@@ -44,9 +41,6 @@ func AssertComputerSystemV1220HostSerialConsoleRequired(obj ComputerSystemV1220H
 func AssertComputerSystemV1220HostSerialConsoleConstraints(obj ComputerSystemV1220HostSerialConsole) error {
 	if err := AssertComputerSystemV1220SerialConsoleProtocolConstraints(obj.IPMI); err != nil {
 		return err
-	}
-	if obj.MaxConcurrentSessions < 0 {
-		return &ParsingError{Param: "MaxConcurrentSessions", Err: errors.New(errMsgMinValueConstraint)}
 	}
 	if err := AssertComputerSystemV1220SerialConsoleProtocolConstraints(obj.SSH); err != nil {
 		return err

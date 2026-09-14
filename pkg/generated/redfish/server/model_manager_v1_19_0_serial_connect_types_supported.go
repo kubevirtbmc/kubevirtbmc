@@ -57,7 +57,8 @@ func NewManagerV1190SerialConnectTypesSupportedFromValue(v string) (ManagerV1190
 	return "", fmt.Errorf("invalid value '%v' for ManagerV1190SerialConnectTypesSupported: valid values are %v", v, AllowedManagerV1190SerialConnectTypesSupportedEnumValues)
 }
 
-// AssertManagerV1190SerialConnectTypesSupportedRequired checks if the required fields are not zero-ed
+// AssertManagerV1190SerialConnectTypesSupportedRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190SerialConnectTypesSupportedRequired(obj ManagerV1190SerialConnectTypesSupported) error {
 	return nil
 }

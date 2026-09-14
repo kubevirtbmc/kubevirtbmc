@@ -1,0 +1,343 @@
+components:
+  schemas:
+    OperatingSystem_v1_0_1_Actions:
+      additionalProperties: false
+      description: The available actions for this resource.
+      properties:
+        Oem:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_OemActions'
+          description: The available OEM-specific actions for this resource.
+          x-longDescription: This property shall contain the available OEM-specific actions for this resource.
+      type: object
+      x-longDescription: This type shall contain the available actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_ContainerEngine:
+      additionalProperties: false
+      description: A container engine running in an operating system.
+      properties:
+        ManagementURIs:
+          description: The URIs to manage this container engine.
+          format: uri-reference
+          items:
+            nullable: true
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of URIs to management interfaces for this container engine.  This is typically a web UI or API provided by the container engine.
+        SupportedImageTypes:
+          description: The supported image types for this container engine.
+          items:
+            $ref: ./ContainerImage.yaml#/components/schemas/ContainerImage_ImageTypes
+            nullable: true
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain the supported image types for this container engine.
+        Type:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_ContainerEngineTypes'
+          description: The type of container engine.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the type for this container engine.
+        Version:
+          description: The version of this container engine.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the version of this container engine.
+      type: object
+      x-longDescription: This type shall contain a container engine running in an operating system.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_ContainerEngineTypes:
+      enum:
+        - Docker
+        - containerd
+        - CRIO
+      type: string
+      x-enumDescriptions:
+        CRIO: CRI-O.
+        Docker: Docker.
+        containerd: containerd.
+      x-enumLongDescriptions:
+        CRIO: This value shall indicate the container engine is CRI-O.
+        Docker: This value shall indicate the container engine is Docker.
+        containerd: This value shall indicate the container engine is containerd.
+    OperatingSystem_v1_0_1_Kernel:
+      additionalProperties: false
+      description: The kernel information for an operating system.
+      properties:
+        Machine:
+          description: The machine hardware name of the kernel.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the machine hardware name of the kernel.  For strict POSIX operating systems, the value shall contain the output of `uname -m`.
+        Name:
+          description: The name of the kernel.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the name of the kernel.  For strict POSIX operating systems, the value shall contain the output of `uname -s`.  For Microsoft Windows, the value shall contain the string name from the output of `ver`, from Command Prompt, prior to the first square brace (`[`), which is typically `Microsoft Windows`.
+        Release:
+          description: The release of the kernel.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the release of the kernel.  For strict POSIX operating systems, the value shall contain the output of `uname -r`.  For Microsoft Windows, the value shall contain the decimal-delimited version from the output of `ver`, from Command Prompt, within the square braces (`[` and `]`), following the regular expression `^\d+\.\d+\.\d+\.\d+$`.
+        Version:
+          description: The version of the kernel.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the version of the kernel.  For strict POSIX operating systems, the value shall contain the output of `uname -v`.
+      type: object
+      x-longDescription: This type shall contain the kernel information for an operating system.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_Links:
+      additionalProperties: false
+      description: The links to other resources that are related to this resource.
+      properties:
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+        SoftwareImage:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to the software image for this operating system.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource of type SoftwareInventory that represents the software image from which this operating system runs.
+      type: object
+      x-longDescription: This Redfish Specification-described type shall contain links to resources that are related to but are not contained by, or subordinate to, this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_OemActions:
+      additionalProperties: true
+      description: The available OEM-specific actions for this resource.
+      properties: {}
+      type: object
+      x-longDescription: This type shall contain the available OEM-specific actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_OperatingSystem:
+      additionalProperties: false
+      description: The OperatingSystem schema represents the operating system and software running on a computer system.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Actions:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_Actions'
+          description: The available actions for this resource.
+          x-longDescription: This property shall contain the available actions for this resource.
+        Applications:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to the collection of applications running under this operating system.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource collection of type ApplicationCollection that represent the applications running under this operating system.
+        ContainerEngines:
+          description: The container engines running in this operating system.
+          items:
+            $ref: '#/components/schemas/OperatingSystem_v1_0_1_ContainerEngine'
+            nullable: true
+          type: array
+          x-longDescription: This property shall contain the container engines running in this operating system.
+        ContainerImages:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to the collection of container images available to container engines on this operating system.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource collection of type ContainerImageCollection that represent the container images available to container engines on this operating system.
+        Containers:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to the collection of containers running under this operating system.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource collection of type ContainerCollection that represent the containers running under this operating system.
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        Kernel:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_Kernel'
+          description: The kernel information for this operating system.
+          nullable: true
+          x-longDescription: This property shall contain the kernel information for this operating system.
+        Links:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_Links'
+          description: The links to other resources that are related to this resource.
+          x-longDescription: This property shall contain links to resources that are related to but are not contained by, or subordinate to, this resource.
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        Status:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Status
+          description: The status and health of the resource and its subordinate or dependent resources.
+          x-longDescription: This property shall contain any status or health properties of the resource.
+        Type:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_OperatingSystemTypes'
+          description: The type of operating system.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the type for this operating system.
+        UptimeSeconds:
+          description: The wall-clock time this operating system has been running in seconds.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the wall-clock time this operating system has been running in seconds.
+        VirtualMachineEngines:
+          description: The virtual machine engines running in this operating system.
+          items:
+            $ref: '#/components/schemas/OperatingSystem_v1_0_1_VirtualMachineEngine'
+            nullable: true
+          type: array
+          x-longDescription: This property shall contain the virtual machine engines running in this operating system.
+      required:
+        - '@odata.id'
+        - '@odata.type'
+        - Id
+        - Name
+      type: object
+      x-longDescription: This resource shall represent the operating system and software running on a computer system.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_OperatingSystemTypes:
+      enum:
+        - Linux
+        - Windows
+        - Solaris
+        - HPUX
+        - AIX
+        - BSD
+        - macOS
+        - IBMi
+        - Hypervisor
+      type: string
+      x-enumDescriptions:
+        AIX: IBM AIX.
+        BSD: Berkeley Software Distribution.
+        HPUX: HPE HP-UX.
+        Hypervisor: A bare-metal hypervisor.
+        IBMi: IBM i.
+        Linux: Linux.
+        Solaris: Oracle Solaris.
+        Windows: Microsoft Windows.
+        macOS: Apple macOS.
+    OperatingSystem_v1_0_1_VirtualMachineEngine:
+      additionalProperties: false
+      description: A virtual machine engine running in an operating system.
+      properties:
+        ManagementURIs:
+          description: The URIs to manage this virtual machine engine.
+          format: uri-reference
+          items:
+            nullable: true
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of URIs to management interfaces for this virtual machine engine.  This is typically a web UI or API provided by the virtual machine engine.
+        SupportedImageTypes:
+          description: The supported image types for this container engine.
+          items:
+            $ref: '#/components/schemas/OperatingSystem_v1_0_1_VirtualMachineImageTypes'
+            nullable: true
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain the supported image types for this container engine.
+        Type:
+          $ref: '#/components/schemas/OperatingSystem_v1_0_1_VirtualMachineEngineTypes'
+          description: The type of virtual machine engine.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the type for this virtual machine engine.
+        Version:
+          description: The version of this virtual machine engine.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the version of this virtual machine engine.
+      type: object
+      x-longDescription: This type shall contain a virtual machine engine running in an operating system.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    OperatingSystem_v1_0_1_VirtualMachineEngineTypes:
+      enum:
+        - VMwareESX
+        - HyperV
+        - Xen
+        - KVM
+        - QEMU
+        - VirtualBox
+        - PowerVM
+      type: string
+      x-enumDescriptions:
+        HyperV: Microsoft Hyper-V.
+        KVM: KVM (Kernel-based Virtual Machine).
+        PowerVM: IBM PowerVM.
+        QEMU: QEMU (Quick Emulator).
+        VMwareESX: VMware ESX or ESXi.
+        VirtualBox: Oracle VM VirtualBox.
+        Xen: Xen.
+      x-enumLongDescriptions:
+        HyperV: This value shall indicate the virtual machine engine is Microsoft Hyper-V.
+        KVM: This value shall indicate the virtual machine engine is Linux KVM (Kernel-based Virtual Machine).
+        PowerVM: This value shall indicate the virtual machine engine is IBM PowerVM.
+        QEMU: This value shall indicate the virtual machine engine is QEMU (Quick Emulator).  If QEMU is acting as a frontend for another virtual machine engine, such as Xen or KVM, VirtualMachineEngines should contain additional entries to represent the backend virtual machine engines.
+        VMwareESX: This value shall indicate the virtual machine engine is VMware ESX or ESXi.
+        VirtualBox: This value shall indicate the virtual machine engine is Oracle VM VirtualBox.  If VirtualBox is acting as a frontend for another virtual machine engine, such as HyperV, VirtualMachineEngines should contain additional entries to represent the backend virtual machine engines.
+        Xen: This value shall indicate the virtual machine engine is Xen.
+    OperatingSystem_v1_0_1_VirtualMachineImageTypes:
+      enum:
+        - Raw
+        - OVF
+        - OVA
+        - VHD
+        - VMDK
+        - VDI
+        - QCOW
+        - QCOW2
+      type: string
+      x-enumDescriptions:
+        OVA: OVA (Open Virtual Appliance).
+        OVF: OVF (Open Virtualization Format).
+        QCOW: QCOW (QEMU Copy-on-Write).
+        QCOW2: QCOW2 (QEMU Copy-on-Write version 2).
+        Raw: Raw disk image.
+        VDI: VDI (Virtual Disk Image).
+        VHD: VHD (Virtual Hard Disk).
+        VMDK: VMDK (Virtual Machine Disk).
+      x-enumLongDescriptions:
+        OVA: This value shall indicate a DSP0243-defined OVA (Open Virtual Appliance) image.
+        OVF: This value shall indicate a DSP0243-defined OVF (Open Virtualization Format) image.
+        QCOW: This value shall indicate a QEMU-defined QCOW (QEMU Copy-on-Write) image.
+        QCOW2: This value shall indicate a QEMU-defined QCOW2 (QEMU Copy-on-Write version 2) image.
+        Raw: This value shall indicate a raw disk image.
+        VDI: This value shall indicate an Oracle VM VirtualBox-defined VDI (Virtual Disk Image).
+        VHD: This value shall indicate a Microsoft Open Specification Promise-defined VHD (Virtual Hard Disk) image.
+        VMDK: This value shall indicate a VMware-defined VMDK (Virtual Machine Disk) image.
+title: '#OperatingSystem.v1_0_1.OperatingSystem'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2023.2'

@@ -15,7 +15,8 @@ type ComputerSystemV1220ResetRequestBody struct {
 	ResetType ResourceResetType `json:"ResetType,omitempty"`
 }
 
-// AssertComputerSystemV1220ResetRequestBodyRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220ResetRequestBodyRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220ResetRequestBodyRequired(obj ComputerSystemV1220ResetRequestBody) error {
 	return nil
 }

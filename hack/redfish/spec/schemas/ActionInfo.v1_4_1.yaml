@@ -1,0 +1,164 @@
+components:
+  schemas:
+    ActionInfo_v1_4_1_ActionInfo:
+      additionalProperties: false
+      description: The ActionInfo schema defines the supported parameters and other information for a Redfish action.  Supported parameters can differ among vendors and even among resource instances.  This data can ensure that action requests from applications contain supported parameters.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        Parameters:
+          description: The list of parameters included in the specified Redfish action.
+          items:
+            $ref: '#/components/schemas/ActionInfo_v1_4_1_Parameters'
+          type: array
+          x-longDescription: This property shall list the parameters included in the specified Redfish action for this resource.
+      required:
+        - '@odata.id'
+        - '@odata.type'
+        - Id
+        - Name
+      type: object
+      x-longDescription: This resource shall represent the supported parameters and other information for a Redfish action on a target within a Redfish implementation.  Supported parameters can differ among vendors and even among resource instances.  This data can ensure that action requests from applications contain supported parameters.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    ActionInfo_v1_4_1_ParameterTypes:
+      enum:
+        - Boolean
+        - Number
+        - NumberArray
+        - String
+        - StringArray
+        - Object
+        - ObjectArray
+      type: string
+      x-enumDescriptions:
+        Boolean: A boolean.
+        Number: A number.
+        NumberArray: An array of numbers.
+        Object: An embedded JSON object.
+        ObjectArray: An array of JSON objects.
+        String: A string.
+        StringArray: An array of strings.
+    ActionInfo_v1_4_1_Parameters:
+      additionalProperties: false
+      description: The information about a parameter included in a Redfish action for this resource.
+      properties:
+        AllowableNumbers:
+          description: The allowable numeric values or duration values, inclusive ranges of values, and incremental step values for this parameter as applied to this action target.
+          items:
+            nullable: true
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall indicate the allowable numeric values, inclusive ranges of values, and incremental step values for this parameter as applied to this action target, as defined in the 'Allowable values for numbers and durations' clause of the Redfish Specification.  For arrays, this property shall represent the allowable values for each array member.  This property shall only be present for numeric parameters or string parameters that specify a duration.
+          x-versionAdded: v1_3_0
+        AllowablePattern:
+          description: The allowable pattern for this parameter as applied to this action target.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain a regular expression that describes the allowable values for this parameter as applied to this action target.  For arrays, this property shall represent the allowable values for each array member.  This property shall only be present for string parameters.
+          x-versionAdded: v1_3_0
+        AllowableValueDescriptions:
+          description: Descriptions of allowable values for this parameter.
+          items:
+            nullable: true
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain the descriptions of allowable values for this parameter.  The descriptions shall appear in the same array order as the AllowableValues property.  For arrays, this property shall represent the descriptions of allowable values for each array member.
+          x-versionAdded: v1_4_0
+        AllowableValues:
+          description: The allowable values for this parameter as applied to this action target.
+          items:
+            nullable: true
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall indicate the allowable values for this parameter as applied to this action target.  For arrays, this property shall represent the allowable values for each array member.
+        ArraySizeMaximum:
+          description: The maximum number of array elements allowed for this parameter.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the maximum number of array elements that this service supports for this parameter.  This property shall not be present for non-array parameters.
+          x-versionAdded: v1_2_0
+        ArraySizeMinimum:
+          description: The minimum number of array elements required for this parameter.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the minimum number of array elements required by this service for this parameter.  This property shall not be present for non-array parameters.
+          x-versionAdded: v1_2_0
+        DataType:
+          $ref: '#/components/schemas/ActionInfo_v1_4_1_ParameterTypes'
+          description: The JSON property type for this parameter.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the JSON property type for this parameter.
+        MaximumValue:
+          description: The maximum supported value for this parameter.
+          nullable: true
+          readOnly: true
+          type: number
+          x-longDescription: This integer or number property shall contain the maximum value that this service supports.  For arrays, this property shall represent the maximum value for each array member.  This property shall not be present for non-integer or number parameters.
+          x-versionAdded: v1_1_0
+        MinimumValue:
+          description: The minimum supported value for this parameter.
+          nullable: true
+          readOnly: true
+          type: number
+          x-longDescription: This integer or number property shall contain the minimum value that this service supports.  For arrays, this property shall represent the minimum value for each array member.  This property shall not be present for non-integer or number parameters.
+          x-versionAdded: v1_1_0
+        Name:
+          description: The name of the parameter for this action.
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the name of the parameter included in a Redfish action.
+        ObjectDataType:
+          description: The data type of an object-based parameter.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall describe the entity type definition in `@odata.type` format for the parameter.  This property shall be required for parameters with a data type of `Object` or `ObjectArray`, and shall not be present for parameters with other data types.
+        Required:
+          description: An indication of whether the parameter is required to complete this action.
+          readOnly: true
+          type: boolean
+          x-longDescription: This property shall indicate whether the parameter is required to complete this action.
+      required:
+        - Name
+      type: object
+      x-longDescription: This property shall contain information about a parameter included in a Redfish action for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+title: '#ActionInfo.v1_4_1.ActionInfo'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2023.2'

@@ -17,7 +17,8 @@ type OdataV4IdRef struct {
 	OdataId string `json:"@odata.id,omitempty"`
 }
 
-// AssertOdataV4IdRefRequired checks if the required fields are not zero-ed
+// AssertOdataV4IdRefRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertOdataV4IdRefRequired(obj OdataV4IdRef) error {
 	return nil
 }

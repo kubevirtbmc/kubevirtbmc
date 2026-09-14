@@ -17,7 +17,8 @@ type TaskV173Actions struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertTaskV173ActionsRequired checks if the required fields are not zero-ed
+// AssertTaskV173ActionsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertTaskV173ActionsRequired(obj TaskV173Actions) error {
 	return nil
 }

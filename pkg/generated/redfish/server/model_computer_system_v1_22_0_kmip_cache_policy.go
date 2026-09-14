@@ -51,7 +51,8 @@ func NewComputerSystemV1220KmipCachePolicyFromValue(v string) (ComputerSystemV12
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220KmipCachePolicy: valid values are %v", v, AllowedComputerSystemV1220KmipCachePolicyEnumValues)
 }
 
-// AssertComputerSystemV1220KmipCachePolicyRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220KmipCachePolicyRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220KmipCachePolicyRequired(obj ComputerSystemV1220KmipCachePolicy) error {
 	return nil
 }

@@ -58,46 +58,17 @@ type ManagerV1190Links struct {
 	SoftwareImagesodataCount int64 `json:"SoftwareImages@odata.count,omitempty"`
 }
 
-// AssertManagerV1190LinksRequired checks if the required fields are not zero-ed
+// AssertManagerV1190LinksRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190LinksRequired(obj ManagerV1190Links) error {
 	if err := AssertOdataV4IdRefRequired(obj.ActiveSoftwareImage); err != nil {
 		return err
-	}
-	for _, el := range obj.ManagedBy {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForChassis {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForManagers {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForServers {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForSwitches {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
 	}
 	if err := AssertOdataV4IdRefRequired(obj.ManagerInChassis); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefRequired(obj.SelectedNetworkPort); err != nil {
 		return err
-	}
-	for _, el := range obj.SoftwareImages {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -107,41 +78,11 @@ func AssertManagerV1190LinksConstraints(obj ManagerV1190Links) error {
 	if err := AssertOdataV4IdRefConstraints(obj.ActiveSoftwareImage); err != nil {
 		return err
 	}
-	for _, el := range obj.ManagedBy {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForChassis {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForManagers {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForServers {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.ManagerForSwitches {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
 	if err := AssertOdataV4IdRefConstraints(obj.ManagerInChassis); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.SelectedNetworkPort); err != nil {
 		return err
-	}
-	for _, el := range obj.SoftwareImages {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
 	}
 	return nil
 }

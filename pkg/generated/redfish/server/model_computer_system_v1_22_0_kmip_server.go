@@ -17,7 +17,7 @@ type ComputerSystemV1220KmipServer struct {
 	Address *string `json:"Address,omitempty"`
 
 	// The duration the system caches KMIP data.
-	CacheDuration *string `json:"CacheDuration,omitempty" validate:"regexp=^P(\\\\d+D)?(T(\\\\d+H)?(\\\\d+M)?(\\\\d+(.\\\\d+)?S)?)?$"`
+	CacheDuration *string `json:"CacheDuration,omitempty" validate:"regexp=^P(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+(.\\d+)?S)?)?$"`
 
 	CachePolicy ComputerSystemV1220KmipCachePolicy `json:"CachePolicy,omitempty"`
 
@@ -31,7 +31,8 @@ type ComputerSystemV1220KmipServer struct {
 	Username *string `json:"Username,omitempty"`
 }
 
-// AssertComputerSystemV1220KmipServerRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220KmipServerRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220KmipServerRequired(obj ComputerSystemV1220KmipServer) error {
 	return nil
 }

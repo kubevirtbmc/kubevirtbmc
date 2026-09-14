@@ -1,0 +1,13 @@
+components:
+  schemas:
+    ActionInfo_ActionInfo:
+      $ref: ./ActionInfo.v1_4_1.yaml#/components/schemas/ActionInfo_v1_4_1_ActionInfo
+      description: The ActionInfo schema defines the supported parameters and other information for a Redfish action.  Supported parameters can differ among vendors and even among resource instances.  This data can ensure that action requests from applications contain supported parameters.
+      x-longDescription: This resource shall represent the supported parameters and other information for a Redfish action on a target within a Redfish implementation.  Supported parameters can differ among vendors and even among resource instances.  This data can ensure that action requests from applications contain supported parameters.
+    ActionInfo_Parameters:
+      $ref: ./ActionInfo.v1_4_1.yaml#/components/schemas/ActionInfo_v1_4_1_Parameters
+      description: The information about a parameter included in a Redfish action for this resource.
+      x-longDescription: This property shall contain information about a parameter included in a Redfish action for this resource.
+title: '#ActionInfo.ActionInfo'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF

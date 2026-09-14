@@ -54,7 +54,8 @@ func NewResourceHealthFromValue(v string) (ResourceHealth, error) {
 	return "", fmt.Errorf("invalid value '%v' for ResourceHealth: valid values are %v", v, AllowedResourceHealthEnumValues)
 }
 
-// AssertResourceHealthRequired checks if the required fields are not zero-ed
+// AssertResourceHealthRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertResourceHealthRequired(obj ResourceHealth) error {
 	return nil
 }

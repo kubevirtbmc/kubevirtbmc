@@ -51,7 +51,8 @@ func NewComputerSystemV1220GraphicalConnectTypesSupportedFromValue(v string) (Co
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220GraphicalConnectTypesSupported: valid values are %v", v, AllowedComputerSystemV1220GraphicalConnectTypesSupportedEnumValues)
 }
 
-// AssertComputerSystemV1220GraphicalConnectTypesSupportedRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220GraphicalConnectTypesSupportedRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220GraphicalConnectTypesSupportedRequired(obj ComputerSystemV1220GraphicalConnectTypesSupported) error {
 	return nil
 }

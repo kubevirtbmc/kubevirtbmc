@@ -26,7 +26,8 @@ type ComputerSystemV1220Actions struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertComputerSystemV1220ActionsRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220ActionsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220ActionsRequired(obj ComputerSystemV1220Actions) error {
 	if err := AssertComputerSystemV1220AddResourceBlockRequired(obj.ComputerSystemAddResourceBlock); err != nil {
 		return err

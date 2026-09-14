@@ -1,0 +1,284 @@
+components:
+  schemas:
+    SoftwareInventory_v1_10_1_Actions:
+      additionalProperties: false
+      description: The available actions for this Resource.
+      properties:
+        Oem:
+          $ref: '#/components/schemas/SoftwareInventory_v1_10_1_OemActions'
+          description: The available OEM-specific actions for this Resource.
+          x-longDescription: This property shall contain the available OEM-specific actions for this Resource.
+      type: object
+      x-longDescription: This type shall contain the available actions for this Resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    SoftwareInventory_v1_10_1_AdditionalVersions:
+      additionalProperties: false
+      description: Additional versions.
+      properties:
+        Bootloader:
+          description: The bootloader version contained in this software, such as U-Boot or UEFI.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the bootloader version contained in this software.
+          x-versionAdded: v1_7_0
+        Kernel:
+          description: The kernel version contained in this software.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the kernel version contained in this software.  For strict POSIX software, the value shall contain the output of `uname -srm`.  For Microsoft Windows, the value shall contain the output of `ver`, from Command Prompt.
+          x-versionAdded: v1_7_0
+        Microcode:
+          description: The microcode version contained in this software, such as processor microcode.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the microcode version contained in this software.
+          x-versionAdded: v1_7_0
+        OSDistribution:
+          description: The operating system name of this software.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the operating system name of this software.
+          x-versionAdded: v1_8_0
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+          x-versionAdded: v1_7_0
+      type: object
+      x-longDescription: This type shall contain additional versions.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    SoftwareInventory_v1_10_1_MeasurementBlock:
+      additionalProperties: false
+      description: The DSP0274-defined measurement block information.
+      properties:
+        Measurement:
+          description: The hexadecimal string representation of the numeric value of the DSP0274-defined Measurement field of the measurement block.
+          nullable: true
+          pattern: ^[0-9a-fA-F]+$
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the value of the hexadecimal string representation of the numeric value of the DSP0274-defined Measurement field of the measurement block.
+          x-versionAdded: v1_4_0
+        MeasurementIndex:
+          description: The DSP0274-defined Index field of the measurement block.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the value of the DSP0274-defined Index field of the measurement block.
+          x-versionAdded: v1_5_0
+        MeasurementSize:
+          description: The DSP0274-defined MeasurementSize field of the measurement block.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the value of the DSP0274-defined MeasurementSize field of the measurement block.
+          x-versionAdded: v1_4_0
+        MeasurementSpecification:
+          description: The DSP0274-defined MeasurementSpecification field of the measurement block.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the value of the DSP0274-defined MeasurementSpecification field of the measurement block.
+          x-versionAdded: v1_4_0
+      type: object
+      x-longDescription: This type shall describe a DSP0274-defined measurement block.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    SoftwareInventory_v1_10_1_OemActions:
+      additionalProperties: true
+      description: The available OEM-specific actions for this Resource.
+      properties: {}
+      type: object
+      x-longDescription: This type shall contain the available OEM-specific actions for this Resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    SoftwareInventory_v1_10_1_ReleaseType:
+      enum:
+        - Production
+        - Prototype
+        - Other
+      type: string
+      x-enumDescriptions:
+        Other: The Redfish service does not have enough data to make a determination about this release.
+        Production: This release is ready for use in production environments.
+        Prototype: This release is intended for development or internal use.
+      x-enumLongDescriptions:
+        Other: This value shall indicate that the Redfish service cannot determine if this release is validated or prototype.
+        Production: This value shall indicate that the software is ready for use in production environments.
+        Prototype: This value shall indicate that the software is designed for development or internal use.
+    SoftwareInventory_v1_10_1_SoftwareInventory:
+      additionalProperties: false
+      description: The SoftwareInventory schema contains an inventory of software components.  This can include software components such as BIOS, BMC firmware, firmware for other devices, system drivers, or provider software.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Actions:
+          $ref: '#/components/schemas/SoftwareInventory_v1_10_1_Actions'
+          description: The available actions for this Resource.
+          x-longDescription: This property shall contain the available actions for this Resource.
+        AdditionalVersions:
+          $ref: '#/components/schemas/SoftwareInventory_v1_10_1_AdditionalVersions'
+          description: The additional versions of this software.
+          x-longDescription: This property shall contain the additional versions of this software.
+          x-versionAdded: v1_7_0
+        AssociatedPhysicalContext:
+          $ref: ./PhysicalContext.yaml#/components/schemas/PhysicalContext_PhysicalContext
+          description: The area or device to which the software applies.  Used to distinguish when different parts of a device have different software components.
+          readOnly: true
+          x-longDescription: This property shall contain a description of the physical context for the software inventory data.
+          x-versionAdded: v1_10_0
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        LowestSupportedVersion:
+          description: The lowest supported version of this software.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall represent the lowest supported version of this software.  This string is formatted using the same format used for the Version property.
+          x-versionAdded: v1_1_0
+        Manufacturer:
+          description: The manufacturer or producer of this software.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall represent the name of the manufacturer or producer of this software.
+          x-versionAdded: v1_2_0
+        Measurement:
+          $ref: ./SoftwareInventory.yaml#/components/schemas/SoftwareInventory_MeasurementBlock
+          deprecated: true
+          description: A DSP0274-defined measurement block.
+          x-deprecatedReason: This property has been deprecated in favor of the ComponentIntegrity resource.
+          x-longDescription: This property shall contain a DSP0274-defined measurement block.
+          x-versionAdded: v1_4_0
+          x-versionDeprecated: v1_6_0
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        RelatedItem:
+          description: The IDs of the Resources associated with this software inventory item.
+          items:
+            $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of IDs for pointers consistent with JSON Pointer syntax to the Resource that is associated with this software inventory item.
+          x-versionAdded: v1_1_0
+        RelatedItem@odata.count:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_count
+        ReleaseDate:
+          description: The release date of this software.
+          format: date-time
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the date of release or production for this software.  If the time of day is unknown, the time of day portion of the property shall contain `00:00:00Z`.
+          x-versionAdded: v1_2_0
+        ReleaseType:
+          $ref: '#/components/schemas/SoftwareInventory_v1_10_1_ReleaseType'
+          description: The type of release.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall describe the type of release for the software.
+          x-versionAdded: v1_10_0
+        SoftwareId:
+          description: The implementation-specific label that identifies this software.
+          readOnly: true
+          type: string
+          x-longDescription: This property shall represent an implementation-specific label that identifies this software.  This string correlates with a component repository or database.
+          x-versionAdded: v1_1_0
+        Status:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Status
+          description: The status and health of the Resource and its subordinate or dependent Resources.
+          x-longDescription: This property shall contain any status or health properties of the Resource.
+        UefiDevicePaths:
+          description: The list of UEFI device paths of the components associated with this software inventory item.
+          items:
+            nullable: true
+            type: string
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain a list UEFI device paths of the components associated with this software inventory item.  The UEFI device paths shall be formatted as defined by the UEFI Specification.
+          x-versionAdded: v1_1_0
+        Updateable:
+          description: An indication of whether the Update Service can update this software.
+          nullable: true
+          readOnly: true
+          type: boolean
+          x-longDescription: This property shall indicate whether the Update Service can update this software.  If `true`, the Service can update this software.  If `false`, the Service cannot update this software and the software is for reporting purposes only.
+        Version:
+          description: The version of this software.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the version of this software.
+        VersionScheme:
+          $ref: '#/components/schemas/SoftwareInventory_v1_10_1_VersionScheme'
+          description: The format of the version.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall describe the scheme used to format the value of the Version property.
+          x-versionAdded: v1_9_0
+        WriteProtected:
+          description: Indicates if the software is write-protected.
+          nullable: true
+          readOnly: false
+          type: boolean
+          x-longDescription: This property shall indicate whether the software image can be overwritten, where a value `true` shall indicate that the software cannot be altered or overwritten.
+          x-versionAdded: v1_3_0
+      required:
+        - '@odata.id'
+        - '@odata.type'
+        - Id
+        - Name
+      type: object
+      x-longDescription: This Resource contains a single software component that this Redfish Service manages.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    SoftwareInventory_v1_10_1_VersionScheme:
+      enum:
+        - SemVer
+        - DotIntegerNotation
+        - OEM
+      type: string
+      x-enumDescriptions:
+        DotIntegerNotation: Version formatted as dot-separated integers.
+        OEM: Version follows OEM-defined format.
+        SemVer: Version follows Semantic Versioning 2.0 rules.
+      x-enumLongDescriptions:
+        DotIntegerNotation: This value shall indicate that the value of the Version property contains a sequence of integers separated by period (dot) characters, and shall follow the pattern `^\d+(\.\d+)*$`.  Leading zeros in the sequence shall be ignored.
+        OEM: This value shall indicate that the value of the Version property follows a format and rules as defined by the vendor or manufacturer.
+        SemVer: This value shall indicate that the value of the Version property conforms to the format and rules of the Semantic Version 2.0 specification, and may include pre-release or build metadata.
+title: '#SoftwareInventory.v1_10_1.SoftwareInventory'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2023.2'

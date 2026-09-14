@@ -29,7 +29,8 @@ type ComputerSystemV1220TrustedModules struct {
 	Status ResourceStatus `json:"Status,omitempty"`
 }
 
-// AssertComputerSystemV1220TrustedModulesRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220TrustedModulesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220TrustedModulesRequired(obj ComputerSystemV1220TrustedModules) error {
 	if err := AssertResourceStatusRequired(obj.Status); err != nil {
 		return err

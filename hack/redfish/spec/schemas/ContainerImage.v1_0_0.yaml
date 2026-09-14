@@ -1,0 +1,138 @@
+components:
+  schemas:
+    ContainerImage_v1_0_0_Actions:
+      additionalProperties: false
+      description: The available actions for this resource.
+      properties:
+        Oem:
+          $ref: '#/components/schemas/ContainerImage_v1_0_0_OemActions'
+          description: The available OEM-specific actions for this resource.
+          x-longDescription: This property shall contain the available OEM-specific actions for this resource.
+      type: object
+      x-longDescription: This type shall contain the available actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    ContainerImage_v1_0_0_ContainerImage:
+      additionalProperties: false
+      description: The ContainerImage schema represents a container image available to a computer system.
+      properties:
+        '@odata.context':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_context
+        '@odata.etag':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_etag
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        '@odata.type':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_type
+        Actions:
+          $ref: '#/components/schemas/ContainerImage_v1_0_0_Actions'
+          description: The available actions for this resource.
+          x-longDescription: This property shall contain the available actions for this resource.
+        CreateTime:
+          description: The date and time when the container image was created.
+          format: date-time
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall indicate the date and time when the container image was created.
+        Description:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Description
+          nullable: true
+          readOnly: true
+        Id:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Id
+          readOnly: true
+        Links:
+          $ref: '#/components/schemas/ContainerImage_v1_0_0_Links'
+          description: The links to other resources that are related to this resource.
+          x-longDescription: This property shall contain links to resources that are related to but are not contained by, or subordinate to, this resource.
+        Name:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Name
+          readOnly: true
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        ProgrammaticId:
+          description: The programmatic identifier for this container image.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the programmatic identifier for this container image.  This is typically a hash string that represents the identifier of this container image.
+        SizeBytes:
+          description: The size of this container image in bytes.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the size of this container image in bytes.
+          x-units: By
+        Status:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Status
+          description: The status and health of the resource and its subordinate or dependent resources.
+          x-longDescription: This property shall contain any status or health properties of the resource.
+        Type:
+          $ref: ./ContainerImage.yaml#/components/schemas/ContainerImage_ImageTypes
+          description: The image type of this container image.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the supported image types for this container engine.
+        Version:
+          description: The version of this application.
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the version of this application.
+      required:
+        - '@odata.id'
+        - '@odata.type'
+        - Id
+        - Name
+      type: object
+      x-longDescription: This resource shall represent a container image available to a computer system.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    ContainerImage_v1_0_0_Links:
+      additionalProperties: false
+      description: The links to other resources that are related to this resource.
+      properties:
+        Containers:
+          description: The array of links to the containers running from this container image.
+          items:
+            $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain an array of links to resources of type Container that represent the container instances running from this container image.
+        Containers@odata.count:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_count
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+        SoftwareImage:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          description: The link to the software image for this container image.
+          readOnly: true
+          x-longDescription: This property shall contain a link to a resource of type SoftwareInventory that represents the software image for this container image.
+      type: object
+      x-longDescription: This Redfish Specification-described type shall contain links to resources that are related to but are not contained by, or subordinate to, this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    ContainerImage_v1_0_0_OemActions:
+      additionalProperties: true
+      description: The available OEM-specific actions for this resource.
+      properties: {}
+      type: object
+      x-longDescription: This type shall contain the available OEM-specific actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+title: '#ContainerImage.v1_0_0.ContainerImage'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2023.2'

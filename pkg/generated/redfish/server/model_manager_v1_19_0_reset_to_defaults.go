@@ -20,7 +20,8 @@ type ManagerV1190ResetToDefaults struct {
 	Title string `json:"title,omitempty"`
 }
 
-// AssertManagerV1190ResetToDefaultsRequired checks if the required fields are not zero-ed
+// AssertManagerV1190ResetToDefaultsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190ResetToDefaultsRequired(obj ManagerV1190ResetToDefaults) error {
 	return nil
 }

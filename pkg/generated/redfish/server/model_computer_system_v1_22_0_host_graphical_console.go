@@ -30,16 +30,14 @@ type ComputerSystemV1220HostGraphicalConsole struct {
 	ServiceEnabled bool `json:"ServiceEnabled,omitempty"`
 }
 
-// AssertComputerSystemV1220HostGraphicalConsoleRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220HostGraphicalConsoleRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220HostGraphicalConsoleRequired(obj ComputerSystemV1220HostGraphicalConsole) error {
 	return nil
 }
 
 // AssertComputerSystemV1220HostGraphicalConsoleConstraints checks if the values respects the defined constraints
 func AssertComputerSystemV1220HostGraphicalConsoleConstraints(obj ComputerSystemV1220HostGraphicalConsole) error {
-	if obj.MaxConcurrentSessions < 0 {
-		return &ParsingError{Param: "MaxConcurrentSessions", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	if obj.Port != nil && *obj.Port < 0 {
 		return &ParsingError{Param: "Port", Err: errors.New(errMsgMinValueConstraint)}
 	}

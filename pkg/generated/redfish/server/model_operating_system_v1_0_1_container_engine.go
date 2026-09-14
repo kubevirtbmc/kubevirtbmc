@@ -25,7 +25,8 @@ type OperatingSystemV101ContainerEngine struct {
 	Version *string `json:"Version,omitempty"`
 }
 
-// AssertOperatingSystemV101ContainerEngineRequired checks if the required fields are not zero-ed
+// AssertOperatingSystemV101ContainerEngineRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertOperatingSystemV101ContainerEngineRequired(obj OperatingSystemV101ContainerEngine) error {
 	return nil
 }

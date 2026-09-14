@@ -33,7 +33,8 @@ type ComputerSystemV1220IdlePowerSaver struct {
 	ExitUtilizationPercent *float32 `json:"ExitUtilizationPercent,omitempty"`
 }
 
-// AssertComputerSystemV1220IdlePowerSaverRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220IdlePowerSaverRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220IdlePowerSaverRequired(obj ComputerSystemV1220IdlePowerSaver) error {
 	return nil
 }

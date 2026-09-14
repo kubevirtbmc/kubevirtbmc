@@ -32,7 +32,8 @@ type ServiceRootV1161ProtocolFeaturesSupported struct {
 	SelectQuery bool `json:"SelectQuery,omitempty"`
 }
 
-// AssertServiceRootV1161ProtocolFeaturesSupportedRequired checks if the required fields are not zero-ed
+// AssertServiceRootV1161ProtocolFeaturesSupportedRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertServiceRootV1161ProtocolFeaturesSupportedRequired(obj ServiceRootV1161ProtocolFeaturesSupported) error {
 	if err := AssertServiceRootV1161DeepOperationsRequired(obj.DeepOperations); err != nil {
 		return err

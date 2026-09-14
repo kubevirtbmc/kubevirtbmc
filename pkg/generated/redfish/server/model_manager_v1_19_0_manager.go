@@ -31,7 +31,7 @@ type ManagerV1190Manager struct {
 
 	Actions ManagerV1190Actions `json:"Actions,omitempty"`
 
-	AdditionalFirmwareVersions SoftwareInventoryAdditionalVersions `json:"AdditionalFirmwareVersions,omitempty"`
+	AdditionalFirmwareVersions SoftwareInventoryV1101AdditionalVersions `json:"AdditionalFirmwareVersions,omitempty"`
 
 	// An indication of whether the manager is configured for automatic Daylight Saving Time (DST) adjustment.
 	AutoDSTEnabled bool `json:"AutoDSTEnabled,omitempty"`
@@ -70,7 +70,7 @@ type ManagerV1190Manager struct {
 
 	Links ManagerV1190Links `json:"Links,omitempty"`
 
-	Location ResourceLocation `json:"Location,omitempty"`
+	Location ResourceV1180Location `json:"Location,omitempty"`
 
 	// An indicator allowing an operator to physically locate this resource.
 	LocationIndicatorActive *bool `json:"LocationIndicatorActive,omitempty"`
@@ -86,7 +86,7 @@ type ManagerV1190Manager struct {
 
 	// An array of DSP0274-defined measurement blocks.
 	// Deprecated
-	Measurements []SoftwareInventoryMeasurementBlock `json:"Measurements,omitempty"`
+	Measurements []SoftwareInventoryV1101MeasurementBlock `json:"Measurements,omitempty"`
 
 	// The model information of this manager, as defined by the manufacturer.
 	Model *string `json:"Model,omitempty"`
@@ -105,7 +105,7 @@ type ManagerV1190Manager struct {
 	PowerState ResourcePowerState `json:"PowerState,omitempty"`
 
 	// The redundancy information for the managers of this system.
-	Redundancy []RedundancyRedundancy `json:"Redundancy,omitempty"`
+	Redundancy []RedundancyV141Redundancy `json:"Redundancy,omitempty"`
 
 	// The number of items in a collection.
 	RedundancyodataCount int64 `json:"Redundancy@odata.count,omitempty"`
@@ -149,24 +149,13 @@ type ManagerV1190Manager struct {
 	VirtualMedia OdataV4IdRef `json:"VirtualMedia,omitempty"`
 }
 
-// AssertManagerV1190ManagerRequired checks if the required fields are not zero-ed
+// AssertManagerV1190ManagerRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190ManagerRequired(obj ManagerV1190Manager) error {
-	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Name":        obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertManagerV1190ActionsRequired(obj.Actions); err != nil {
 		return err
 	}
-	if err := AssertSoftwareInventoryAdditionalVersionsRequired(obj.AdditionalFirmwareVersions); err != nil {
+	if err := AssertSoftwareInventoryV1101AdditionalVersionsRequired(obj.AdditionalFirmwareVersions); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefRequired(obj.Certificates); err != nil {
@@ -193,7 +182,7 @@ func AssertManagerV1190ManagerRequired(obj ManagerV1190Manager) error {
 	if err := AssertManagerV1190LinksRequired(obj.Links); err != nil {
 		return err
 	}
-	if err := AssertResourceLocationRequired(obj.Location); err != nil {
+	if err := AssertResourceV1180LocationRequired(obj.Location); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefRequired(obj.LogServices); err != nil {
@@ -203,7 +192,7 @@ func AssertManagerV1190ManagerRequired(obj ManagerV1190Manager) error {
 		return err
 	}
 	for _, el := range obj.Measurements {
-		if err := AssertSoftwareInventoryMeasurementBlockRequired(el); err != nil {
+		if err := AssertSoftwareInventoryV1101MeasurementBlockRequired(el); err != nil {
 			return err
 		}
 	}
@@ -211,7 +200,7 @@ func AssertManagerV1190ManagerRequired(obj ManagerV1190Manager) error {
 		return err
 	}
 	for _, el := range obj.Redundancy {
-		if err := AssertRedundancyRedundancyRequired(el); err != nil {
+		if err := AssertRedundancyV141RedundancyRequired(el); err != nil {
 			return err
 		}
 	}
@@ -247,7 +236,7 @@ func AssertManagerV1190ManagerConstraints(obj ManagerV1190Manager) error {
 	if err := AssertManagerV1190ActionsConstraints(obj.Actions); err != nil {
 		return err
 	}
-	if err := AssertSoftwareInventoryAdditionalVersionsConstraints(obj.AdditionalFirmwareVersions); err != nil {
+	if err := AssertSoftwareInventoryV1101AdditionalVersionsConstraints(obj.AdditionalFirmwareVersions); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.Certificates); err != nil {
@@ -274,7 +263,7 @@ func AssertManagerV1190ManagerConstraints(obj ManagerV1190Manager) error {
 	if err := AssertManagerV1190LinksConstraints(obj.Links); err != nil {
 		return err
 	}
-	if err := AssertResourceLocationConstraints(obj.Location); err != nil {
+	if err := AssertResourceV1180LocationConstraints(obj.Location); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.LogServices); err != nil {
@@ -284,7 +273,7 @@ func AssertManagerV1190ManagerConstraints(obj ManagerV1190Manager) error {
 		return err
 	}
 	for _, el := range obj.Measurements {
-		if err := AssertSoftwareInventoryMeasurementBlockConstraints(el); err != nil {
+		if err := AssertSoftwareInventoryV1101MeasurementBlockConstraints(el); err != nil {
 			return err
 		}
 	}
@@ -292,7 +281,7 @@ func AssertManagerV1190ManagerConstraints(obj ManagerV1190Manager) error {
 		return err
 	}
 	for _, el := range obj.Redundancy {
-		if err := AssertRedundancyRedundancyConstraints(el); err != nil {
+		if err := AssertRedundancyV141RedundancyConstraints(el); err != nil {
 			return err
 		}
 	}

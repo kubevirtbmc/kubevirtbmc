@@ -39,7 +39,7 @@ type VirtualMediaV163VirtualMedia struct {
 	EjectPolicy VirtualMediaV163EjectPolicy `json:"EjectPolicy,omitempty"`
 
 	// Timeout value before the virtual media is automatically ejected.
-	EjectTimeout *string `json:"EjectTimeout,omitempty" validate:"regexp=^P(\\\\d+D)?(T(\\\\d+H)?(\\\\d+M)?(\\\\d+(.\\\\d+)?S)?)?$"`
+	EjectTimeout *string `json:"EjectTimeout,omitempty" validate:"regexp=^P(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+(.\\d+)?S)?)?$"`
 
 	// The unique identifier for this resource within the collection of similar resources.
 	Id string `json:"Id"`
@@ -81,20 +81,9 @@ type VirtualMediaV163VirtualMedia struct {
 	WriteProtected *bool `json:"WriteProtected,omitempty"`
 }
 
-// AssertVirtualMediaV163VirtualMediaRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaV163VirtualMediaRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaV163VirtualMediaRequired(obj VirtualMediaV163VirtualMedia) error {
-	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Name":        obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertVirtualMediaV163ActionsRequired(obj.Actions); err != nil {
 		return err
 	}

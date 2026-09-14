@@ -54,7 +54,8 @@ func NewContainerImageImageTypesFromValue(v string) (ContainerImageImageTypes, e
 	return "", fmt.Errorf("invalid value '%v' for ContainerImageImageTypes: valid values are %v", v, AllowedContainerImageImageTypesEnumValues)
 }
 
-// AssertContainerImageImageTypesRequired checks if the required fields are not zero-ed
+// AssertContainerImageImageTypesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertContainerImageImageTypesRequired(obj ContainerImageImageTypes) error {
 	return nil
 }

@@ -95,7 +95,7 @@ type ComputerSystemV1220ComputerSystem struct {
 
 	// An array of DSP0274-defined measurement blocks.
 	// Deprecated
-	Measurements []SoftwareInventoryMeasurementBlock `json:"Measurements,omitempty"`
+	Measurements []SoftwareInventoryV1101MeasurementBlock `json:"Measurements,omitempty"`
 
 	Memory OdataV4IdRef `json:"Memory,omitempty"`
 
@@ -114,7 +114,7 @@ type ComputerSystemV1220ComputerSystem struct {
 	// The OEM extension.
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 
-	OperatingSystem string `json:"OperatingSystem,omitempty"`
+	OperatingSystem OdataV4IdRef `json:"OperatingSystem,omitempty"`
 
 	// The link to a collection of PCIe devices that this computer system uses.
 	PCIeDevices []OdataV4IdRef `json:"PCIeDevices,omitempty"`
@@ -151,7 +151,7 @@ type ComputerSystemV1220ComputerSystem struct {
 	Processors OdataV4IdRef `json:"Processors,omitempty"`
 
 	// The link to a collection of redundancy entities.  Each entity specifies a kind and level of redundancy and a collection, or redundancy set, of other computer systems that provide the specified redundancy to this computer system.
-	Redundancy []RedundancyRedundancy `json:"Redundancy,omitempty"`
+	Redundancy []RedundancyV141Redundancy `json:"Redundancy,omitempty"`
 
 	// The number of items in a collection.
 	RedundancyodataCount int64 `json:"Redundancy@odata.count,omitempty"`
@@ -190,20 +190,9 @@ type ComputerSystemV1220ComputerSystem struct {
 	VirtualMediaConfig ComputerSystemV1220VirtualMediaConfig `json:"VirtualMediaConfig,omitempty"`
 }
 
-// AssertComputerSystemV1220ComputerSystemRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220ComputerSystemRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220ComputerSystemRequired(obj ComputerSystemV1220ComputerSystem) error {
-	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Name":        obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
 	if err := AssertComputerSystemV1220ActionsRequired(obj.Actions); err != nil {
 		return err
 	}
@@ -253,7 +242,7 @@ func AssertComputerSystemV1220ComputerSystemRequired(obj ComputerSystemV1220Comp
 		return err
 	}
 	for _, el := range obj.Measurements {
-		if err := AssertSoftwareInventoryMeasurementBlockRequired(el); err != nil {
+		if err := AssertSoftwareInventoryV1101MeasurementBlockRequired(el); err != nil {
 			return err
 		}
 	}
@@ -269,26 +258,14 @@ func AssertComputerSystemV1220ComputerSystemRequired(obj ComputerSystemV1220Comp
 	if err := AssertOdataV4IdRefRequired(obj.NetworkInterfaces); err != nil {
 		return err
 	}
-	for _, el := range obj.PCIeDevices {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.PCIeFunctions {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
+	if err := AssertOdataV4IdRefRequired(obj.OperatingSystem); err != nil {
+		return err
 	}
 	if err := AssertComputerSystemV1220ProcessorSummaryRequired(obj.ProcessorSummary); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefRequired(obj.Processors); err != nil {
 		return err
-	}
-	for _, el := range obj.Redundancy {
-		if err := AssertRedundancyRedundancyRequired(el); err != nil {
-			return err
-		}
 	}
 	if err := AssertOdataV4IdRefRequired(obj.SecureBoot); err != nil {
 		return err
@@ -373,7 +350,7 @@ func AssertComputerSystemV1220ComputerSystemConstraints(obj ComputerSystemV1220C
 		return err
 	}
 	for _, el := range obj.Measurements {
-		if err := AssertSoftwareInventoryMeasurementBlockConstraints(el); err != nil {
+		if err := AssertSoftwareInventoryV1101MeasurementBlockConstraints(el); err != nil {
 			return err
 		}
 	}
@@ -389,26 +366,14 @@ func AssertComputerSystemV1220ComputerSystemConstraints(obj ComputerSystemV1220C
 	if err := AssertOdataV4IdRefConstraints(obj.NetworkInterfaces); err != nil {
 		return err
 	}
-	for _, el := range obj.PCIeDevices {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
-	for _, el := range obj.PCIeFunctions {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
+	if err := AssertOdataV4IdRefConstraints(obj.OperatingSystem); err != nil {
+		return err
 	}
 	if err := AssertComputerSystemV1220ProcessorSummaryConstraints(obj.ProcessorSummary); err != nil {
 		return err
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.Processors); err != nil {
 		return err
-	}
-	for _, el := range obj.Redundancy {
-		if err := AssertRedundancyRedundancyConstraints(el); err != nil {
-			return err
-		}
 	}
 	if err := AssertOdataV4IdRefConstraints(obj.SecureBoot); err != nil {
 		return err

@@ -19,7 +19,8 @@ type OperatingSystemV101Links struct {
 	SoftwareImage OdataV4IdRef `json:"SoftwareImage,omitempty"`
 }
 
-// AssertOperatingSystemV101LinksRequired checks if the required fields are not zero-ed
+// AssertOperatingSystemV101LinksRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertOperatingSystemV101LinksRequired(obj OperatingSystemV101Links) error {
 	if err := AssertOdataV4IdRefRequired(obj.SoftwareImage); err != nil {
 		return err

@@ -20,7 +20,8 @@ type VirtualMediaV163InsertMedia struct {
 	Title string `json:"title,omitempty"`
 }
 
-// AssertVirtualMediaV163InsertMediaRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaV163InsertMediaRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaV163InsertMediaRequired(obj VirtualMediaV163InsertMedia) error {
 	return nil
 }

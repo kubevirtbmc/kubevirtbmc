@@ -17,7 +17,8 @@ type ComputerSystemV1220Composition struct {
 	UseCases []ComputerSystemV1220CompositionUseCase `json:"UseCases,omitempty"`
 }
 
-// AssertComputerSystemV1220CompositionRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220CompositionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220CompositionRequired(obj ComputerSystemV1220Composition) error {
 	return nil
 }

@@ -1,0 +1,23 @@
+components:
+  schemas:
+    ContainerImage_ContainerImage:
+      $ref: ./ContainerImage.v1_0_0.yaml#/components/schemas/ContainerImage_v1_0_0_ContainerImage
+      description: The ContainerImage schema represents a container image available to a computer system.
+      x-longDescription: This resource shall represent a container image available to a computer system.
+    ContainerImage_ImageTypes:
+      enum:
+        - DockerV1
+        - DockerV2
+        - OCI
+      type: string
+      x-enumDescriptions:
+        DockerV1: Docker V1.
+        DockerV2: Docker V2.
+        OCI: OCI (Open Container Initiative).
+      x-enumLongDescriptions:
+        DockerV1: This value shall indicate a Docker Image Specification Version 1-defined Docker image.
+        DockerV2: This value shall indicate a Docker Image Manifest Version 2-defined Docker image.
+        OCI: This value shall indicate an Open Container Specification-defined OCI (Open Container Initiative) image.
+title: '#ContainerImage.ContainerImage'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF

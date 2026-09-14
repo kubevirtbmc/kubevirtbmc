@@ -19,7 +19,8 @@ type ComputerSystemV1220HostedServices struct {
 	StorageServices OdataV4IdRef `json:"StorageServices,omitempty"`
 }
 
-// AssertComputerSystemV1220HostedServicesRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220HostedServicesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220HostedServicesRequired(obj ComputerSystemV1220HostedServices) error {
 	if err := AssertOdataV4IdRefRequired(obj.StorageServices); err != nil {
 		return err

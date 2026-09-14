@@ -9,7 +9,7 @@ components:
             '@Message.ExtendedInfo':
               description: An array of messages describing one or more error messages.
               items:
-                $ref: http://redfish.dmtf.org/schemas/v1/Message.v1_2_0.yaml#/components/schemas/Message_v1_2_0_Message
+                $ref: ./schemas/Message.v1_2_0.yaml#/components/schemas/Message_v1_2_0_Message
               type: array
               x-longDescription: This property shall be an array of message objects
                 describing one or more error messages.
@@ -55,7 +55,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_16_1.yaml#/components/schemas/ServiceRoot_v1_16_1_ServiceRoot
+                $ref: ./schemas/ServiceRoot.v1_16_1.yaml#/components/schemas/ServiceRoot_v1_16_1_ServiceRoot
           description: The response contains a representation of the ServiceRoot resource
         default:
           content:
@@ -70,7 +70,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/ServiceRoot.v1_16_1.yaml#/components/schemas/ServiceRoot_v1_16_1_ServiceRoot
+                $ref: ./schemas/ServiceRoot.v1_16_1.yaml#/components/schemas/ServiceRoot_v1_16_1_ServiceRoot
           description: The response contains a representation of the ServiceRoot resource
         default:
           content:
@@ -68712,7 +68712,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/ManagerCollection.yaml#/components/schemas/ManagerCollection_ManagerCollection
+                $ref: ./schemas/ManagerCollection.yaml#/components/schemas/ManagerCollection_ManagerCollection
           description: The response contains a representation of the ManagerCollection
             resource
         default:
@@ -68735,7 +68735,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Manager.v1_19_0.yaml#/components/schemas/Manager_v1_19_0_Manager
+                $ref: ./schemas/Manager.v1_19_0.yaml#/components/schemas/Manager_v1_19_0_Manager
           description: The response contains a representation of the Manager resource
         default:
           content:
@@ -68912,7 +68912,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/Manager.v1_19_0.yaml#/components/schemas/Manager_v1_19_0_ResetRequestBody
+              $ref: ./schemas/Manager.v1_19_0.yaml#/components/schemas/Manager_v1_19_0_ResetRequestBody
         required: true
       responses:
         '200':
@@ -68931,7 +68931,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -76819,7 +76819,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/VirtualMediaCollection.yaml#/components/schemas/VirtualMediaCollection_VirtualMediaCollection
+                $ref: ./schemas/VirtualMediaCollection.yaml#/components/schemas/VirtualMediaCollection_VirtualMediaCollection
           description: The response contains a representation of the VirtualMediaCollection
             resource
         default:
@@ -76849,7 +76849,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/VirtualMedia.v1_6_3.yaml#/components/schemas/VirtualMedia_v1_6_3_VirtualMedia
+                $ref: ./schemas/VirtualMedia.v1_6_3.yaml#/components/schemas/VirtualMedia_v1_6_3_VirtualMedia
           description: The response contains a representation of the VirtualMedia
             resource
         default:
@@ -76964,7 +76964,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/VirtualMedia.v1_6_3.yaml#/components/schemas/VirtualMedia_v1_6_3_EjectMediaRequestBody
+              $ref: ./schemas/VirtualMedia.v1_6_3.yaml#/components/schemas/VirtualMedia_v1_6_3_EjectMediaRequestBody
         required: true
       responses:
         '200':
@@ -76983,7 +76983,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -77013,7 +77013,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/VirtualMedia.v1_6_3.yaml#/components/schemas/VirtualMedia_v1_6_3_InsertMediaRequestBody
+              $ref: ./schemas/VirtualMedia.v1_6_3.yaml#/components/schemas/VirtualMedia_v1_6_3_InsertMediaRequestBody
         required: true
       responses:
         '200':
@@ -77032,7 +77032,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -121765,7 +121765,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/SessionCollection.yaml#/components/schemas/SessionCollection_SessionCollection
+                $ref: ./schemas/SessionCollection.yaml#/components/schemas/SessionCollection_SessionCollection
           description: The response contains a representation of the SessionCollection
             resource
         default:
@@ -121779,20 +121779,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
+              $ref: ./schemas/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
         required: true
       responses:
         '201':
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
+                $ref: ./schemas/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
           description: A resource of type Session has been created
         '202':
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -121816,13 +121816,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
+                $ref: ./schemas/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
           description: The response contains a representation of the Session resource
         '202':
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -121845,7 +121845,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
+                $ref: ./schemas/Session.v1_7_1.yaml#/components/schemas/Session_v1_7_1_Session
           description: The response contains a representation of the Session resource
         default:
           content:
@@ -135320,7 +135320,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/ComputerSystemCollection.yaml#/components/schemas/ComputerSystemCollection_ComputerSystemCollection
+                $ref: ./schemas/ComputerSystemCollection.yaml#/components/schemas/ComputerSystemCollection_ComputerSystemCollection
           description: The response contains a representation of the ComputerSystemCollection
             resource
         default:
@@ -135401,7 +135401,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
+                $ref: ./schemas/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
           description: The response contains a representation of the ComputerSystem
             resource
         default:
@@ -135422,21 +135422,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
+              $ref: ./schemas/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
         required: true
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
+                $ref: ./schemas/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ComputerSystem
           description: The response contains a representation of the ComputerSystem
             resource
         '202':
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -135623,7 +135623,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ResetRequestBody
+              $ref: ./schemas/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_ResetRequestBody
         required: true
       responses:
         '200':
@@ -135642,7 +135642,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -135665,7 +135665,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: http://redfish.dmtf.org/schemas/v1/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_SetDefaultBootOrderRequestBody
+              $ref: ./schemas/ComputerSystem.v1_22_0.yaml#/components/schemas/ComputerSystem_v1_22_0_SetDefaultBootOrderRequestBody
         required: true
       responses:
         '200':
@@ -135686,7 +135686,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
+                $ref: ./schemas/Task.v1_7_3.yaml#/components/schemas/Task_v1_7_3_Task
           description: Accepted; a task has been generated
         '204':
           description: Success, but no response data
@@ -145367,7 +145367,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: http://redfish.dmtf.org/schemas/v1/OperatingSystem.v1_0_1.yaml#/components/schemas/OperatingSystem_v1_0_1_OperatingSystem
+                $ref: ./schemas/OperatingSystem.v1_0_1.yaml#/components/schemas/OperatingSystem_v1_0_1_OperatingSystem
           description: The response contains a representation of the OperatingSystem
             resource
         default:

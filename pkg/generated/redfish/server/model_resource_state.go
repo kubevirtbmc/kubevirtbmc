@@ -30,7 +30,6 @@ const (
 	RESOURCESTATE_QUIESCED            ResourceState = "Quiesced"
 	RESOURCESTATE_UPDATING            ResourceState = "Updating"
 	RESOURCESTATE_QUALIFIED           ResourceState = "Qualified"
-	RESOURCESTATE_DEGRADED            ResourceState = "Degraded"
 )
 
 // AllowedResourceStateEnumValues is all the allowed values of ResourceState enum
@@ -47,7 +46,6 @@ var AllowedResourceStateEnumValues = []ResourceState{
 	"Quiesced",
 	"Updating",
 	"Qualified",
-	"Degraded",
 }
 
 // validResourceStateEnumValue provides a map of ResourceStates for fast verification of use input
@@ -64,7 +62,6 @@ var validResourceStateEnumValues = map[ResourceState]struct{}{
 	"Quiesced":           {},
 	"Updating":           {},
 	"Qualified":          {},
-	"Degraded":           {},
 }
 
 // IsValid return true if the value is valid for the enum, false otherwise
@@ -84,7 +81,8 @@ func NewResourceStateFromValue(v string) (ResourceState, error) {
 	return "", fmt.Errorf("invalid value '%v' for ResourceState: valid values are %v", v, AllowedResourceStateEnumValues)
 }
 
-// AssertResourceStateRequired checks if the required fields are not zero-ed
+// AssertResourceStateRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertResourceStateRequired(obj ResourceState) error {
 	return nil
 }

@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ManagerV1190CommandShell - The information about a command shell service that this manager provides.
 type ManagerV1190CommandShell struct {
 
@@ -27,15 +23,13 @@ type ManagerV1190CommandShell struct {
 	ServiceEnabled bool `json:"ServiceEnabled,omitempty"`
 }
 
-// AssertManagerV1190CommandShellRequired checks if the required fields are not zero-ed
+// AssertManagerV1190CommandShellRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerV1190CommandShellRequired(obj ManagerV1190CommandShell) error {
 	return nil
 }
 
 // AssertManagerV1190CommandShellConstraints checks if the values respects the defined constraints
 func AssertManagerV1190CommandShellConstraints(obj ManagerV1190CommandShell) error {
-	if obj.MaxConcurrentSessions < 0 {
-		return &ParsingError{Param: "MaxConcurrentSessions", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	return nil
 }

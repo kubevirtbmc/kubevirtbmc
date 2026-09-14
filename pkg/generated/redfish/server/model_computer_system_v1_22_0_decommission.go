@@ -20,7 +20,8 @@ type ComputerSystemV1220Decommission struct {
 	Title string `json:"title,omitempty"`
 }
 
-// AssertComputerSystemV1220DecommissionRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220DecommissionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220DecommissionRequired(obj ComputerSystemV1220Decommission) error {
 	return nil
 }

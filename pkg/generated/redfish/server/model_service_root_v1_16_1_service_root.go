@@ -10,6 +10,11 @@
 
 package server
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // ServiceRootV1161ServiceRoot - The ServiceRoot schema describes the root of the Redfish service, located at the '/redfish/v1' URI.  All other resources accessible through the Redfish interface on this device are linked directly or indirectly from the service root.
 type ServiceRootV1161ServiceRoot struct {
 
@@ -59,6 +64,7 @@ type ServiceRootV1161ServiceRoot struct {
 
 	LicenseService OdataV4IdRef `json:"LicenseService,omitempty"`
 
+	// The links to other resources that are related to this resource.
 	Links ServiceRootV1161Links `json:"Links"`
 
 	Managers OdataV4IdRef `json:"Managers,omitempty"`
@@ -79,7 +85,7 @@ type ServiceRootV1161ServiceRoot struct {
 	ProtocolFeaturesSupported ServiceRootV1161ProtocolFeaturesSupported `json:"ProtocolFeaturesSupported,omitempty"`
 
 	// The version of the Redfish service.
-	RedfishVersion string `json:"RedfishVersion,omitempty" validate:"regexp=^\\\\d+\\\\.\\\\d+\\\\.\\\\d+$"`
+	RedfishVersion string `json:"RedfishVersion,omitempty" validate:"regexp=^\\d+\\.\\d+\\.\\d+$"`
 
 	RegisteredClients OdataV4IdRef `json:"RegisteredClients,omitempty"`
 
@@ -117,14 +123,328 @@ type ServiceRootV1161ServiceRoot struct {
 	Vendor *string `json:"Vendor,omitempty"`
 }
 
-// AssertServiceRootV1161ServiceRootRequired checks if the required fields are not zero-ed
+// UnmarshalJSON validates required property keys then unmarshals into ServiceRootV1161ServiceRoot
+func (o *ServiceRootV1161ServiceRoot) UnmarshalJSON(data []byte) (err error) {
+	// Presence is checked against required fields that exist on this struct,
+	// including fields promoted from embedded allOf parents.
+	requiredProperties := []string{
+		"Links",
+	}
+
+	requiredNullableProperties := map[string]bool{
+		"Links": false,
+	}
+
+	allowedJsonKeys := map[string]struct{}{
+		"@odata.context":            {},
+		"@odata.etag":               {},
+		"@odata.id":                 {},
+		"@odata.type":               {},
+		"AccountService":            {},
+		"AggregationService":        {},
+		"Cables":                    {},
+		"CertificateService":        {},
+		"Chassis":                   {},
+		"ComponentIntegrity":        {},
+		"CompositionService":        {},
+		"Description":               {},
+		"EventService":              {},
+		"Fabrics":                   {},
+		"Facilities":                {},
+		"Id":                        {},
+		"JobService":                {},
+		"JsonSchemas":               {},
+		"KeyService":                {},
+		"LicenseService":            {},
+		"Links":                     {},
+		"Managers":                  {},
+		"NVMeDomains":               {},
+		"Name":                      {},
+		"Oem":                       {},
+		"PowerEquipment":            {},
+		"Product":                   {},
+		"ProtocolFeaturesSupported": {},
+		"RedfishVersion":            {},
+		"RegisteredClients":         {},
+		"Registries":                {},
+		"ResourceBlocks":            {},
+		"ServiceConditions":         {},
+		"ServiceIdentification":     {},
+		"SessionService":            {},
+		"Storage":                   {},
+		"StorageServices":           {},
+		"StorageSystems":            {},
+		"Systems":                   {},
+		"Tasks":                     {},
+		"TelemetryService":          {},
+		"ThermalEquipment":          {},
+		"UUID":                      {},
+		"UpdateService":             {},
+		"Vendor":                    {},
+	}
+
+	allProperties := make(map[string]json.RawMessage)
+
+	err = json.Unmarshal(data, &allProperties)
+
+	if err != nil {
+		return err
+	}
+
+	for _, requiredProperty := range requiredProperties {
+		value, exists := allProperties[requiredProperty]
+		if !exists {
+			return &RequiredError{Field: requiredProperty}
+		}
+		if string(value) == "null" && !requiredNullableProperties[requiredProperty] {
+			return &RequiredError{Field: requiredProperty}
+		}
+	}
+
+	for key := range allProperties {
+		if _, exists := allowedJsonKeys[key]; !exists {
+			return fmt.Errorf("json: unknown field %q", key)
+		}
+	}
+
+	var decoded ServiceRootV1161ServiceRoot
+
+	if value, exists := allProperties["@odata.context"]; exists {
+		if err = json.Unmarshal(value, &decoded.OdataContext); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["@odata.etag"]; exists {
+		if err = json.Unmarshal(value, &decoded.OdataEtag); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["@odata.id"]; exists {
+		if err = json.Unmarshal(value, &decoded.OdataId); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["@odata.type"]; exists {
+		if err = json.Unmarshal(value, &decoded.OdataType); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["AccountService"]; exists {
+		if err = json.Unmarshal(value, &decoded.AccountService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["AggregationService"]; exists {
+		if err = json.Unmarshal(value, &decoded.AggregationService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Cables"]; exists {
+		if err = json.Unmarshal(value, &decoded.Cables); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["CertificateService"]; exists {
+		if err = json.Unmarshal(value, &decoded.CertificateService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Chassis"]; exists {
+		if err = json.Unmarshal(value, &decoded.Chassis); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["ComponentIntegrity"]; exists {
+		if err = json.Unmarshal(value, &decoded.ComponentIntegrity); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["CompositionService"]; exists {
+		if err = json.Unmarshal(value, &decoded.CompositionService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Description"]; exists {
+		if err = json.Unmarshal(value, &decoded.Description); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["EventService"]; exists {
+		if err = json.Unmarshal(value, &decoded.EventService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Fabrics"]; exists {
+		if err = json.Unmarshal(value, &decoded.Fabrics); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Facilities"]; exists {
+		if err = json.Unmarshal(value, &decoded.Facilities); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Id"]; exists {
+		if err = json.Unmarshal(value, &decoded.Id); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["JobService"]; exists {
+		if err = json.Unmarshal(value, &decoded.JobService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["JsonSchemas"]; exists {
+		if err = json.Unmarshal(value, &decoded.JsonSchemas); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["KeyService"]; exists {
+		if err = json.Unmarshal(value, &decoded.KeyService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["LicenseService"]; exists {
+		if err = json.Unmarshal(value, &decoded.LicenseService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Links"]; exists {
+		if err = json.Unmarshal(value, &decoded.Links); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Managers"]; exists {
+		if err = json.Unmarshal(value, &decoded.Managers); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["NVMeDomains"]; exists {
+		if err = json.Unmarshal(value, &decoded.NVMeDomains); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Name"]; exists {
+		if err = json.Unmarshal(value, &decoded.Name); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Oem"]; exists {
+		if err = json.Unmarshal(value, &decoded.Oem); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["PowerEquipment"]; exists {
+		if err = json.Unmarshal(value, &decoded.PowerEquipment); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Product"]; exists {
+		if err = json.Unmarshal(value, &decoded.Product); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["ProtocolFeaturesSupported"]; exists {
+		if err = json.Unmarshal(value, &decoded.ProtocolFeaturesSupported); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["RedfishVersion"]; exists {
+		if err = json.Unmarshal(value, &decoded.RedfishVersion); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["RegisteredClients"]; exists {
+		if err = json.Unmarshal(value, &decoded.RegisteredClients); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Registries"]; exists {
+		if err = json.Unmarshal(value, &decoded.Registries); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["ResourceBlocks"]; exists {
+		if err = json.Unmarshal(value, &decoded.ResourceBlocks); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["ServiceConditions"]; exists {
+		if err = json.Unmarshal(value, &decoded.ServiceConditions); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["ServiceIdentification"]; exists {
+		if err = json.Unmarshal(value, &decoded.ServiceIdentification); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["SessionService"]; exists {
+		if err = json.Unmarshal(value, &decoded.SessionService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Storage"]; exists {
+		if err = json.Unmarshal(value, &decoded.Storage); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["StorageServices"]; exists {
+		if err = json.Unmarshal(value, &decoded.StorageServices); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["StorageSystems"]; exists {
+		if err = json.Unmarshal(value, &decoded.StorageSystems); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Systems"]; exists {
+		if err = json.Unmarshal(value, &decoded.Systems); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Tasks"]; exists {
+		if err = json.Unmarshal(value, &decoded.Tasks); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["TelemetryService"]; exists {
+		if err = json.Unmarshal(value, &decoded.TelemetryService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["ThermalEquipment"]; exists {
+		if err = json.Unmarshal(value, &decoded.ThermalEquipment); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["UUID"]; exists {
+		if err = json.Unmarshal(value, &decoded.UUID); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["UpdateService"]; exists {
+		if err = json.Unmarshal(value, &decoded.UpdateService); err != nil {
+			return err
+		}
+	}
+	if value, exists := allProperties["Vendor"]; exists {
+		if err = json.Unmarshal(value, &decoded.Vendor); err != nil {
+			return err
+		}
+	}
+
+	*o = decoded
+
+	return nil
+}
+
+// AssertServiceRootV1161ServiceRootRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertServiceRootV1161ServiceRootRequired(obj ServiceRootV1161ServiceRoot) error {
 	elements := map[string]interface{}{
-		"@odata.id":   obj.OdataId,
-		"@odata.type": obj.OdataType,
-		"Id":          obj.Id,
-		"Links":       obj.Links,
-		"Name":        obj.Name,
+		"Links": obj.Links,
 	}
 	for name, el := range elements {
 		if isZero := IsZeroValue(el); isZero {

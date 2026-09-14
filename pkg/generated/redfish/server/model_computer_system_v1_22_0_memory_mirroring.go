@@ -57,7 +57,8 @@ func NewComputerSystemV1220MemoryMirroringFromValue(v string) (ComputerSystemV12
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220MemoryMirroring: valid values are %v", v, AllowedComputerSystemV1220MemoryMirroringEnumValues)
 }
 
-// AssertComputerSystemV1220MemoryMirroringRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220MemoryMirroringRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220MemoryMirroringRequired(obj ComputerSystemV1220MemoryMirroring) error {
 	return nil
 }

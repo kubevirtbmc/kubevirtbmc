@@ -1,0 +1,196 @@
+components:
+  schemas:
+    Redundancy_v1_4_1_Actions:
+      additionalProperties: false
+      description: The available actions for this resource.
+      properties:
+        Oem:
+          $ref: '#/components/schemas/Redundancy_v1_4_1_OemActions'
+          description: The available OEM-specific actions for this resource.
+          x-longDescription: This property shall contain the available OEM-specific actions for this resource.
+          x-versionAdded: v1_2_0
+      type: object
+      x-longDescription: This type shall contain the available actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Redundancy_v1_4_1_OemActions:
+      additionalProperties: true
+      description: The available OEM-specific actions for this resource.
+      properties: {}
+      type: object
+      x-longDescription: This type shall contain the available OEM-specific actions for this resource.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Redundancy_v1_4_1_Redundancy:
+      additionalProperties: false
+      description: The common redundancy definition and structure used in other Redfish schemas.
+      properties:
+        '@odata.id':
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_id
+        Actions:
+          $ref: '#/components/schemas/Redundancy_v1_4_1_Actions'
+          description: The available actions for this resource.
+          x-longDescription: This property shall contain the available actions for this resource.
+          x-versionAdded: v1_2_0
+        MaxNumSupported:
+          description: The maximum number of members allowable for this particular redundancy group.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the maximum number of members allowed in the redundancy group.
+        MemberId:
+          description: The unique identifier for the member within an array.
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the unique identifier for this member within an array.  For services supporting Redfish v1.6 or higher, this value shall contain the zero-based array index.
+        MinNumNeeded:
+          description: The minimum number of members needed for this group to be redundant.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the minimum number of members allowed in the redundancy group for the current redundancy mode to still be fault tolerant.
+        Mode:
+          allOf:
+            - $ref: '#/components/schemas/Redundancy_v1_4_1_RedundancyMode'
+          description: The redundancy mode of the group.
+          nullable: true
+          readOnly: false
+          x-longDescription: This property shall contain the information about the redundancy mode of this subsystem.
+        Name:
+          description: The name of the resource or array member.
+          readOnly: true
+          type: string
+          x-longDescription: This object represents the name of this resource or array member.  The resource values shall comply with the Redfish Specification-described requirements.  This string value shall be of the 'Name' reserved word format.
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties that this object contains shall conform to the Redfish Specification-described requirements.
+        RedundancyEnabled:
+          description: An indication of whether redundancy is enabled.
+          nullable: true
+          readOnly: false
+          type: boolean
+          x-longDescription: This property shall indicate whether the redundancy is enabled.
+          x-versionAdded: v1_1_0
+        RedundancySet:
+          description: The links to components of this redundancy set.
+          items:
+            $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain the links to components that are part of this redundancy set.
+        RedundancySet@odata.count:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_count
+        Status:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Status
+          description: The status and health of the resource and its subordinate or dependent resources.
+          x-longDescription: This property shall contain any status or health properties of the resource.
+      required:
+        - Name
+        - Mode
+        - MinNumNeeded
+        - Status
+        - RedundancySet
+        - '@odata.id'
+        - MemberId
+      type: object
+      x-longDescription: This object represents the redundancy element property.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    Redundancy_v1_4_1_RedundancyMode:
+      enum:
+        - Failover
+        - N+m
+        - Sharing
+        - Sparing
+        - NotRedundant
+      type: string
+      x-enumDescriptions:
+        Failover: Failure of one unit automatically causes a standby or offline unit in the redundancy set to take over its functions.
+        N+m: Multiple units are available and active such that normal operation will continue if one or more units fail.
+        NotRedundant: The subsystem is not configured in a redundancy mode, either due to configuration or the functionality has been disabled by the user.
+        Sharing: Multiple units contribute or share such that operation will continue, but at a reduced capacity, if one or more units fail.
+        Sparing: One or more spare units are available to take over the function of a failed unit, but takeover is not automatic.
+      x-enumVersionAdded:
+        NotRedundant: v1_3_0
+    Redundancy_v1_4_1_RedundancyType:
+      enum:
+        - Failover
+        - NPlusM
+        - Sharing
+        - Sparing
+        - NotRedundant
+      type: string
+      x-enumDescriptions:
+        Failover: Failure of one unit automatically causes a standby or offline unit in the redundancy set to take over its functions.
+        NPlusM: Multiple units are available and active such that normal operation will continue if one or more units fail.
+        NotRedundant: The subsystem is not configured in a redundancy mode, either due to configuration or the functionality has been disabled by the user.
+        Sharing: Multiple units contribute or share such that operation will continue, but at a reduced capacity, if one or more units fail.
+        Sparing: One or more spare units are available to take over the function of a failed unit, but takeover is not automatic.
+      x-enumLongDescriptions:
+        Failover: This value shall indicate that a failure of one unit automatically causes a standby or offline unit in the redundancy set to take over its functions.
+        NPlusM: This value shall indicate that the capacity or services provided by the set of N+M devices can withstand failure of up to M units, with all units in the group normally providing capacity or service.
+    Redundancy_v1_4_1_RedundantGroup:
+      additionalProperties: false
+      description: The redundancy information for the devices in a redundancy group.
+      properties:
+        MaxSupportedInGroup:
+          description: The maximum number of devices supported in this redundancy group.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the maximum number of devices allowed in the redundancy group.
+          x-versionAdded: v1_4_0
+        MinNeededInGroup:
+          description: The minimum number of devices needed for this group to be redundant.
+          format: int64
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the minimum number of functional devices needed in the redundancy group for the current redundancy mode to be fault tolerant.
+          x-versionAdded: v1_4_0
+        RedundancyGroup:
+          description: The links to the devices included in this redundancy group.
+          items:
+            $ref: ./odata-v4.yaml#/components/schemas/odata-v4_idRef
+          readOnly: true
+          type: array
+          x-longDescription: This property shall contain the links to the resources that represent the devices that are part of this redundancy group.
+          x-versionAdded: v1_4_0
+        RedundancyGroup@odata.count:
+          $ref: ./odata-v4.yaml#/components/schemas/odata-v4_count
+        RedundancyType:
+          allOf:
+            - $ref: '#/components/schemas/Redundancy_v1_4_1_RedundancyType'
+          description: The redundancy mode of the group.
+          nullable: true
+          readOnly: false
+          x-longDescription: This property shall contain the information about the redundancy mode of this redundancy group.
+          x-versionAdded: v1_4_0
+        Status:
+          allOf:
+            - $ref: ./Resource.yaml#/components/schemas/Resource_Status
+          description: The status and health of the resource and its subordinate or dependent resources.
+          x-longDescription: This property shall contain any status or health properties of the resource.
+          x-versionAdded: v1_4_0
+      required:
+        - RedundancyType
+        - MinNeededInGroup
+        - Status
+        - RedundancyGroup
+      type: object
+      x-longDescription: This type shall contain redundancy information for the set of devices in this redundancy group.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+title: '#Redundancy.v1_4_1'
+x-copyright: Copyright 2014-2022 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2020.4'

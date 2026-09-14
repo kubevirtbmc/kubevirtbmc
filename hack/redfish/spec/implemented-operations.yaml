@@ -1,0 +1,38 @@
+# Redfish operations with a real implementation in pkg/redfish/api_service.go.
+#
+# hack/redfish/trim-redfish-spec reads this file and drops every other
+# operation from the OpenAPI spec before openapi-generator runs, so the
+# generated server only covers what KubeVirtBMC actually implements.
+#
+# Keep this in sync with pkg/redfish/api_service.go: adding a real
+# implementation for a new endpoint means adding its "METHOD /path" line
+# here too, or trim-redfish-spec will never generate it -- the endpoint will
+# 404 with no compile-time warning, since APIService is free to carry
+# methods beyond what DefaultAPIServicer currently requires.
+#
+# Format: one "METHOD /path" per line. Blank lines and lines starting with
+# "#" are ignored. Paths must match the spec's path templates exactly,
+# including the {Parameter} placeholders.
+
+GET /redfish/v1
+GET /redfish/v1/
+
+GET /redfish/v1/Systems
+GET /redfish/v1/Systems/{ComputerSystemId}
+PATCH /redfish/v1/Systems/{ComputerSystemId}
+POST /redfish/v1/Systems/{ComputerSystemId}/Actions/ComputerSystem.Reset
+POST /redfish/v1/Systems/{ComputerSystemId}/Actions/ComputerSystem.SetDefaultBootOrder
+GET /redfish/v1/Systems/{ComputerSystemId}/OperatingSystem
+
+GET /redfish/v1/Managers
+GET /redfish/v1/Managers/{ManagerId}
+POST /redfish/v1/Managers/{ManagerId}/Actions/Manager.Reset
+GET /redfish/v1/Managers/{ManagerId}/VirtualMedia
+GET /redfish/v1/Managers/{ManagerId}/VirtualMedia/{VirtualMediaId}
+POST /redfish/v1/Managers/{ManagerId}/VirtualMedia/{VirtualMediaId}/Actions/VirtualMedia.InsertMedia
+POST /redfish/v1/Managers/{ManagerId}/VirtualMedia/{VirtualMediaId}/Actions/VirtualMedia.EjectMedia
+
+GET /redfish/v1/SessionService/Sessions
+POST /redfish/v1/SessionService/Sessions
+GET /redfish/v1/SessionService/Sessions/{SessionId}
+DELETE /redfish/v1/SessionService/Sessions/{SessionId}

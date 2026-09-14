@@ -57,7 +57,8 @@ func NewComputerSystemV1220IndicatorLedFromValue(v string) (ComputerSystemV1220I
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220IndicatorLed: valid values are %v", v, AllowedComputerSystemV1220IndicatorLedEnumValues)
 }
 
-// AssertComputerSystemV1220IndicatorLedRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220IndicatorLedRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220IndicatorLedRequired(obj ComputerSystemV1220IndicatorLed) error {
 	return nil
 }

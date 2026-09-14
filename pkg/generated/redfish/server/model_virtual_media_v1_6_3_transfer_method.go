@@ -51,7 +51,8 @@ func NewVirtualMediaV163TransferMethodFromValue(v string) (VirtualMediaV163Trans
 	return "", fmt.Errorf("invalid value '%v' for VirtualMediaV163TransferMethod: valid values are %v", v, AllowedVirtualMediaV163TransferMethodEnumValues)
 }
 
-// AssertVirtualMediaV163TransferMethodRequired checks if the required fields are not zero-ed
+// AssertVirtualMediaV163TransferMethodRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertVirtualMediaV163TransferMethodRequired(obj VirtualMediaV163TransferMethod) error {
 	return nil
 }

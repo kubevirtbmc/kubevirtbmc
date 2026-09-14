@@ -10,7 +10,7 @@
 
 package server
 
-// ManagerCollectionManagerCollection - The collection of `Manager` resource instances.
+// ManagerCollectionManagerCollection - The collection of Manager resource instances.
 type ManagerCollectionManagerCollection struct {
 
 	// The OData description of a payload.
@@ -44,35 +44,13 @@ type ManagerCollectionManagerCollection struct {
 	Oem map[string]interface{} `json:"Oem,omitempty"`
 }
 
-// AssertManagerCollectionManagerCollectionRequired checks if the required fields are not zero-ed
+// AssertManagerCollectionManagerCollectionRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertManagerCollectionManagerCollectionRequired(obj ManagerCollectionManagerCollection) error {
-	elements := map[string]interface{}{
-		"@odata.id":           obj.OdataId,
-		"@odata.type":         obj.OdataType,
-		"Members":             obj.Members,
-		"Members@odata.count": obj.MembersodataCount,
-		"Name":                obj.Name,
-	}
-	for name, el := range elements {
-		if isZero := IsZeroValue(el); isZero {
-			return &RequiredError{Field: name}
-		}
-	}
-
-	for _, el := range obj.Members {
-		if err := AssertOdataV4IdRefRequired(el); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
 // AssertManagerCollectionManagerCollectionConstraints checks if the values respects the defined constraints
 func AssertManagerCollectionManagerCollectionConstraints(obj ManagerCollectionManagerCollection) error {
-	for _, el := range obj.Members {
-		if err := AssertOdataV4IdRefConstraints(el); err != nil {
-			return err
-		}
-	}
 	return nil
 }

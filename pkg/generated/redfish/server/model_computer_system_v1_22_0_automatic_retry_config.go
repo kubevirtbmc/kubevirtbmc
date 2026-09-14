@@ -54,7 +54,8 @@ func NewComputerSystemV1220AutomaticRetryConfigFromValue(v string) (ComputerSyst
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220AutomaticRetryConfig: valid values are %v", v, AllowedComputerSystemV1220AutomaticRetryConfigEnumValues)
 }
 
-// AssertComputerSystemV1220AutomaticRetryConfigRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220AutomaticRetryConfigRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220AutomaticRetryConfigRequired(obj ComputerSystemV1220AutomaticRetryConfig) error {
 	return nil
 }

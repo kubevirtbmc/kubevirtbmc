@@ -10,10 +10,6 @@
 
 package server
 
-import (
-	"errors"
-)
-
 // ServiceRootV1161DeepOperations - The information about deep operations that the service supports.
 type ServiceRootV1161DeepOperations struct {
 
@@ -27,15 +23,13 @@ type ServiceRootV1161DeepOperations struct {
 	MaxLevels int64 `json:"MaxLevels,omitempty"`
 }
 
-// AssertServiceRootV1161DeepOperationsRequired checks if the required fields are not zero-ed
+// AssertServiceRootV1161DeepOperationsRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertServiceRootV1161DeepOperationsRequired(obj ServiceRootV1161DeepOperations) error {
 	return nil
 }
 
 // AssertServiceRootV1161DeepOperationsConstraints checks if the values respects the defined constraints
 func AssertServiceRootV1161DeepOperationsConstraints(obj ServiceRootV1161DeepOperations) error {
-	if obj.MaxLevels < 1 {
-		return &ParsingError{Param: "MaxLevels", Err: errors.New(errMsgMinValueConstraint)}
-	}
 	return nil
 }

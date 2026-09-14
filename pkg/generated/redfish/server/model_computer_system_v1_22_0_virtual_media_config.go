@@ -24,7 +24,8 @@ type ComputerSystemV1220VirtualMediaConfig struct {
 	ServiceEnabled bool `json:"ServiceEnabled,omitempty"`
 }
 
-// AssertComputerSystemV1220VirtualMediaConfigRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220VirtualMediaConfigRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220VirtualMediaConfigRequired(obj ComputerSystemV1220VirtualMediaConfig) error {
 	return nil
 }

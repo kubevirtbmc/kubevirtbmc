@@ -54,7 +54,8 @@ func NewOperatingSystemV101ContainerEngineTypesFromValue(v string) (OperatingSys
 	return "", fmt.Errorf("invalid value '%v' for OperatingSystemV101ContainerEngineTypes: valid values are %v", v, AllowedOperatingSystemV101ContainerEngineTypesEnumValues)
 }
 
-// AssertOperatingSystemV101ContainerEngineTypesRequired checks if the required fields are not zero-ed
+// AssertOperatingSystemV101ContainerEngineTypesRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertOperatingSystemV101ContainerEngineTypesRequired(obj OperatingSystemV101ContainerEngineTypes) error {
 	return nil
 }

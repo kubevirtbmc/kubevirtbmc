@@ -1,0 +1,93 @@
+components:
+  schemas:
+    ResolutionStep_v1_0_0_ResolutionStep:
+      additionalProperties: false
+      description: This type describes a recommended step of the service-defined resolution.
+      properties:
+        ActionParameters:
+          description: The parameters of the action URI for a resolution step.
+          items:
+            $ref: ./ActionInfo.yaml#/components/schemas/ActionInfo_Parameters
+            nullable: true
+          type: array
+          x-longDescription: This property shall contain the parameters of the action URI for a resolution step.
+        ActionURI:
+          description: The action URI for a resolution step.
+          format: uri-reference
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the action URI for a resolution step.
+        Oem:
+          $ref: ./Resource.yaml#/components/schemas/Resource_Oem
+          description: The OEM extension property.
+          x-longDescription: This property shall contain the OEM extensions.  All values for properties contained in this object shall conform to the Redfish Specification-described requirements.
+        Priority:
+          description: The priority in the set of resolution steps.
+          format: int64
+          minimum: 0
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the priority in the set of resolution steps.  The value `0` shall indicate the highest priority.  Increasing values shall represent decreasing priority.  If two or more resolution steps have the same priority, the execution order of the resolution steps shall be in array order.  If a resolution step does not have a priority assignment, the default is 0.  The priority is used to determine the execution order of the resolution steps.
+        ResolutionType:
+          allOf:
+            - $ref: '#/components/schemas/ResolutionStep_v1_0_0_ResolutionType'
+          description: The type of the resolution step.
+          nullable: true
+          readOnly: true
+          x-longDescription: This property shall contain the type of the resolution step.
+        RetryCount:
+          description: The number of retries for a resolution step.
+          format: int64
+          minimum: 0
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the number of the retries for a resolution step.
+        RetryIntervalSeconds:
+          description: The interval between retries for a resolution step.
+          format: int64
+          minimum: 0
+          nullable: true
+          readOnly: true
+          type: integer
+          x-longDescription: This property shall contain the interval, in seconds, between the retries for a resolution step.
+          x-units: s
+        TargetComponentURI:
+          description: The target URI of the component for a resolution step.
+          format: uri-reference
+          nullable: true
+          readOnly: true
+          type: string
+          x-longDescription: This property shall contain the target URI of the component for a resolution step.  This property shall be present if the ActionURI property is not supported.
+      required:
+        - ResolutionType
+      type: object
+      x-longDescription: This type shall describe a recommended step of the service-defined resolution.  The set of recommended steps are used to resolve the cause of a log entry, an event, a condition, or an error message.
+      x-patternProperties:
+        ^([a-zA-Z_][a-zA-Z0-9_]*)?@(odata|Redfish|Message)\.[a-zA-Z_][a-zA-Z0-9_]*$:
+          description: This property shall specify a valid odata or Redfish property.
+    ResolutionStep_v1_0_0_ResolutionType:
+      enum:
+        - ContactVendor
+        - ReplaceComponent
+        - FirmwareUpdate
+        - Reset
+        - PowerCycle
+        - ResetToDefaults
+        - CollectDiagnosticData
+        - OEM
+      type: string
+      x-enumDescriptions:
+        CollectDiagnosticData: Collect diagnostic data.
+        ContactVendor: Contact vendor for service.
+        FirmwareUpdate: Perform a firmware update operation.
+        OEM: Perform an OEM-defined resolution step.
+        PowerCycle: Perform a power cycle operation.
+        ReplaceComponent: Replace a component.
+        Reset: Perform a reset operation.
+        ResetToDefaults: Reset the settings to factory defaults.
+title: '#ResolutionStep.v1_0_0'
+x-copyright: Copyright 2014-2023 DMTF. For the full DMTF copyright policy, see http://www.dmtf.org/about/policies/copyright
+x-owningEntity: DMTF
+x-release: '2023.3'

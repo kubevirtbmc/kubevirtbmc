@@ -51,7 +51,8 @@ func NewComputerSystemV1220StopBootOnFaultFromValue(v string) (ComputerSystemV12
 	return "", fmt.Errorf("invalid value '%v' for ComputerSystemV1220StopBootOnFault: valid values are %v", v, AllowedComputerSystemV1220StopBootOnFaultEnumValues)
 }
 
-// AssertComputerSystemV1220StopBootOnFaultRequired checks if the required fields are not zero-ed
+// AssertComputerSystemV1220StopBootOnFaultRequired checks complex required fields (models, arrays, maps) and embedded parents.
+// Primitive required fields are validated for JSON request bodies in UnmarshalJSON so zero values remain valid.
 func AssertComputerSystemV1220StopBootOnFaultRequired(obj ComputerSystemV1220StopBootOnFault) error {
 	return nil
 }
