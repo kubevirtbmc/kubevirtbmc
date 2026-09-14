@@ -1,0 +1,4 @@
+ignore:
+  - "**/zz_generated*.go"  # controller-gen deepcopy output
+  - "**/mock_*.go"         # mockgen output (make generate-mock)
+  - "pkg/generated/**"     # openapi-generator output, see hack/redfish/generate.sh
