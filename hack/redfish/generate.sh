@@ -61,4 +61,13 @@ _JAVA_OPTIONS="-DmaxYamlCodePoints=99999999" GO_POST_PROCESS_FILE="goimports -w"
 # has to be reapplied every run too. See relax-patch-assertions for why.
 go run ./hack/redfish/relax-patch-assertions \
     -file ./pkg/generated/redfish/server/api_default.go
+
+# The template also decodes the request body unconditionally. Actions with a
+# free-form (map) body and no required parameters -- EjectMedia,
+# SetDefaultBootOrder -- must tolerate a completely empty body: clients such
+# as sushy (Ironic/Metal3) send none instead of "{}". Same regeneration
+# caveat as above; see tolerate-empty-action-body for why.
+go run ./hack/redfish/tolerate-empty-action-body \
+    -file ./pkg/generated/redfish/server/api_default.go
+
 goimports -w ./pkg/generated/redfish/server/api_default.go

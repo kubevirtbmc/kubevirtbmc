@@ -13,6 +13,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -441,7 +442,7 @@ func (c *DefaultAPIController) RedfishV1ManagersManagerIdVirtualMediaVirtualMedi
 	var bodyParam map[string]interface{}
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
-	if err := d.Decode(&bodyParam); err != nil {
+	if err := d.Decode(&bodyParam); err != nil && !errors.Is(err, io.EOF) {
 		var requiredErr *RequiredError
 		if errors.As(err, &requiredErr) {
 			c.errorHandler(w, r, err, nil)
@@ -698,7 +699,7 @@ func (c *DefaultAPIController) RedfishV1SystemsComputerSystemIdActionsComputerSy
 	var bodyParam map[string]interface{}
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
-	if err := d.Decode(&bodyParam); err != nil {
+	if err := d.Decode(&bodyParam); err != nil && !errors.Is(err, io.EOF) {
 		var requiredErr *RequiredError
 		if errors.As(err, &requiredErr) {
 			c.errorHandler(w, r, err, nil)
