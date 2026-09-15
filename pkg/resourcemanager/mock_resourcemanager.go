@@ -172,6 +172,21 @@ func (mr *MockResourceManagerMockRecorder) GetPowerStatus(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPowerStatus", reflect.TypeOf((*MockResourceManager)(nil).GetPowerStatus), ctx)
 }
 
+// GetSystemSerial mocks base method.
+func (m *MockResourceManager) GetSystemSerial(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSystemSerial", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSystemSerial indicates an expected call of GetSystemSerial.
+func (mr *MockResourceManagerMockRecorder) GetSystemSerial(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSystemSerial", reflect.TypeOf((*MockResourceManager)(nil).GetSystemSerial), ctx)
+}
+
 // GetSystemUUID mocks base method.
 func (m *MockResourceManager) GetSystemUUID(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -52,9 +51,14 @@ type VirtualMachineResourceManager struct {
 	bmcClient  client.Client
 	bmcName    string
 
-	namespace  string
-	name       string
-	systemUUID string
+	// firmwareVersion is reported as Redfish Manager.FirmwareVersion
+	// (the BMC build identity, typically the git commit SHA).
+	firmwareVersion string
+
+	namespace    string
+	name         string
+	systemUUID   string
+	systemSerial string
 
 	computerSystem ComputerSystemInterface
 	manager        ManagerInterface
@@ -66,12 +70,14 @@ func NewVirtualMachineResourceManager(
 	cdiClient cdiclient.Interface,
 	bmcClient client.Client,
 	bmcName string,
+	firmwareVersion string,
 ) *VirtualMachineResourceManager {
 	return &VirtualMachineResourceManager{
-		virtClient: virtClient,
-		cdiClient:  cdiClient,
-		bmcClient:  bmcClient,
-		bmcName:    bmcName,
+		virtClient:      virtClient,
+		cdiClient:       cdiClient,
+		bmcClient:       bmcClient,
+		bmcName:         bmcName,
+		firmwareVersion: firmwareVersion,
 	}
 }
 
@@ -83,17 +89,30 @@ func (m *VirtualMachineResourceManager) Initialize(ctx context.Context, namespac
 
 	m.namespace = vm.Namespace
 	m.name = vm.Name
-	m.systemUUID = string(vm.UID)
+
+	// The VM firmware carries the SMBIOS identity the BMC mirrors on IPMI/Redfish.
+	var firmware kubevirtv1.Firmware
+	if vm.Spec.Template != nil && vm.Spec.Template.Spec.Domain.Firmware != nil {
+		firmware = *vm.Spec.Template.Spec.Domain.Firmware
+	}
+	m.systemUUID = util.SystemUUID(string(firmware.UUID), vm.Name)
+	if m.systemUUID == util.ZeroSystemUUID {
+		logrus.Warnf("VM %s/%s has an unusable firmware.uuid %q; reporting the null system UUID",
+			vm.Namespace, vm.Name, firmware.UUID)
+	}
+	m.systemSerial = util.SystemSerial(firmware.Serial, string(vm.UID))
 
 	// Initialize computer system
 	m.computerSystem = NewComputerSystem(
 		defaultComputerSystemId,
-		strings.Join([]string{vm.Namespace, vm.Name}, "/"),
+		util.SystemName(vm.Namespace, vm.Name),
+		m.systemUUID,
+		m.systemSerial,
 		powerStateMap[vm.Status.Ready],
 	)
 
 	// Initialize manager
-	m.manager = NewManager(defaultManagerId, defaultManagerName)
+	m.manager = NewManager(defaultManagerId, defaultManagerName, m.firmwareVersion)
 
 	// Initialize virtual media
 	m.virtualMedia = NewVirtualMedia(defaultVirtualMediaId, defaultVirtualMediaName)
@@ -148,6 +167,13 @@ func (m *VirtualMachineResourceManager) GetSystemUUID(ctx context.Context) (stri
 		return "", fmt.Errorf("system UUID not initialized")
 	}
 	return m.systemUUID, nil
+}
+
+func (m *VirtualMachineResourceManager) GetSystemSerial(ctx context.Context) (string, error) {
+	if m.systemSerial == "" {
+		return "", fmt.Errorf("system serial not initialized")
+	}
+	return m.systemSerial, nil
 }
 
 func (m *VirtualMachineResourceManager) EjectMedia(ctx context.Context) error {

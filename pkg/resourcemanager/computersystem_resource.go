@@ -47,7 +47,9 @@ type ComputerSystemAdapter struct {
 	computerSystem *server.ComputerSystemV1220ComputerSystem
 }
 
-func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *ComputerSystemAdapter {
+// NewComputerSystem builds the Redfish ComputerSystem from the VM identity:
+// name is "<namespace>/<name>", uuid and serial are the SMBIOS values.
+func NewComputerSystem(id, name, uuid, serial string, powerState server.ResourcePowerState) *ComputerSystemAdapter {
 	generatedComputerSystem := &server.ComputerSystemV1220ComputerSystem{
 		OdataContext: "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
 		OdataId:      fmt.Sprintf("/redfish/v1/Systems/%s", id),
@@ -55,13 +57,13 @@ func NewComputerSystem(id, name string, powerState server.ResourcePowerState) *C
 		Description:  "Computer System",
 		Name:         name,
 		Id:           id,
-		UUID:         "00000000-0000-0000-0000-000000000000",
+		UUID:         uuid,
 		AssetTag:     util.Ptr(""),
 		IndicatorLED: server.COMPUTERSYSTEMV1220INDICATORLED_UNKNOWN,
 		Manufacturer: util.Ptr("KubeVirt"),
 		Model:        util.Ptr("KubeVirt"),
 		PartNumber:   util.Ptr(""),
-		SerialNumber: util.Ptr("000000000000"),
+		SerialNumber: util.Ptr(serial),
 		SKU:          util.Ptr(""),
 		Status:       server.ResourceStatus{},
 		SystemType:   server.COMPUTERSYSTEMV1220SYSTEMTYPE_VIRTUAL,

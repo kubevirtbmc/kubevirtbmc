@@ -71,6 +71,7 @@ type ResourceManager interface {
 	ForcePowerCycle(ctx context.Context) error
 	SetBootDevice(ctx context.Context, device BootDevice, opts *BootOptions) error
 	GetSystemUUID(ctx context.Context) (string, error)
+	GetSystemSerial(ctx context.Context) (string, error)
 	SetFirmwareMode(ctx context.Context, mode FirmwareMode) error
 	ClearBootOverrides(ctx context.Context) error
 }

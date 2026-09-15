@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
-	pkgutil "kubevirt.io/kubevirtbmc/pkg/util"
-	"kubevirt.io/kubevirtbmc/test/util"
+	"kubevirt.io/kubevirtbmc/pkg/util"
+	testutil "kubevirt.io/kubevirtbmc/test/util"
 )
 
 const (
@@ -46,12 +46,12 @@ const (
 	suiteInitTimeout     = 180 * time.Second
 	vmPowerStatusTimeout = 120 * time.Second
 
-	redfishClientPodName = util.RedfishClientPodName
-	ipmitoolPodName      = util.IPMIToolPodName
+	redfishClientPodName = testutil.RedfishClientPodName
+	ipmitoolPodName      = testutil.IPMIToolPodName
 )
 
-type RedfishRequest = util.RedfishRequest
-type IPMIRequest = util.IPMIRequest
+type RedfishRequest = testutil.RedfishRequest
+type IPMIRequest = testutil.IPMIRequest
 
 type agentTestEnv struct {
 	VM             *kubevirtv1.VirtualMachine
@@ -218,8 +218,22 @@ func verifyVMBootOrder(ctx context.Context, k8sClient client.Client, namespace s
 		namespace, agentVMName, expectedDisks, expectedIfaces)
 }
 
-// resetBootState clears all bootOrder fields and firmware from the test VM
-// and clears status.bootOverride, so each boot test starts from a clean slate.
+// vmSystemIdentity returns the SMBIOS UUID and serial the BMC reports for the
+// test VM, resolved from its firmware the way the ResourceManager does. Nothing
+// in this suite changes those fields, so the live values are the reported ones.
+func vmSystemIdentity(ctx context.Context, k8sClient client.Client, namespace string) (systemUUID, systemSerial string) {
+	vm := &kubevirtv1.VirtualMachine{}
+	ExpectWithOffset(1, k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm)).To(Succeed())
+	var firmware kubevirtv1.Firmware
+	if vm.Spec.Template != nil && vm.Spec.Template.Spec.Domain.Firmware != nil {
+		firmware = *vm.Spec.Template.Spec.Domain.Firmware
+	}
+	return util.SystemUUID(string(firmware.UUID), vm.Name), util.SystemSerial(firmware.Serial, string(vm.UID))
+}
+
+// resetBootState clears all bootOrder fields and the firmware bootloader from
+// the test VM and clears status.bootOverride, so each boot test starts from a
+// clean slate.
 func resetBootState(ctx context.Context, k8sClient client.Client, namespace string) {
 	vm := &kubevirtv1.VirtualMachine{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
@@ -263,11 +277,13 @@ func resetBootState(ctx context.Context, k8sClient client.Client, namespace stri
 			})
 		}
 	}
-	// Remove firmware if it was added by an override (test VM has none).
-	if vm.Spec.Template.Spec.Domain.Firmware != nil {
+	// Remove only the bootloader a firmware override added: the firmware object
+	// itself holds KubeVirt-written uuid/serial, and deleting it would wipe them
+	// for good (nothing ever restores the serial).
+	if fw := vm.Spec.Template.Spec.Domain.Firmware; fw != nil && fw.Bootloader != nil {
 		vmPatch = append(vmPatch, map[string]any{
 			"op":   "remove",
-			"path": "/spec/template/spec/domain/firmware",
+			"path": "/spec/template/spec/domain/firmware/bootloader",
 		})
 	}
 
@@ -692,13 +708,13 @@ func setupVirtualMediaTLSServer(ctx context.Context, k8sClient client.Client, na
 
 	correctCACM := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName + "-ca-correct", Namespace: namespace},
-		Data:       map[string]string{pkgutil.CABundleConfigMapKey: string(serverCA.certPEM)},
+		Data:       map[string]string{util.CABundleConfigMapKey: string(serverCA.certPEM)},
 	}
 	Expect(k8sClient.Create(ctx, correctCACM)).To(Succeed())
 
 	wrongCACM := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: virtualMediaTLSServerName + "-ca-wrong", Namespace: namespace},
-		Data:       map[string]string{pkgutil.CABundleConfigMapKey: string(wrongCA.certPEM)},
+		Data:       map[string]string{util.CABundleConfigMapKey: string(wrongCA.certPEM)},
 	}
 	Expect(k8sClient.Create(ctx, wrongCACM)).To(Succeed())
 

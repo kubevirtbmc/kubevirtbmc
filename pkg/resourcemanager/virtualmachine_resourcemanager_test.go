@@ -21,6 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
@@ -2241,4 +2242,75 @@ func TestVirtualMachineResourceManager_ClearBootOverrides_WithBackup(t *testing.
 	err = fakeBMCClient.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: testBMCName}, updatedBMC)
 	require.NoError(t, err)
 	require.Nil(t, updatedBMC.Status.BootOverride, "status.bootOverride should be cleared")
+}
+
+// TestInitializeReportsVMFirmwareIdentity covers how the SMBIOS system identity
+// reported by the BMC (IPMI/Redfish) is derived from the VM's firmware.
+func TestInitializeReportsVMFirmwareIdentity(t *testing.T) {
+	const vmUID = "0f3a5b7c-2d4e-4f6a-8b9c-0d1e2f3a4b5c"
+	const firmwareUUID = "5d307ca9-b3ef-428c-8861-06e72d69f223"
+	const firmwareSerial = "e4686d2c-6e8d-4335-b8fd-81bee22f4815"
+
+	tests := []struct {
+		name       string
+		firmware   *kubevirtv1.Firmware
+		wantUUID   string
+		wantSerial string
+	}{
+		{
+			name:       "mirrors the VM firmware",
+			firmware:   &kubevirtv1.Firmware{UUID: k8stypes.UID(firmwareUUID), Serial: firmwareSerial},
+			wantUUID:   firmwareUUID,
+			wantSerial: firmwareSerial,
+		},
+		{
+			name:       "falls back to KubeVirt's legacy UUID and the VM UID",
+			firmware:   nil,
+			wantUUID:   util.LegacyFirmwareUUID(testVMName),
+			wantSerial: vmUID,
+		},
+		{
+			name:       "reports the null UUID for an unusable firmware.uuid",
+			firmware:   &kubevirtv1.Firmware{UUID: "not-a-uuid", Serial: firmwareSerial},
+			wantUUID:   util.ZeroSystemUUID,
+			wantSerial: firmwareSerial,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: testVMName, UID: k8stypes.UID(vmUID)},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{},
+				},
+			}
+			if tt.firmware != nil {
+				vm.Spec.Template.Spec.Domain.Firmware = tt.firmware
+			}
+
+			rm := NewVirtualMachineResourceManager(
+				kubevirtfake.NewSimpleClientset(vm),
+				cdifake.NewSimpleClientset(),
+				newTestBMCClient(newTestBMC()),
+				testBMCName,
+				"3b7bbc8b559d8a712e502afd9d1cb9251aacb2f3",
+			)
+			require.NoError(t, rm.Initialize(context.Background(), testNamespace, testVMName))
+
+			gotUUID, err := rm.GetSystemUUID(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tt.wantUUID, gotUUID)
+
+			gotSerial, err := rm.GetSystemSerial(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tt.wantSerial, gotSerial)
+
+			generated := rm.computerSystem.(*ComputerSystemAdapter).ComputerSystem()
+			require.Equal(t, util.SystemName(testNamespace, testVMName), generated.Name)
+			require.Equal(t, tt.wantUUID, generated.UUID)
+			require.NotNil(t, generated.SerialNumber)
+			require.Equal(t, tt.wantSerial, *generated.SerialNumber)
+		})
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/bougou/go-ipmi/pkg/handlers"
 	"github.com/bougou/go-ipmi/pkg/server"
 	udptransport "github.com/bougou/go-ipmi/pkg/transport/udp"
+	"github.com/bougou/go-ipmi/pkg/types"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
@@ -26,18 +27,17 @@ const lanChannel uint8 = 1
 // It wires github.com/bougou/go-ipmi's server stack (RMCP+ / IPMI v2.0 LANPLUS,
 // plus minimal pre-session v1.0 LAN handling) to a ResourceManager. Chassis
 // commands are routed to the ResourceManager through the typed hal.ChassisHAL
-// implementation in handler.go (vmChassis); session establishment, RAKP,
-// encryption and framing are handled by go-ipmi.
-//
-// This file contains only the simulator lifecycle (bind/serve/stop) and BMC
-// state construction. All KubeVirt-specific chassis business logic lives in
-// handler.go.
+// implementation in handler.go (vmChassis); FRU/SDR commands go through
+// go-ipmi's RegisterStorageHandlers against an in-memory store seeded at
+// buildBMC time. Session establishment, RAKP, encryption and framing are
+// handled by go-ipmi.
 type Simulator struct {
-	ip       string
-	port     int
-	rm       resourcemanager.ResourceManager
-	username string
-	password string
+	ip          string
+	port        int
+	rm          resourcemanager.ResourceManager
+	username    string
+	password    string
+	productName string // FRU Product Name (namespace/name)
 
 	srv    *server.Server
 	conn   *udptransport.Conn
@@ -45,16 +45,18 @@ type Simulator struct {
 	wg     sync.WaitGroup
 }
 
-// NewSimulator creates a new IPMI simulator.
-//
+// NewSimulator creates a new IPMI simulator. productName is the FRU Product Name
+// ("<namespace>/<name>"); the rest of the FRU is read from the ResourceManager
+// when the BMC state is built, so that must be initialized first.
 // The simulator does not bind the UDP socket until Run is called.
-func NewSimulator(ip string, port int, resourceManager resourcemanager.ResourceManager, username, password string) *Simulator {
+func NewSimulator(ip string, port int, resourceManager resourcemanager.ResourceManager, username, password, productName string) *Simulator {
 	return &Simulator{
-		ip:       ip,
-		port:     port,
-		rm:       resourceManager,
-		username: username,
-		password: password,
+		ip:          ip,
+		port:        port,
+		rm:          resourceManager,
+		username:    username,
+		password:    password,
+		productName: productName,
 	}
 }
 
@@ -87,6 +89,7 @@ func (s *Simulator) Run() error {
 	// They dispatch through hal.ChassisHAL, which we back with vmChassis below
 	// so each spec action maps to the corresponding KubeVirt ResourceManager API.
 	handlers.RegisterChassisHandlers(reg)
+	handlers.RegisterStorageHandlers(reg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
@@ -119,11 +122,10 @@ func (s *Simulator) Stop() {
 	logrus.Info("IPMI simulator gracefully stopped")
 }
 
-// resolveGUID returns the VM's UUID as a 16-byte GUID, falling back to an
-// all-zero GUID when the ResourceManager is nil (e.g. in unit tests). Using
-// the real VM UUID binds the RAKP key exchange to the specific VM — each VM
-// gets different HMAC inputs — and makes the GUID returned by Get Device GUID
-// (App 0x08) meaningful rather than returning a zero identifier.
+// resolveGUID returns the system UUID as a 16-byte GUID, falling back to an
+// all-zero GUID when the ResourceManager is nil (e.g. in unit tests). §22.14.1
+// ties it to the VM's SMBIOS UUID, which is also the Managed System GUID of the
+// RMCP+ Open Session response — that binds RAKP to the specific VM.
 func (s *Simulator) resolveGUID() [16]byte {
 	if s.rm == nil {
 		return [16]byte{}
@@ -143,8 +145,8 @@ func (s *Simulator) resolveGUID() [16]byte {
 
 // buildBMC constructs the in-memory BMC state: device identity, GUID, the
 // authenticated user account, and a HAL whose Chassis sub-interface is backed
-// by vmChassis (the KubeVirt ResourceManager adapter). go-ipmi's typed chassis
-// handlers dispatch through that HAL.
+// by vmChassis and whose Storage is seeded with a Product Info FRU plus an MC
+// Locator SDR so ipmitool fru list works via go-ipmi's stock Storage handlers.
 func (s *Simulator) buildBMC() *bmc.BMC {
 	info := bmc.DeviceInfo{
 		DeviceID:                0x20,
@@ -157,10 +159,16 @@ func (s *Simulator) buildBMC() *bmc.BMC {
 		AdditionalDeviceSupport: 0x00,
 	}
 
+	store := newMemoryStorage()
+	s.seedStorage(store)
+
 	guid := s.resolveGUID()
 
 	chassis := loggingChassis{ChassisHAL: vmChassis{rm: s.rm}}
-	b := bmc.New(info, guid, noopHAL{chassis: chassis}, bmc.WithKG(nil))
+	b := bmc.New(info, guid, noopHAL{
+		chassis: chassis,
+		storage: store,
+	}, bmc.WithKG(nil))
 
 	// Register the configured BMC user so RAKP username/password auth succeeds.
 	if s.username != "" {
@@ -180,4 +188,52 @@ func (s *Simulator) buildBMC() *bmc.BMC {
 	}
 
 	return b
+}
+
+// seedStorage writes the Builtin FRU (device 0) and a Type 12h MC Locator SDR
+// so clients can discover and read product identity via Storage NetFn. Device 0
+// is the FRU the BMC sits on (IPMI 2.0 §38), so its Product Info Area describes
+// the managed VM, and Product Version stays empty (a VM has no product version).
+func (s *Simulator) seedStorage(store *memoryStorage) {
+	var serial string
+	if s.rm != nil {
+		value, err := s.rm.GetSystemSerial(context.Background())
+		if err != nil {
+			logrus.WithError(err).Warn("failed to get system serial, leaving FRU Product Serial empty")
+		} else {
+			serial = value
+		}
+	}
+
+	fruData, err := types.PackFRU(types.FRUPackConfig{
+		Product: &types.FRUPackProduct{
+			Manufacturer: "KubeVirt",
+			Name:         truncateFRUField(s.productName),
+			Serial:       truncateFRUField(serial),
+		},
+	})
+	if err != nil {
+		logrus.WithError(err).Warn("failed to pack FRU data")
+		return
+	}
+	ctx := context.Background()
+	if err := store.FRU().Write(ctx, 0, fruData); err != nil {
+		logrus.WithError(err).Warn("failed to seed FRU device 0")
+	}
+	if err := store.SDR().Write(ctx, 1, types.PackMCLocator(types.MCLocatorPackOpts{
+		RecordID: 1,
+	})); err != nil {
+		logrus.WithError(err).Warn("failed to seed MC Locator SDR")
+	}
+}
+
+// truncateFRUField clips a value to the FRU type/length byte's 6-bit length
+// (FRU spec §13, max 63 bytes). Required: go-ipmi's PackFRU does not reject
+// longer fields — the overflowing length bits collide with the type code and
+// corrupt the area.
+func truncateFRUField(value string) string {
+	if len(value) > 63 {
+		return value[:63]
+	}
+	return value
 }
