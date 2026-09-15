@@ -284,25 +284,46 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		CertConfigMap:      caBundleConfigMap,
 	})
 	_, err = m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Create(ctx, dv, metav1.CreateOptions{})
-	if err != nil {
+	if apierrors.IsAlreadyExists(err) {
+		existing, getErr := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Get(ctx, dv.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return fmt.Errorf("media already inserted but failed to verify: %w", getErr)
+		}
+		existingURL := ""
+		if existing.Spec.Source != nil && existing.Spec.Source.HTTP != nil {
+			existingURL = existing.Spec.Source.HTTP.URL
+		}
+		if existingURL != imageURL {
+			return fmt.Errorf("different media is already inserted (have %s, want %s)", existingURL, imageURL)
+		}
+	} else if err != nil {
 		return err
 	}
 
-	// Attach DataVolume to VirtualMachine
-	volume := kubevirtv1.Volume{
-		Name: cdromDisk.Name,
-		VolumeSource: kubevirtv1.VolumeSource{
-			DataVolume: &kubevirtv1.DataVolumeSource{
-				Name:         dv.Name,
-				Hotpluggable: true,
+	// Attach DataVolume to VirtualMachine (skip if already attached with the same source)
+	volumeExists := false
+	for _, v := range vm.Spec.Template.Spec.Volumes {
+		if v.Name == cdromDisk.Name {
+			volumeExists = true
+			break
+		}
+	}
+	if !volumeExists {
+		volume := kubevirtv1.Volume{
+			Name: cdromDisk.Name,
+			VolumeSource: kubevirtv1.VolumeSource{
+				DataVolume: &kubevirtv1.DataVolumeSource{
+					Name:         dv.Name,
+					Hotpluggable: true,
+				},
 			},
-		},
-	}
-	vm.Spec.Template.Spec.Volumes = append(vm.Spec.Template.Spec.Volumes, volume)
+		}
+		vm.Spec.Template.Spec.Volumes = append(vm.Spec.Template.Spec.Volumes, volume)
 
-	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Update(ctx, vm, metav1.UpdateOptions{}); err != nil {
-		return err
+		if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Update(ctx, vm, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
 	}
 
 	m.virtualMedia.SetVirtualMedia(imageURL, true)
