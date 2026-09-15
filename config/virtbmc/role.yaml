@@ -16,7 +16,6 @@ rules:
   - virtualmachines
   verbs:
   - get
-  - list
   - watch
   - update
   - patch
@@ -34,17 +33,12 @@ rules:
   - virtualmachineinstances
   verbs:
   - get
-  - list
   - watch
-  - delete
 - apiGroups:
   - cdi.kubevirt.io
   resources:
   - datavolumes
   verbs:
-  - get
-  - list
-  - watch
   - create
   - delete
 - apiGroups:

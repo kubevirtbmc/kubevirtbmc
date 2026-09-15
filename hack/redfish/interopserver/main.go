@@ -75,7 +75,10 @@ func newResourceManager(ctx context.Context) (*resourcemanager.VirtualMachineRes
 	cdiClient := cdifake.NewSimpleClientset()
 	bmcClient := crfake.NewClientBuilder().WithScheme(scheme).WithObjects(bmc).Build()
 
-	rm := resourcemanager.NewVirtualMachineResourceManager(virtClient, cdiClient, bmcClient, vmName)
+	rm := resourcemanager.NewVirtualMachineResourceManager(
+		virtClient, cdiClient,
+		resourcemanager.NewClusterStateStore(bmcClient, namespace, vmName),
+		bmcClient, "", nil, 0, false, "")
 	if err := rm.Initialize(ctx, namespace, vmName); err != nil {
 		return nil, err
 	}

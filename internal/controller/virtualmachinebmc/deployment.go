@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -65,6 +66,9 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(defaultDesiredReplicas),
+			// The agent is the sole boot-override reconciler. Recreate prevents
+			// old and new pods from mutating the same VM during a rollout.
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -108,6 +112,28 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 								}
 								if specIPMIEnabled(&virtualMachineBMC.Spec) {
 									args = append(args, "--enable-ipmi", "--ipmi-port", strconv.Itoa(ipmiPort))
+								}
+								// The agent reads the StorageClass from this flag at
+								// startup; a spec change re-renders the args and rolls
+								// the pod, same as the IPMI toggle above.
+								if sc := virtualMachineBMC.Spec.VirtualMediaStorageClassName(); sc != nil && *sc != "" {
+									args = append(args, "--storage-class", *sc)
+								}
+								if mode := virtualMachineBMC.Spec.VirtualMediaVolumeMode(); mode != nil {
+									args = append(args, "--volume-mode", strings.ToLower(string(*mode)))
+								}
+								if margin, ok := virtualMachineBMC.Annotations[bmcv1.AnnotationDataVolumeSizeMargin]; ok {
+									if percent, err := strconv.Atoi(margin); err == nil && percent > 0 {
+										args = append(args, "--datavolume-size-margin", margin)
+									}
+								}
+								if tls := virtualMachineBMC.Spec.RedfishVirtualMediaTLS(); tls != nil {
+									if tls.InsecureSkipVerify != nil && *tls.InsecureSkipVerify {
+										args = append(args, "--virtual-media-insecure-skip-verify")
+									}
+									if ref := tls.CABundleConfigMapRef; ref != nil && ref.Name != "" {
+										args = append(args, "--virtual-media-ca-bundle-configmap", ref.Name)
+									}
 								}
 								args = append(args, virtualMachineBMC.Namespace, virtualMachineBMC.Spec.VirtualMachineRef.Name)
 								return args
@@ -227,12 +253,36 @@ func (r *VirtualMachineBMCReconciler) ensureVirtBMCDeployment(ctx context.Contex
 		return err
 	}
 
+	if err := r.clearRollingUpdateIfPresent(ctx, virtualMachineBMC); err != nil {
+		return err
+	}
+
 	if err := r.Patch(ctx, desired, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
 		log.Error(err, "unable to apply Deployment for VirtualMachineBMC", "deployment", desired.Name)
 		return err
 	}
 
 	log.V(1).Info("applied Deployment for VirtualMachineBMC", "deployment", desired.Name)
+	return nil
+}
+
+// SSA cannot drop API-owned rollingUpdate by omission, and Recreate plus
+// leftover rollingUpdate is rejected. Merge-patch null deletes the field.
+var recreateStrategyPatch = []byte(`{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}`)
+
+func (r *VirtualMachineBMCReconciler) clearRollingUpdateIfPresent(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	existing, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
+	if err != nil || existing == nil {
+		return err
+	}
+	if existing.Spec.Strategy.RollingUpdate == nil {
+		return nil
+	}
+
+	if err := r.Patch(ctx, existing, client.RawPatch(types.MergePatchType, recreateStrategyPatch)); err != nil {
+		log.FromContext(ctx).Error(err, "unable to drop rollingUpdate for Recreate agent Deployment", "deployment", existing.Name)
+		return err
+	}
 	return nil
 }
 

@@ -21,6 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	k8stesting "k8s.io/client-go/testing"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdifake "kubevirt.io/client-go/containerizeddataimporter/fake"
@@ -50,6 +51,34 @@ type fakeVirtualMedia struct {
 	inserted bool
 }
 
+type failingStateStore struct {
+	override *bmcv1.BootOverrideStatus
+	saved    []*bmcv1.BootOverrideStatus
+	getErr   error
+	saveErr  error
+}
+
+func (s *failingStateStore) GetBootOverride(context.Context) (*bmcv1.BootOverrideStatus, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	return s.override.DeepCopy(), nil
+}
+
+func (s *failingStateStore) SaveBootOverride(_ context.Context, override *bmcv1.BootOverrideStatus) error {
+	if s.saveErr != nil {
+		return s.saveErr
+	}
+	s.override = override.DeepCopy()
+	s.saved = append(s.saved, override.DeepCopy())
+	return nil
+}
+
+func (s *failingStateStore) ClearBootOverride(context.Context) error {
+	s.override = nil
+	return nil
+}
+
 func newTestBMC() *bmcv1.VirtualMachineBMC {
 	return &bmcv1.VirtualMachineBMC{
 		ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: testBMCName},
@@ -60,8 +89,8 @@ func newTestBMC() *bmcv1.VirtualMachineBMC {
 // status subresource enabled, mirroring the real API server behavior.
 func newTestBMCClient(objects ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
-	_ = bmcv1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
+	_ = bmcv1.AddToScheme(scheme)
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithStatusSubresource(&bmcv1.VirtualMachineBMC{}).
@@ -330,11 +359,15 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 	testCases := []struct {
 		name                 string
 		imageURL             string
+		storageClass         string
+		volumeMode           *corev1.PersistentVolumeMode
+		sizeMarginPercent    int
+		insecureSkipVerify   bool
+		caBundleConfigMap    string
+		caBundleConfigMapObj *corev1.ConfigMap
 		virtualMedia         VirtualMediaInterface
 		dv                   *cdiv1.DataVolume
 		vm                   *kubevirtv1.VirtualMachine
-		bmc                  *bmcv1.VirtualMachineBMC
-		caBundleConfigMap    *corev1.ConfigMap
 		expectedVirtualMedia VirtualMediaInterface
 		expectedDV           *cdiv1.DataVolume
 		expectedVM           *kubevirtv1.VirtualMachine
@@ -371,23 +404,13 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.Storage.StorageClassName set should use that StorageClass",
+			name:         "Insert media with --storage-class set should use that StorageClass",
 			imageURL:     imageURL,
+			storageClass: "custom-storage-class",
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
-					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						Storage: &bmcv1.VirtualMediaStorageSpec{
-							StorageClassName: util.Ptr("custom-storage-class"),
-						},
-					},
-				}
-				return bmc
-			}(),
 			expectedVirtualMedia: &fakeVirtualMedia{
 				called:   true,
 				imageURL: imageURL,
@@ -413,23 +436,13 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.Storage.VolumeMode set should use that VolumeMode",
+			name:         "Insert media with --volume-mode block set should use that VolumeMode",
 			imageURL:     imageURL,
+			volumeMode:   util.Ptr(corev1.PersistentVolumeBlock),
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
-					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						Storage: &bmcv1.VirtualMediaStorageSpec{
-							VolumeMode: util.Ptr(corev1.PersistentVolumeBlock),
-						},
-					},
-				}
-				return bmc
-			}(),
 			expectedVirtualMedia: &fakeVirtualMedia{
 				called:   true,
 				imageURL: imageURL,
@@ -456,21 +469,13 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.TLS.InsecureSkipVerify set should mark the DataVolume insecure",
-			imageURL:     imageURL,
-			virtualMedia: &fakeVirtualMedia{},
+			name:               "Insert media with --virtual-media-insecure-skip-verify set should mark the DataVolume insecure",
+			imageURL:           imageURL,
+			insecureSkipVerify: true,
+			virtualMedia:       &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
-					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						TLS: &bmcv1.VirtualMediaTLSSpec{InsecureSkipVerify: util.Ptr(true)},
-					},
-				}
-				return bmc
-			}(),
 			expectedVirtualMedia: &fakeVirtualMedia{
 				called:   true,
 				imageURL: imageURL,
@@ -496,27 +501,17 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.TLS.CABundleConfigMapRef set should reference the ConfigMap on the DataVolume",
-			imageURL:     imageURL,
+			name:              "Insert media with --virtual-media-ca-bundle-configmap set should reference the ConfigMap on the DataVolume",
+			imageURL:          imageURL,
+			caBundleConfigMap: "custom-ca",
+			caBundleConfigMapObj: &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "custom-ca"},
+				Data:       map[string]string{util.CABundleConfigMapKey: string(caPEM)},
+			},
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
-					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						TLS: &bmcv1.VirtualMediaTLSSpec{
-							CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "custom-ca"},
-						},
-					},
-				}
-				return bmc
-			}(),
-			caBundleConfigMap: &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "custom-ca"},
-				Data:       map[string]string{util.CABundleConfigMapKey: string(caPEM)},
-			},
 			expectedVirtualMedia: &fakeVirtualMedia{
 				called:   true,
 				imageURL: imageURL,
@@ -542,17 +537,26 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media with the datavolume-size-margin annotation set should pad the requested size",
-			imageURL:     imageURL,
-			virtualMedia: &fakeVirtualMedia{},
+			name:              "Insert media with --virtual-media-ca-bundle-configmap pointing to a missing ConfigMap should fail",
+			imageURL:          imageURL,
+			caBundleConfigMap: "missing-ca",
+			virtualMedia:      &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Annotations = map[string]string{bmcv1.AnnotationDataVolumeSizeMargin: "30"}
-				return bmc
-			}(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			shouldError: true,
+		},
+		{
+			name:              "Insert media with --datavolume-size-margin set should pad the requested size",
+			imageURL:          imageURL,
+			sizeMarginPercent: 30,
+			virtualMedia:      &fakeVirtualMedia{},
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
 			expectedVirtualMedia: &fakeVirtualMedia{
 				called:   true,
 				imageURL: imageURL,
@@ -575,64 +579,6 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 					},
 				}).Build(),
 			shouldError: false,
-		},
-		{
-			name:         "Insert media with an invalid datavolume-size-margin annotation should default to no padding",
-			imageURL:     imageURL,
-			virtualMedia: &fakeVirtualMedia{},
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithTemplate().
-				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Annotations = map[string]string{bmcv1.AnnotationDataVolumeSizeMargin: "not-a-number"}
-				return bmc
-			}(),
-			expectedVirtualMedia: &fakeVirtualMedia{
-				called:   true,
-				imageURL: imageURL,
-				inserted: true,
-			},
-			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
-				WithHTTPSource(imageURL).
-				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithTemplate().
-				WithCDRomDisk("cdrom", nil).
-				WithVolumes(kubevirtv1.Volume{
-					Name: "cdrom",
-					VolumeSource: kubevirtv1.VolumeSource{
-						DataVolume: &kubevirtv1.DataVolumeSource{
-							Name:         testVMName,
-							Hotpluggable: true,
-						},
-					},
-				}).Build(),
-			shouldError: false,
-		},
-		{
-			name:         "Insert media with a VirtualMachineBMC.Spec.Redfish.VirtualMedia.TLS.CABundleConfigMapRef pointing to a missing ConfigMap should fail",
-			imageURL:     imageURL,
-			virtualMedia: &fakeVirtualMedia{},
-			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithTemplate().
-				WithCDRomDisk("cdrom", nil).Build(),
-			bmc: func() *bmcv1.VirtualMachineBMC {
-				bmc := newTestBMC()
-				bmc.Spec.Redfish = &bmcv1.RedfishSpec{
-					VirtualMedia: &bmcv1.VirtualMediaSpec{
-						TLS: &bmcv1.VirtualMediaTLSSpec{
-							CABundleConfigMapRef: &corev1.LocalObjectReference{Name: "missing-ca"},
-						},
-					},
-				}
-				return bmc
-			}(),
-			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
-				WithTemplate().
-				WithCDRomDisk("cdrom", nil).Build(),
-			shouldError: true,
 		},
 		{
 			name:     "Insert media into a virtual machine who has uninitialized virtual media should fail",
@@ -743,20 +689,24 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			}
 
 			vmrm := &VirtualMachineResourceManager{
-				virtClient:   fakeVirtClient,
-				cdiClient:    fakeCdiClient,
-				namespace:    testNamespace,
-				name:         testVMName,
-				virtualMedia: tc.virtualMedia,
+				virtClient:         fakeVirtClient,
+				cdiClient:          fakeCdiClient,
+				namespace:          testNamespace,
+				name:               testVMName,
+				storageClass:       tc.storageClass,
+				volumeMode:         tc.volumeMode,
+				sizeMarginPercent:  tc.sizeMarginPercent,
+				insecureSkipVerify: tc.insecureSkipVerify,
+				caBundleConfigMap:  tc.caBundleConfigMap,
+				virtualMedia:       tc.virtualMedia,
 			}
 
-			if tc.bmc != nil {
-				objs := []client.Object{tc.bmc}
-				if tc.caBundleConfigMap != nil {
-					objs = append(objs, tc.caBundleConfigMap)
+			if tc.caBundleConfigMap != "" {
+				var objs []client.Object
+				if tc.caBundleConfigMapObj != nil {
+					objs = append(objs, tc.caBundleConfigMapObj)
 				}
-				vmrm.bmcClient = newTestBMCClient(objs...)
-				vmrm.bmcName = tc.bmc.Name
+				vmrm.kubeClient = newTestBMCClient(objs...)
 			}
 
 			err := vmrm.InsertMedia(context.Background(), tc.imageURL)
@@ -1719,10 +1669,9 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 
 			vmrm := &VirtualMachineResourceManager{
 				virtClient: fakeVirtClient,
-				bmcClient:  fakeBMCClient,
+				store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 				namespace:  testNamespace,
 				name:       testVMName,
-				bmcName:    testBMCName,
 			}
 
 			err := vmrm.SetBootDevice(context.Background(), tc.bootDevice, &BootOptions{Mode: BootModePersistent})
@@ -1743,28 +1692,128 @@ func TestVirtualMachineResourceManager_SetBootDevice(t *testing.T) {
 func TestVirtualMachineResourceManager_BootOverrideStatus(t *testing.T) {
 	fakeBMCClient := newTestBMCClient(newTestBMC())
 	vmrm := &VirtualMachineResourceManager{
-		bmcClient: fakeBMCClient,
+		store:     NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace: testNamespace,
-		bmcName:   testBMCName,
 	}
 
 	override := &bmcv1.BootOverrideStatus{
 		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMUID:      "test-vm-uid",
 		VMIUID:     "test-uid",
 		BootOrders: map[string]uint{"disk:root": 1, "interface:default": 0},
 	}
-	require.NoError(t, vmrm.saveBootOverride(context.Background(), override))
+	require.NoError(t, vmrm.store.SaveBootOverride(context.Background(), override))
 
 	saved, err := vmrm.GetBootOverride(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, override.Mode, saved.Mode)
+	require.Equal(t, override.VMUID, saved.VMUID)
 	require.Equal(t, override.VMIUID, saved.VMIUID)
 	require.Equal(t, override.BootOrders, saved.BootOrders)
 
-	require.NoError(t, vmrm.clearBootOverride(context.Background()))
+	require.NoError(t, vmrm.store.ClearBootOverride(context.Background()))
 	saved, err = vmrm.GetBootOverride(context.Background())
 	require.NoError(t, err)
 	require.Nil(t, saved)
+}
+
+func TestVirtualMachineResourceManager_GetBootFlagsPropagatesVMAndStateErrors(t *testing.T) {
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(),
+		store:      &failingStateStore{},
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+	_, err := vmrm.GetBootFlags(context.Background())
+	require.ErrorContains(t, err, "failed to get VM")
+
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("disk", util.Ptr[uint](1)).
+		Build()
+	stateErr := errors.New("state unavailable")
+	vmrm.virtClient = kubevirtfake.NewSimpleClientset(vm)
+	vmrm.store = &failingStateStore{getErr: stateErr}
+	_, err = vmrm.GetBootFlags(context.Background())
+	require.ErrorIs(t, err, stateErr)
+}
+
+func TestVirtualMachineResourceManager_GetBootFlagsTreatsMissingBootOrderAsNoOverride(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("disk", nil).
+		Build()
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(vm),
+		store: &failingStateStore{override: &bmcv1.BootOverrideStatus{
+			Mode:  bmcv1.BootOverrideModePersistent,
+			VMUID: "vm-uid",
+		}},
+		namespace: testNamespace,
+		name:      testVMName,
+	}
+
+	state, err := vmrm.GetBootFlags(context.Background())
+	require.NoError(t, err)
+	require.False(t, state.OverrideActive)
+	require.Empty(t, state.BootDevice)
+}
+
+func TestVirtualMachineResourceManager_SetBootDevicePersistsBeforePatchingVM(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("disk", util.Ptr[uint](1)).
+		WithInterface("iface", util.Ptr[uint](2)).
+		Build()
+	vm.UID = types.UID("vm-uid")
+	virtClient := kubevirtfake.NewSimpleClientset(vm)
+	store := &failingStateStore{saveErr: errors.New("persistence unavailable")}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	err := vmrm.SetBootDevice(context.Background(), BootDevicePxe, &BootOptions{Mode: BootModeOneshot})
+	require.ErrorContains(t, err, "persistence unavailable")
+
+	unchanged, err := virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](1), unchanged.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+	require.Equal(t, util.Ptr[uint](2), unchanged.Spec.Template.Spec.Domain.Devices.Interfaces[0].BootOrder)
+
+	store.saveErr = nil
+	require.NoError(t, vmrm.SetBootDevice(context.Background(), BootDevicePxe, &BootOptions{Mode: BootModeOneshot}))
+	require.Equal(t, map[string]uint{
+		"disk:disk":       1,
+		"interface:iface": 2,
+	}, store.override.BootOrders)
+}
+
+func TestVirtualMachineResourceManager_SetBootDeviceRestoresStateWhenPatchFails(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("disk", util.Ptr[uint](1)).
+		WithInterface("iface", util.Ptr[uint](2)).
+		Build()
+	vm.UID = types.UID("vm-uid")
+	virtClient := kubevirtfake.NewSimpleClientset(vm)
+	virtClient.PrependReactor("patch", "virtualmachines", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("patch rejected")
+	})
+	previous := &bmcv1.BootOverrideStatus{
+		Mode:  bmcv1.BootOverrideModePersistent,
+		VMUID: string(vm.UID),
+	}
+	store := &failingStateStore{override: previous.DeepCopy()}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	err := vmrm.SetBootDevice(context.Background(), BootDevicePxe, &BootOptions{Mode: BootModeOneshot})
+	require.ErrorContains(t, err, "patch rejected")
+	require.Equal(t, previous, store.override)
 }
 
 func TestVirtualMachineResourceManager_SetBootDevicePersistentSavesOverrideMarker(t *testing.T) {
@@ -1772,19 +1821,19 @@ func TestVirtualMachineResourceManager_SetBootDevicePersistentSavesOverrideMarke
 		WithDisk("disk", nil).
 		WithInterface("iface", nil).
 		Build()
+	vm.UID = types.UID("vm-uid")
 	fakeVirtClient := kubevirtfake.NewSimpleClientset(vm)
 
 	fakeBMCClient := newTestBMCClient(newTestBMC())
 
 	vmrm := &VirtualMachineResourceManager{
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
-	require.NoError(t, vmrm.saveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
+	require.NoError(t, vmrm.store.SaveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
 		Mode:       bmcv1.BootOverrideModeOneshot,
 		BootOrders: map[string]uint{"disk:disk": 1},
 	}))
@@ -1808,20 +1857,21 @@ func TestVirtualMachineResourceManager_OneshotOverwritesPersistentMarker(t *test
 		WithDisk("disk", nil).
 		WithInterface("iface", nil).
 		Build()
+	vm.UID = types.UID("vm-uid")
 	fakeVirtClient := kubevirtfake.NewSimpleClientset(vm)
 
 	fakeBMCClient := newTestBMCClient(newTestBMC())
 
 	vmrm := &VirtualMachineResourceManager{
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
-	require.NoError(t, vmrm.saveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
-		Mode: bmcv1.BootOverrideModePersistent,
+	require.NoError(t, vmrm.store.SaveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
+		Mode:  bmcv1.BootOverrideModePersistent,
+		VMUID: string(vm.UID),
 	}))
 	saved, err := vmrm.GetBootOverride(context.Background())
 	require.NoError(t, err)
@@ -1851,10 +1901,9 @@ func TestVirtualMachineResourceManager_SetBootDeviceAllowsFirmwareTemplateChange
 
 	vmrm := &VirtualMachineResourceManager{
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	err := vmrm.SetBootDevice(context.Background(), BootDevicePxe, &BootOptions{Mode: BootModeOneshot, EFIBoot: util.Ptr(true)})
@@ -1890,15 +1939,15 @@ func TestVirtualMachineResourceManager_DoubleOneshotPreservesOriginalBackup(t *t
 		WithCDRomDisk("cdrom", util.Ptr[uint](3)).
 		WithInterface("iface", util.Ptr[uint](2)).
 		Build()
+	vm.UID = types.UID("vm-uid")
 	fakeVirtClient := kubevirtfake.NewSimpleClientset(vm)
 	fakeBMCClient := newTestBMCClient(newTestBMC())
 
 	vmrm := &VirtualMachineResourceManager{
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	err := vmrm.SetBootDevice(context.Background(), BootDevicePxe, &BootOptions{Mode: BootModeOneshot})
@@ -1953,15 +2002,15 @@ func TestVirtualMachineResourceManager_DoubleOneshotRestoresLateFirmwareChange(t
 		WithCDRomDisk("cdrom", util.Ptr[uint](2)).
 		WithInterface("iface", util.Ptr[uint](3)).
 		Build()
+	vm.UID = types.UID("vm-uid")
 	fakeVirtClient := kubevirtfake.NewSimpleClientset(vm)
 	fakeBMCClient := newTestBMCClient(newTestBMC())
 
 	vmrm := &VirtualMachineResourceManager{
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	require.NoError(t, vmrm.SetBootDevice(context.Background(), BootDevicePxe, &BootOptions{Mode: BootModeOneshot}))
@@ -2203,10 +2252,12 @@ func TestVirtualMachineResourceManager_ClearBootOverrides_WithBackup(t *testing.
 		WithDisk("containerdisk", util.Ptr[uint](2)).
 		WithCDRomDisk("cdrom", util.Ptr[uint](3)).
 		Build()
+	vm.UID = types.UID("vm-current")
 
 	bmc := newTestBMC()
 	bmc.Status.BootOverride = &bmcv1.BootOverrideStatus{
-		Mode: bmcv1.BootOverrideModeOneshot,
+		Mode:  bmcv1.BootOverrideModeOneshot,
+		VMUID: string(vm.UID),
 		BootOrders: map[string]uint{
 			"interface:default":  0,
 			"disk:containerdisk": 0,
@@ -2219,10 +2270,9 @@ func TestVirtualMachineResourceManager_ClearBootOverrides_WithBackup(t *testing.
 
 	vmrm := &VirtualMachineResourceManager{
 		virtClient: fakeVirtClient,
-		bmcClient:  fakeBMCClient,
+		store:      NewClusterStateStore(fakeBMCClient, testNamespace, testBMCName),
 		namespace:  testNamespace,
 		name:       testVMName,
-		bmcName:    testBMCName,
 	}
 
 	err := vmrm.ClearBootOverrides(context.Background())
@@ -2241,4 +2291,367 @@ func TestVirtualMachineResourceManager_ClearBootOverrides_WithBackup(t *testing.
 	err = fakeBMCClient.Get(context.TODO(), client.ObjectKey{Namespace: testNamespace, Name: testBMCName}, updatedBMC)
 	require.NoError(t, err)
 	require.Nil(t, updatedBMC.Status.BootOverride, "status.bootOverride should be cleared")
+}
+
+func TestVirtualMachineResourceManager_ClearBootOverridesDoesNotRestoreIntoReplacementVM(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](7)).
+		Build()
+	vm.UID = types.UID("vm-new")
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMUID:      "vm-deleted",
+		VMIUID:     "vmi-old",
+		BootOrders: map[string]uint{"disk:root": 1},
+	}}
+	virtClient := kubevirtfake.NewSimpleClientset(vm)
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	require.NoError(t, vmrm.ClearBootOverrides(context.Background()))
+	require.Nil(t, store.override)
+
+	current, err := virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](7), current.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+}
+
+func TestVirtualMachineResourceManager_ClearBootOverridesRestoresLegacyOneshot(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](7)).
+		Build()
+	vm.UID = types.UID("vm-current")
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMIUID:     "vmi-old",
+		BootOrders: map[string]uint{"disk:root": 1},
+	}}
+	virtClient := kubevirtfake.NewSimpleClientset(vm)
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	require.NoError(t, vmrm.ClearBootOverrides(context.Background()))
+	require.Nil(t, store.override)
+
+	current, err := virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](1), current.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideClearsStateWhenVMDeleted(t *testing.T) {
+	store := NewClusterStateStore(newTestBMCClient(newTestBMC()), testNamespace, testBMCName)
+	require.NoError(t, store.SaveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMIUID:     "uid-old",
+		BootOrders: map[string]uint{"disk:root": 1},
+	}))
+
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(),
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	pending, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.False(t, pending)
+
+	override, err := store.GetBootOverride(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, override)
+}
+
+func TestVirtualMachineResourceManager_NewOneshotDuringRestoreWindowTargetsNextVMI(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](2)).
+		WithCDRomDisk("cdrom", util.Ptr[uint](3)).
+		WithInterface("default", util.Ptr[uint](1)).
+		Build()
+	vm.UID = types.UID("vm-uid")
+	currentVMI := &kubevirtv1.VirtualMachineInstance{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       types.UID("uid-current"),
+		},
+	}
+	virtClient := kubevirtfake.NewSimpleClientset(vm, currentVMI)
+
+	store := NewClusterStateStore(newTestBMCClient(newTestBMC()), testNamespace, testBMCName)
+	require.NoError(t, store.SaveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
+		Mode:             bmcv1.BootOverrideModeOneshot,
+		VMUID:            "vm-uid",
+		VMIUID:           "uid-previous",
+		OriginalFirmware: bmcv1.FirmwareTypeLegacy,
+		BootOrders: map[string]uint{
+			"disk:root":         1,
+			"cdrom:cdrom":       3,
+			"interface:default": 2,
+		},
+	}))
+
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	// The previous oneshot booted as uid-current, but the polling restore has
+	// not run yet. This request must become the override for the next VMI.
+	require.NoError(t, vmrm.SetBootDevice(context.Background(), BootDeviceCd, &BootOptions{Mode: BootModeOneshot}))
+
+	override, err := store.GetBootOverride(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "vm-uid", override.VMUID)
+	require.Equal(t, "uid-current", override.VMIUID)
+	require.Equal(t, map[string]uint{
+		"disk:root":         1,
+		"cdrom:cdrom":       3,
+		"interface:default": 2,
+	}, override.BootOrders, "the original backup must survive across consecutive oneshots")
+
+	pending, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.True(t, pending, "the new oneshot must wait for a newer VMI")
+
+	require.NoError(t, virtClient.KubevirtV1().VirtualMachineInstances(testNamespace).
+		Delete(context.Background(), testVMName, metav1.DeleteOptions{}))
+	_, err = virtClient.KubevirtV1().VirtualMachineInstances(testNamespace).
+		Create(context.Background(), &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: testNamespace,
+				Name:      testVMName,
+				UID:       types.UID("uid-next"),
+			},
+		}, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	pending, err = vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.False(t, pending)
+
+	restoredVM, err := virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](1), restoredVM.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+	require.Equal(t, util.Ptr[uint](3), restoredVM.Spec.Template.Spec.Domain.Devices.Disks[1].BootOrder)
+	require.Equal(t, util.Ptr[uint](2), restoredVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].BootOrder)
+
+	override, err = store.GetBootOverride(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, override)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideDoesNotRestoreIntoRecreatedVM(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](7)).
+		Build()
+	vm.UID = types.UID("vm-new")
+	vmi := &kubevirtv1.VirtualMachineInstance{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       types.UID("vmi-new"),
+		},
+	}
+	virtClient := kubevirtfake.NewSimpleClientset(vm, vmi)
+
+	store := NewClusterStateStore(newTestBMCClient(newTestBMC()), testNamespace, testBMCName)
+	require.NoError(t, store.SaveBootOverride(context.Background(), &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMUID:      "vm-deleted",
+		VMIUID:     "vmi-old",
+		BootOrders: map[string]uint{"disk:root": 1},
+	}))
+
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	pending, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.False(t, pending)
+
+	currentVM, err := virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](7), currentVM.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+
+	override, err := store.GetBootOverride(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, override)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideAdoptsLegacyOneshotWhileOffline(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](7)).
+		Build()
+	vm.UID = types.UID("vm-current")
+	virtClient := kubevirtfake.NewSimpleClientset(vm)
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMIUID:     "vmi-old",
+		BootOrders: map[string]uint{"disk:root": 1},
+	}}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: virtClient,
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	active, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.True(t, active)
+	require.Equal(t, string(vm.UID), store.override.VMUID)
+
+	current, err := virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](7), current.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideAdoptsAndRestoresConsumedLegacyOneshot(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](7)).
+		Build()
+	vm.UID = types.UID("vm-current")
+	vmi := &kubevirtv1.VirtualMachineInstance{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       types.UID("vmi-next"),
+		},
+	}
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMIUID:     "vmi-old",
+		BootOrders: map[string]uint{"disk:root": 1},
+	}}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(vm, vmi),
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	active, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.False(t, active)
+	require.Nil(t, store.override)
+	require.NotEmpty(t, store.saved)
+	require.Equal(t, string(vm.UID), store.saved[0].VMUID)
+	require.Equal(t, bmcv1.BootOverrideModeOneshot, store.saved[0].Mode)
+
+	current, err := vmrm.virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](1), current.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideClearsLegacyPersistentMarkerWithoutVM(t *testing.T) {
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode: bmcv1.BootOverrideModePersistent,
+	}}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(),
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	active, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.False(t, active)
+	require.Nil(t, store.override)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideAdoptsLegacyPersistentMarker(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](1)).
+		Build()
+	vm.UID = types.UID("vm-current")
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode: bmcv1.BootOverrideModePersistent,
+	}}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(vm),
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	active, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.True(t, active)
+	require.Equal(t, string(vm.UID), store.override.VMUID)
+	require.Equal(t, bmcv1.BootOverrideModePersistent, store.override.Mode)
+}
+
+func TestVirtualMachineResourceManager_ReconcileBootOverrideMigratesVerifiableLegacyState(t *testing.T) {
+	vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+		WithDisk("root", util.Ptr[uint](2)).
+		Build()
+	vm.UID = types.UID("vm-current")
+	vmi := &kubevirtv1.VirtualMachineInstance{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      testVMName,
+			UID:       types.UID("vmi-current"),
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: kubevirtv1.SchemeGroupVersion.String(),
+				Kind:       "VirtualMachine",
+				Name:       testVMName,
+				UID:        vm.UID,
+				Controller: util.Ptr(true),
+			}},
+		},
+	}
+	store := &failingStateStore{override: &bmcv1.BootOverrideStatus{
+		Mode:       bmcv1.BootOverrideModeOneshot,
+		VMIUID:     string(vmi.UID),
+		BootOrders: map[string]uint{"disk:root": 1},
+	}}
+	vmrm := &VirtualMachineResourceManager{
+		virtClient: kubevirtfake.NewSimpleClientset(vm, vmi),
+		store:      store,
+		namespace:  testNamespace,
+		name:       testVMName,
+	}
+
+	active, err := vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.True(t, active)
+	require.Equal(t, string(vm.UID), store.override.VMUID)
+
+	virtClient := vmrm.virtClient.KubevirtV1().VirtualMachineInstances(testNamespace)
+	require.NoError(t, virtClient.Delete(context.Background(), testVMName, metav1.DeleteOptions{}))
+	nextVMI := vmi.DeepCopy()
+	nextVMI.UID = types.UID("vmi-next")
+	_, err = virtClient.Create(context.Background(), nextVMI, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	active, err = vmrm.ReconcileBootOverride(context.Background())
+	require.NoError(t, err)
+	require.False(t, active)
+	require.Nil(t, store.override)
+	current, err := vmrm.virtClient.KubevirtV1().VirtualMachines(testNamespace).
+		Get(context.Background(), testVMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, util.Ptr[uint](1), current.Spec.Template.Spec.Domain.Devices.Disks[0].BootOrder)
 }

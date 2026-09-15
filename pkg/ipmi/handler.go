@@ -146,7 +146,7 @@ func (c vmChassis) SetBootFlags(ctx context.Context, flags *types.BootOptionPara
 func (c vmChassis) GetBootFlags(ctx context.Context) (*types.BootOptionParam_BootFlags, error) {
 	state, err := c.rm.GetBootFlags(ctx)
 	if err != nil {
-		return nil, hal.ErrNotSupported
+		return nil, err
 	}
 	if state == nil {
 		return nil, hal.ErrNotSupported

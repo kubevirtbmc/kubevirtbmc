@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"slices"
 	"time"
 
 	kvclient "kubevirt.io/client-go/kubevirt"
@@ -81,6 +82,15 @@ func ensureAgentTestEnv(ctx context.Context, namespace string, k8sClient client.
 
 	if err := env.ensureVMExists(ctx, k8sClient, namespace); err != nil {
 		return nil, err
+	}
+
+	// Standalone mode has no Secret/VirtualMachineBMC; credentials are passed
+	// to the agent as environment variables and the test owns the Deployment.
+	if standaloneMode {
+		env.Username = standaloneUsername
+		env.Password = standalonePassword
+		waitForAgentDeploymentReady(ctx, k8sClient, namespace, agentDeploymentName)
+		return env, nil
 	}
 
 	if err := env.ensureSecretExists(ctx, k8sClient, namespace); err != nil {
@@ -219,8 +229,16 @@ func verifyVMBootOrder(ctx context.Context, k8sClient client.Client, namespace s
 }
 
 // resetBootState clears all bootOrder fields and firmware from the test VM
-// and clears status.bootOverride, so each boot test starts from a clean slate.
+// and clears the recorded boot override, so each boot test starts from a
+// clean slate.
 func resetBootState(ctx context.Context, k8sClient client.Client, namespace string) {
+	// Standalone: clear the override through the Redfish protocol first, so
+	// ClearBootOverrides can't restore backed-up boot orders after the VM
+	// cleanup below removed them.
+	if standaloneMode {
+		clearStandaloneBootOverride(ctx, namespace)
+	}
+
 	vm := &kubevirtv1.VirtualMachine{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vm); err != nil {
 		return
@@ -274,6 +292,12 @@ func resetBootState(ctx context.Context, k8sClient client.Client, namespace stri
 	if len(vmPatch) > 0 {
 		patchJSON, _ := json.Marshal(vmPatch)
 		_ = k8sClient.Patch(ctx, vm, client.RawPatch(types.JSONPatchType, patchJSON))
+	}
+
+	// Standalone state was already cleared through the protocol above; there
+	// is no VirtualMachineBMC CR to reset.
+	if standaloneMode {
+		return
 	}
 
 	bmc := &bmcv1.VirtualMachineBMC{}
@@ -457,9 +481,14 @@ func verifyVMFirmware(ctx context.Context, k8sClient client.Client, namespace st
 		"VM %s/%s firmware should be EFI=%v", namespace, agentVMName, expectEFI)
 }
 
-// verifyBMCBootOverride checks whether status.bootOverride exists or not on
-// the VirtualMachineBMC CR.
+// verifyBMCBootOverride checks whether a boot override is recorded — on
+// status.bootOverride of the VirtualMachineBMC CR, or through the IPMI
+// protocol in standalone mode (where the state lives in the agent's file).
 func verifyBMCBootOverride(ctx context.Context, k8sClient client.Client, namespace string, shouldExist bool) {
+	if standaloneMode {
+		verifyStandaloneBootOverride(ctx, namespace, shouldExist)
+		return
+	}
 	Eventually(func() bool {
 		bmc := &bmcv1.VirtualMachineBMC{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {
@@ -474,6 +503,10 @@ func verifyBMCBootOverride(ctx context.Context, k8sClient client.Client, namespa
 // expected persistence mode. A presence-only check cannot catch a mis-parsed
 // persist bit: the override is still written, just with the wrong mode.
 func verifyBMCBootOverrideMode(ctx context.Context, k8sClient client.Client, namespace string, mode bmcv1.BootOverrideMode) {
+	if standaloneMode {
+		verifyStandaloneBootOverrideMode(ctx, namespace, mode)
+		return
+	}
 	Eventually(func() bmcv1.BootOverrideMode {
 		bmc := &bmcv1.VirtualMachineBMC{}
 		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentBMCName}, bmc); err != nil {
@@ -528,10 +561,74 @@ func waitForAgentDeploymentReady(ctx context.Context, k8sClient client.Client, n
 			return false
 		}
 
-		return deployment.Status.UpdatedReplicas >= desiredReplicas &&
-			deployment.Status.ReadyReplicas >= desiredReplicas &&
-			deployment.Status.AvailableReplicas >= desiredReplicas
+		// Exact counts, not >=: with the default RollingUpdate surge, the old
+		// and new pods are briefly both Ready and both in the Service
+		// endpoints. Returning on >= would let a following request hit the old
+		// pod (e.g. stale --storage-class args).
+		return deployment.Status.UpdatedReplicas == desiredReplicas &&
+			deployment.Status.ReadyReplicas == desiredReplicas &&
+			deployment.Status.AvailableReplicas == desiredReplicas
 	}, agentTestTimeout, agentTestInterval).Should(BeTrue(), "agent deployment %q should become ready", deploymentName)
+}
+
+// waitForAgentArgs waits until the controller has rendered the given args into
+// the agent Deployment's pod template and rolled out the new pod. The args
+// check must come first: the old ReplicaSet stays Ready until the updated spec
+// lands, so a readiness-only wait can return before the change is applied.
+func waitForAgentArgs(ctx context.Context, k8sClient client.Client, namespace, deploymentName string, want ...string) {
+	Eventually(func() bool {
+		var deployment appsv1.Deployment
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, &deployment); err != nil {
+			return false
+		}
+		args := deployment.Spec.Template.Spec.Containers[0].Args
+		for _, w := range want {
+			if !slices.Contains(args, w) {
+				return false
+			}
+		}
+		return deployment.Status.ObservedGeneration >= deployment.Generation
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"agent deployment %q should render args %v", deploymentName, want)
+	waitForAgentDeploymentReady(ctx, k8sClient, namespace, deploymentName)
+}
+
+// waitForAgentTLSArgs is waitForAgentArgs for redfish.virtualMedia.tls: it
+// exact-matches the TLS subset of the rendered args, so it also waits for
+// flags from a previous spec to disappear (presence-only checks can't).
+func waitForAgentTLSArgs(ctx context.Context, k8sClient client.Client, namespace string, tls *bmcv1.VirtualMediaTLSSpec) {
+	var want []string
+	if tls != nil {
+		if tls.InsecureSkipVerify != nil && *tls.InsecureSkipVerify {
+			want = append(want, "--virtual-media-insecure-skip-verify")
+		}
+		if ref := tls.CABundleConfigMapRef; ref != nil && ref.Name != "" {
+			want = append(want, "--virtual-media-ca-bundle-configmap", ref.Name)
+		}
+	}
+	renderedTLSArgs := func(args []string) []string {
+		var out []string
+		for i, a := range args {
+			if a == "--virtual-media-insecure-skip-verify" {
+				out = append(out, a)
+			}
+			if a == "--virtual-media-ca-bundle-configmap" && i+1 < len(args) {
+				out = append(out, a, args[i+1])
+			}
+		}
+		return out
+	}
+	Eventually(func() bool {
+		var deployment appsv1.Deployment
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentDeploymentName}, &deployment); err != nil {
+			return false
+		}
+		args := deployment.Spec.Template.Spec.Containers[0].Args
+		return slices.Equal(renderedTLSArgs(args), want) &&
+			deployment.Status.ObservedGeneration >= deployment.Generation
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"agent deployment %q should render TLS args %v", agentDeploymentName, want)
+	waitForAgentDeploymentReady(ctx, k8sClient, namespace, agentDeploymentName)
 }
 
 func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namespace, name string) {
@@ -563,6 +660,86 @@ func newStorageClass(name string) *storagev1.StorageClass {
 	}
 }
 
+func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, namespace, name string) {
+	Eventually(func() bool {
+		dv := &cdiv1.DataVolume{}
+		err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv)
+		return apierrors.IsNotFound(err)
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"DataVolume %s/%s should be deleted", namespace, name)
+}
+
+func verifyVMHasDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName, dvName string) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+		for _, v := range vm.Spec.Template.Spec.Volumes {
+			if v.DataVolume != nil && v.DataVolume.Name == dvName {
+				return true
+			}
+		}
+		return false
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s should have a volume with DataVolume source %q", namespace, vmName, dvName)
+}
+
+func verifyVMHasNoDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName string) {
+	Eventually(func() bool {
+		vm := &kubevirtv1.VirtualMachine{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmName}, vm); err != nil {
+			return false
+		}
+		if vm.Spec.Template == nil {
+			return false
+		}
+		for _, v := range vm.Spec.Template.Spec.Volumes {
+			if v.DataVolume != nil {
+				return false
+			}
+		}
+		return true
+	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
+		"VM %s/%s should have no DataVolume volumes", namespace, vmName)
+}
+
+// waitForGuestAgent blocks until the QEMU guest agent is connected on the
+// test VMI.
+func waitForGuestAgent(ctx context.Context, k8sClient client.Client, namespace string) {
+	Eventually(func() bool {
+		vmi := &kubevirtv1.VirtualMachineInstance{}
+		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vmi); err != nil {
+			return false
+		}
+		for _, cond := range vmi.Status.Conditions {
+			if cond.Type == kubevirtv1.VirtualMachineInstanceAgentConnected && cond.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}, 10*time.Minute, 5*time.Second).Should(BeTrue(),
+		"guest agent should connect for %s/%s", namespace, agentVMName)
+}
+
+// triggerGuestReboot sends a soft reboot through the QEMU guest agent.
+// With rebootPolicy=Terminate on the VMI, KubeVirt destroys the VMI and
+// creates a new one, consuming the oneshot override.
+func triggerGuestReboot(ctx context.Context, cfg *rest.Config, k8sClient client.Client, namespace string) {
+	waitForGuestAgent(ctx, k8sClient, namespace)
+
+	virtClient, err := kvclient.NewForConfig(cfg)
+	if err != nil {
+		Expect(err).NotTo(HaveOccurred())
+		return
+	}
+	err = virtClient.KubevirtV1().VirtualMachineInstances(namespace).SoftReboot(ctx, agentVMName)
+	// SoftReboot reports an error because the VMI is destroyed mid-call.
+	_ = err
+}
 func verifyDataVolumeInsecureSkipVerify(ctx context.Context, k8sClient client.Client, namespace, name string, want bool) {
 	Eventually(func() bool {
 		dv := &cdiv1.DataVolume{}
@@ -796,85 +973,4 @@ func verifyDataVolumeCertConfigMap(ctx context.Context, k8sClient client.Client,
 		return dv.Spec.Source.HTTP.CertConfigMap
 	}, agentTestTimeout, agentTestInterval).Should(Equal(want),
 		"DataVolume %s/%s should reference CertConfigMap %q", namespace, name, want)
-}
-
-func verifyDataVolumeDeleted(ctx context.Context, k8sClient client.Client, namespace, name string) {
-	Eventually(func() bool {
-		dv := &cdiv1.DataVolume{}
-		err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, dv)
-		return apierrors.IsNotFound(err)
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
-		"DataVolume %s/%s should be deleted", namespace, name)
-}
-
-func verifyVMHasDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName, dvName string) {
-	Eventually(func() bool {
-		vm := &kubevirtv1.VirtualMachine{}
-		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmName}, vm); err != nil {
-			return false
-		}
-		if vm.Spec.Template == nil {
-			return false
-		}
-		for _, v := range vm.Spec.Template.Spec.Volumes {
-			if v.DataVolume != nil && v.DataVolume.Name == dvName {
-				return true
-			}
-		}
-		return false
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
-		"VM %s/%s should have a volume with DataVolume source %q", namespace, vmName, dvName)
-}
-
-func verifyVMHasNoDataVolumeVolume(ctx context.Context, k8sClient client.Client, namespace, vmName string) {
-	Eventually(func() bool {
-		vm := &kubevirtv1.VirtualMachine{}
-		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmName}, vm); err != nil {
-			return false
-		}
-		if vm.Spec.Template == nil {
-			return false
-		}
-		for _, v := range vm.Spec.Template.Spec.Volumes {
-			if v.DataVolume != nil {
-				return false
-			}
-		}
-		return true
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
-		"VM %s/%s should have no DataVolume volumes", namespace, vmName)
-}
-
-// waitForGuestAgent blocks until the QEMU guest agent is connected on the
-// test VMI.
-func waitForGuestAgent(ctx context.Context, k8sClient client.Client, namespace string) {
-	Eventually(func() bool {
-		vmi := &kubevirtv1.VirtualMachineInstance{}
-		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentVMName}, vmi); err != nil {
-			return false
-		}
-		for _, cond := range vmi.Status.Conditions {
-			if cond.Type == kubevirtv1.VirtualMachineInstanceAgentConnected && cond.Status == corev1.ConditionTrue {
-				return true
-			}
-		}
-		return false
-	}, 10*time.Minute, 5*time.Second).Should(BeTrue(),
-		"guest agent should connect for %s/%s", namespace, agentVMName)
-}
-
-// triggerGuestReboot sends a soft reboot through the QEMU guest agent.
-// With rebootPolicy=Terminate on the VMI, KubeVirt destroys the VMI and
-// creates a new one, consuming the oneshot override.
-func triggerGuestReboot(ctx context.Context, cfg *rest.Config, k8sClient client.Client, namespace string) {
-	waitForGuestAgent(ctx, k8sClient, namespace)
-
-	virtClient, err := kvclient.NewForConfig(cfg)
-	if err != nil {
-		Expect(err).NotTo(HaveOccurred())
-		return
-	}
-	err = virtClient.KubevirtV1().VirtualMachineInstances(namespace).SoftReboot(ctx, agentVMName)
-	// SoftReboot reports an error because the VMI is destroyed mid-call.
-	_ = err
 }

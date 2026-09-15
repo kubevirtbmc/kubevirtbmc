@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
@@ -46,11 +47,39 @@ var (
 	}
 )
 
+type bootOverrideCoordinator struct {
+	mu      sync.Mutex
+	changed chan struct{}
+}
+
+func newBootOverrideCoordinator() bootOverrideCoordinator {
+	return bootOverrideCoordinator{changed: make(chan struct{}, 1)}
+}
+
 type VirtualMachineResourceManager struct {
 	virtClient kvclient.Interface
 	cdiClient  cdiclient.Interface
-	bmcClient  client.Client
-	bmcName    string
+	store      StateStore
+	// storageClass is the agent's --storage-class flag value for virtual media
+	// DataVolumes (rendered from the CR by the controller in managed mode);
+	// "" falls back to the cluster default.
+	storageClass string
+	// volumeMode and sizeMarginPercent are the --volume-mode and
+	// --datavolume-size-margin flag values for virtual media DataVolumes. In
+	// managed mode the controller renders them from the CR; in standalone
+	// mode the user passes them directly.
+	volumeMode        *corev1.PersistentVolumeMode
+	sizeMarginPercent int
+	// insecureSkipVerify and caBundleConfigMap are the
+	// --virtual-media-insecure-skip-verify and
+	// --virtual-media-ca-bundle-configmap flag values for fetching virtual
+	// media images over https; rendered from the CR's redfish.virtualMedia.tls
+	// in managed mode, passed directly in standalone mode.
+	insecureSkipVerify bool
+	caBundleConfigMap  string
+	// kubeClient reads the CA bundle ConfigMap at insert time; the agent sizes
+	// the image itself, unlike CDI which resolves CertConfigMap server-side.
+	kubeClient client.Client
 
 	namespace  string
 	name       string
@@ -59,19 +88,35 @@ type VirtualMachineResourceManager struct {
 	computerSystem ComputerSystemInterface
 	manager        ManagerInterface
 	virtualMedia   VirtualMediaInterface
+
+	// bootOverrides serializes Set, Clear and Reconcile for both persistence
+	// backends. Recreate deployments guarantee this coordinator is the only
+	// active writer in managed mode.
+	bootOverrides bootOverrideCoordinator
 }
 
 func NewVirtualMachineResourceManager(
 	virtClient kvclient.Interface,
 	cdiClient cdiclient.Interface,
-	bmcClient client.Client,
-	bmcName string,
+	store StateStore,
+	kubeClient client.Client,
+	storageClass string,
+	volumeMode *corev1.PersistentVolumeMode,
+	sizeMarginPercent int,
+	insecureSkipVerify bool,
+	caBundleConfigMap string,
 ) *VirtualMachineResourceManager {
 	return &VirtualMachineResourceManager{
-		virtClient: virtClient,
-		cdiClient:  cdiClient,
-		bmcClient:  bmcClient,
-		bmcName:    bmcName,
+		virtClient:         virtClient,
+		cdiClient:          cdiClient,
+		store:              store,
+		kubeClient:         kubeClient,
+		storageClass:       storageClass,
+		volumeMode:         volumeMode,
+		sizeMarginPercent:  sizeMarginPercent,
+		insecureSkipVerify: insecureSkipVerify,
+		caBundleConfigMap:  caBundleConfigMap,
+		bootOverrides:      newBootOverrideCoordinator(),
 	}
 }
 
@@ -217,60 +262,26 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		return err
 	}
 
-	// A missing BMC client/object means no StorageClassName/VolumeMode/size-margin/VirtualMedia
-	// override is configured, not a failure.
-	var (
-		storageClassName   string
-		volumeMode         *corev1.PersistentVolumeMode
-		sizeMarginPercent  int
-		insecureSkipVerify bool
-		caBundleConfigMap  string
-	)
-
-	var bmc bmcv1.VirtualMachineBMC
-	if m.bmcClient != nil {
-		err := m.bmcClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: m.bmcName}, &bmc)
-		if err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
-		if err == nil {
-			if name := bmc.Spec.VirtualMediaStorageClassName(); name != nil {
-				storageClassName = *name
-			}
-			volumeMode = bmc.Spec.VirtualMediaVolumeMode()
-			if margin, ok := bmc.Annotations[bmcv1.AnnotationDataVolumeSizeMargin]; ok {
-				parsed, parseErr := strconv.Atoi(margin)
-				if parseErr != nil {
-					accesslog.Logger(ctx).WithError(parseErr).Warnf("invalid %s annotation %q on BMC %s, defaulting to 0", bmcv1.AnnotationDataVolumeSizeMargin, margin, m.bmcName)
-				} else {
-					sizeMarginPercent = parsed
-				}
-			}
-			if tls := bmc.Spec.RedfishVirtualMediaTLS(); tls != nil {
-				if tls.InsecureSkipVerify != nil {
-					insecureSkipVerify = *tls.InsecureSkipVerify
-				}
-				if tls.CABundleConfigMapRef != nil {
-					caBundleConfigMap = tls.CABundleConfigMapRef.Name
-				}
-			}
-		}
-	}
-
+	// The agent sizes the image over its own HTTPS connection, so unlike CDI
+	// (which resolves CertConfigMap server-side) it needs the CA bundle bytes.
 	var caBundle []byte
-	if caBundleConfigMap != "" {
+	if m.caBundleConfigMap != "" {
 		var cm corev1.ConfigMap
-		if err := m.bmcClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: caBundleConfigMap}, &cm); err != nil {
-			return fmt.Errorf("failed to get CA bundle ConfigMap %q: %w", caBundleConfigMap, err)
+		if err := m.kubeClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: m.caBundleConfigMap}, &cm); err != nil {
+			return fmt.Errorf("failed to get CA bundle ConfigMap %q: %w", m.caBundleConfigMap, err)
 		}
 		caBundle = []byte(cm.Data[util.CABundleConfigMapKey])
 	}
 
-	imageSize, err := util.GetRemoteFileSize(imageURL, insecureSkipVerify, caBundle)
+	imageSize, err := util.GetRemoteFileSize(imageURL, m.insecureSkipVerify, caBundle)
 	if err != nil {
 		return err
 	}
-	imageSize = util.WithImportMargin(imageSize, sizeMarginPercent)
+
+	// Virtual media settings come from the agent flags only. In managed mode
+	// the controller renders the CR values into them; in standalone mode the
+	// user passes them directly.
+	imageSize = util.WithImportMargin(imageSize, m.sizeMarginPercent)
 
 	// Create DataVolume
 	dv := util.ConstructDataVolume(util.DataVolumeOptions{
@@ -278,10 +289,10 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		Name:               m.name,
 		URL:                imageURL,
 		Size:               imageSize,
-		StorageClassName:   storageClassName,
-		VolumeMode:         volumeMode,
-		InsecureSkipVerify: insecureSkipVerify,
-		CertConfigMap:      caBundleConfigMap,
+		StorageClassName:   m.storageClass,
+		VolumeMode:         m.volumeMode,
+		InsecureSkipVerify: m.insecureSkipVerify,
+		CertConfigMap:      m.caBundleConfigMap,
 	})
 	_, err = m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Create(ctx, dv, metav1.CreateOptions{})
 	if err != nil {
@@ -531,17 +542,21 @@ func (m *VirtualMachineResourceManager) restartOrVerify(ctx context.Context, opt
 }
 
 // GetBootFlags derives the current boot flags — boot device (lowest bootOrder),
-// firmware type, and persistence mode — from the VM template spec and
-// status.bootOverride on the VirtualMachineBMC CR.
+// firmware type, and persistence mode — from the VM template spec and the boot
+// override recorded in the state store.
 func (m *VirtualMachineResourceManager) GetBootFlags(ctx context.Context) (*BootFlagsState, error) {
-	disks, ifaces := m.getBootDevices(ctx)
+	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(ctx, m.name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VM for boot flags readback: %w", err)
+	}
+	if vm.Spec.Template == nil {
+		return nil, fmt.Errorf("no template found")
+	}
+	disks := vm.Spec.Template.Spec.Domain.Devices.Disks
+	ifaces := vm.Spec.Template.Spec.Domain.Devices.Interfaces
 	if len(disks) == 0 && len(ifaces) == 0 {
 		return nil, fmt.Errorf("no bootable devices found")
-	}
-
-	bootDev, ok := findFirstBootDevice(disks, ifaces)
-	if !ok {
-		return nil, fmt.Errorf("no boot order set on any device")
 	}
 
 	overrideActive := false
@@ -557,32 +572,17 @@ func (m *VirtualMachineResourceManager) GetBootFlags(ctx context.Context) (*Boot
 		}
 	}
 
-	efi := m.isEFIBoot(ctx)
+	bootDev, ok := findFirstBootDevice(disks, ifaces)
+	if !ok {
+		overrideActive = false
+	}
 
 	return &BootFlagsState{
 		BootDevice:     bootDev,
 		Mode:           mode,
-		EFIBoot:        efi,
+		EFIBoot:        !currentFirmwareIsBios(vm),
 		OverrideActive: overrideActive,
 	}, nil
-}
-
-// getBootDevices fetches the disk and interface lists from the VM template spec.
-// The VM spec is the authoritative source for "what will boot next": KubeVirt
-// does not live-update a running VMI when the VM template changes (the VM is
-// marked RestartRequired instead), so the VMI may be stale after SetBootDevice.
-func (m *VirtualMachineResourceManager) getBootDevices(ctx context.Context) ([]kubevirtv1.Disk, []kubevirtv1.Interface) {
-	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Get(ctx, m.name, metav1.GetOptions{})
-	if err != nil {
-		accesslog.Logger(ctx).WithError(err).Warn("failed to get VM for boot flags readback")
-		return nil, nil
-	}
-	if vm.Spec.Template == nil {
-		return nil, nil
-	}
-	return vm.Spec.Template.Spec.Domain.Devices.Disks,
-		vm.Spec.Template.Spec.Domain.Devices.Interfaces
 }
 
 // findFirstBootDevice finds the device with the lowest bootOrder value and
@@ -622,23 +622,19 @@ func findFirstBootDevice(disks []kubevirtv1.Disk, ifaces []kubevirtv1.Interface)
 	return first.device, true
 }
 
-// isEFIBoot returns true if the VM firmware bootloader is set to EFI.
-func (m *VirtualMachineResourceManager) isEFIBoot(ctx context.Context) bool {
-	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Get(ctx, m.name, metav1.GetOptions{})
-	if err != nil {
-		return false
-	}
-	if vm.Spec.Template == nil {
-		return false
-	}
-	return !currentFirmwareIsBios(vm)
-}
-
 func (m *VirtualMachineResourceManager) SetBootDevice(ctx context.Context, bootDevice BootDevice, opts *BootOptions) error {
+	m.bootOverrides.mu.Lock()
+	defer m.bootOverrides.mu.Unlock()
+
 	// Default to persistent when no options provided.
 	if opts == nil {
 		opts = &BootOptions{Mode: BootModePersistent}
+	}
+
+	if opts.Mode == BootModeOneshot {
+		if _, err := m.reconcileBootOverrideLocked(ctx); err != nil {
+			return fmt.Errorf("failed to reconcile previous boot override: %w", err)
+		}
 	}
 
 	// Fetch the VM only to discover device indices for patch paths.
@@ -657,6 +653,18 @@ func (m *VirtualMachineResourceManager) SetBootDevice(ctx context.Context, bootD
 	ifaces := vm.Spec.Template.Spec.Domain.Devices.Interfaces
 	if len(disks) == 0 && len(ifaces) == 0 {
 		return fmt.Errorf("no bootable devices found")
+	}
+
+	var currentVMIUID string
+	if opts.Mode == BootModeOneshot {
+		vmi, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+			Get(ctx, m.name, metav1.GetOptions{})
+		switch {
+		case err == nil:
+			currentVMIUID = string(vmi.UID)
+		case !apierrors.IsNotFound(err):
+			return fmt.Errorf("failed to get VMI while setting boot override: %w", err)
+		}
 	}
 
 	// Classify disks: CDROM vs regular (Disk, LUN, Floppy)
@@ -716,60 +724,72 @@ func (m *VirtualMachineResourceManager) SetBootDevice(ctx context.Context, bootD
 	if opts.EFIBoot != nil {
 		patchOps = append(patchOps, BuildFirmwarePatch(vm, *opts.EFIBoot)...)
 	}
+	patchOps = guardVMUID(vm, patchOps)
 
+	var patchData []byte
 	if len(patchOps) > 0 {
-		patchData, err := json.Marshal(patchOps)
+		patchData, err = json.Marshal(patchOps)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON patch: %w", err)
 		}
+	}
 
+	previousOverride, err := m.GetBootOverride(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to read existing boot override: %w", err)
+	}
+
+	stateChanged, err := m.handleBootOrderBackup(ctx, vm, disks, ifaces, opts, currentVMIUID, previousOverride)
+	if err != nil {
+		return err
+	}
+
+	if len(patchData) > 0 {
 		if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
 			Patch(ctx, m.name, types.JSONPatchType, patchData, metav1.PatchOptions{}); err != nil {
+			if stateChanged {
+				if rollbackErr := m.restoreBootOverrideStateLocked(ctx, previousOverride); rollbackErr != nil {
+					return fmt.Errorf("failed to patch VM boot devices: %w; failed to restore boot override state: %v", err, rollbackErr)
+				}
+			}
 			return fmt.Errorf("failed to patch VM boot devices: %w", err)
 		}
 	}
 
-	if err := m.handleBootOrderBackup(ctx, vm, disks, ifaces, opts); err != nil {
-		return err
-	}
-
 	m.updateComputerSystemBootState(ctx, bootDevice, opts)
+	m.notifyBootOverrideChanged()
 	return nil
 }
 
-// handleBootOrderBackup saves a oneshot backup or a persistent override marker
-// to status.bootOverride based on the boot mode. Call after the VM patch succeeds.
+// handleBootOrderBackup saves state before the VM patch so failed persistence
+// can never leave changed boot settings without their original backup.
 func (m *VirtualMachineResourceManager) handleBootOrderBackup(
 	ctx context.Context,
 	vm *kubevirtv1.VirtualMachine,
 	disks []kubevirtv1.Disk,
 	ifaces []kubevirtv1.Interface,
 	opts *BootOptions,
-) error {
+	currentVMIUID string,
+	existing *bmcv1.BootOverrideStatus,
+) (bool, error) {
 	switch opts.Mode {
 	case BootModeOneshot:
 		// Preserve an existing oneshot backup (issued before the VM
 		// rebooted): the boot order captured on the first oneshot is the
 		// state to restore. A persistent marker carries no boot order
 		// data, so overwrite it with a fresh backup.
-		existing, err := m.GetBootOverride(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to check for existing boot override: %w", err)
-		}
 		if existing != nil && existing.Mode != bmcv1.BootOverrideModePersistent {
-			return nil
+			return false, nil
 		}
 
 		override := &bmcv1.BootOverrideStatus{
 			Mode:       bmcv1.BootOverrideModeOneshot,
+			VMUID:      string(vm.UID),
 			BootOrders: make(map[string]uint),
 		}
 
 		// A VMI UID change after this backup means the oneshot was consumed.
-		if vmi, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
-			Get(ctx, m.name, metav1.GetOptions{}); err == nil {
-			override.VMIUID = string(vmi.UID)
-		}
+		override.VMIUID = currentVMIUID
 
 		// Recorded unconditionally: a later oneshot (before reboot) may be
 		// the one that changes firmware, and the original value must
@@ -786,17 +806,20 @@ func (m *VirtualMachineResourceManager) handleBootOrderBackup(
 			override.BootOrders[interfaceBackupKey(iface)] = bootOrderValue(iface.BootOrder)
 		}
 
-		if err := m.saveBootOverride(ctx, override); err != nil {
-			return fmt.Errorf("failed to save boot override: %w", err)
+		if err := m.saveBootOverrideLocked(ctx, override); err != nil {
+			return false, fmt.Errorf("failed to save boot override: %w", err)
 		}
+		return true, nil
 	case BootModePersistent:
-		if err := m.saveBootOverride(ctx, &bmcv1.BootOverrideStatus{
-			Mode: bmcv1.BootOverrideModePersistent,
+		if err := m.saveBootOverrideLocked(ctx, &bmcv1.BootOverrideStatus{
+			Mode:  bmcv1.BootOverrideModePersistent,
+			VMUID: string(vm.UID),
 		}); err != nil {
-			return fmt.Errorf("failed to save persistent override marker: %w", err)
+			return false, fmt.Errorf("failed to save persistent override marker: %w", err)
 		}
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 // updateComputerSystemBootState updates the Redfish ComputerSystem model
@@ -865,13 +888,16 @@ func (m *VirtualMachineResourceManager) SetFirmwareMode(ctx context.Context, mod
 
 // ClearBootOverrides cancels the current boot override. If a oneshot backup
 // exists (the override hasn't been consumed yet), it restores the original boot
-// order from the backup. It always clears status.bootOverride and resets the
-// ComputerSystem boot override state to Disabled.
+// order from the backup. It always clears the stored boot override and resets
+// the ComputerSystem boot override state to Disabled.
 //
 // Note: if the override was persistent (no backup), device bootOrders are left
 // as-is since there is no saved "original" state to restore to. The
 // ComputerSystem override is still marked Disabled.
 func (m *VirtualMachineResourceManager) ClearBootOverrides(ctx context.Context) error {
+	m.bootOverrides.mu.Lock()
+	defer m.bootOverrides.mu.Unlock()
+
 	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
 		Get(ctx, m.name, metav1.GetOptions{})
 	if err != nil {
@@ -887,11 +913,21 @@ func (m *VirtualMachineResourceManager) ClearBootOverrides(ctx context.Context) 
 	if err != nil {
 		return fmt.Errorf("failed to read boot override status: %w", err)
 	}
+	if override != nil && override.VMUID != "" && override.VMUID != string(vm.UID) {
+		if err := m.clearBootOverrideLocked(ctx); err != nil {
+			return fmt.Errorf("failed to clear boot override for a different VM: %w", err)
+		}
+		if m.computerSystem != nil {
+			m.computerSystem.ClearBootOverride()
+		}
+		return nil
+	}
 
 	var patchOps []map[string]any
 	if override != nil {
 		patchOps = BuildBootOrderRestorePatch(vm, override)
 	}
+	patchOps = guardVMUID(vm, patchOps)
 
 	if len(patchOps) > 0 {
 		patchData, err := json.Marshal(patchOps)
@@ -905,8 +941,8 @@ func (m *VirtualMachineResourceManager) ClearBootOverrides(ctx context.Context) 
 		}
 	}
 
-	if err := m.clearBootOverride(ctx); err != nil {
-		accesslog.Logger(ctx).WithError(err).Warn("failed to clear boot override status")
+	if err := m.clearBootOverrideLocked(ctx); err != nil {
+		return fmt.Errorf("failed to clear boot override status: %w", err)
 	}
 
 	if m.computerSystem != nil {
@@ -916,43 +952,141 @@ func (m *VirtualMachineResourceManager) ClearBootOverrides(ctx context.Context) 
 	return nil
 }
 
-// saveBootOverride writes the boot override to status.bootOverride on the
-// VirtualMachineBMC CR. Read-modify-write with conflict retry REPLACES the
-// whole bootOverride value — a merge patch would linger stale keys from a
-// previous override (e.g. bootOrders surviving a oneshot→persistent overwrite).
-func (m *VirtualMachineResourceManager) saveBootOverride(ctx context.Context, override *bmcv1.BootOverrideStatus) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		bmc := &bmcv1.VirtualMachineBMC{}
-		if err := m.bmcClient.Get(ctx, client.ObjectKey{Namespace: m.namespace, Name: m.bmcName}, bmc); err != nil {
-			return fmt.Errorf("failed to get VirtualMachineBMC: %w", err)
-		}
-		bmc.Status.BootOverride = override
-		if err := m.bmcClient.Status().Update(ctx, bmc); err != nil {
-			return fmt.Errorf("failed to update VirtualMachineBMC status: %w", err)
-		}
-		return nil
-	})
+// ReconcileBootOverride restores a consumed oneshot and reports whether any
+// override remains active. Managed and standalone agents use the same path;
+// only their StateStore implementations differ.
+func (m *VirtualMachineResourceManager) ReconcileBootOverride(ctx context.Context) (bool, error) {
+	m.bootOverrides.mu.Lock()
+	defer m.bootOverrides.mu.Unlock()
+
+	return m.reconcileBootOverrideLocked(ctx)
 }
 
-// clearBootOverride removes status.bootOverride from the VirtualMachineBMC CR.
-func (m *VirtualMachineResourceManager) clearBootOverride(ctx context.Context) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		bmc := &bmcv1.VirtualMachineBMC{}
-		if err := m.bmcClient.Get(ctx, client.ObjectKey{Namespace: m.namespace, Name: m.bmcName}, bmc); err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil
-			}
-			return fmt.Errorf("failed to get VirtualMachineBMC: %w", err)
+func (m *VirtualMachineResourceManager) reconcileBootOverrideLocked(ctx context.Context) (bool, error) {
+	override, err := m.GetBootOverride(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to read boot override state: %w", err)
+	}
+	if override == nil {
+		return false, nil
+	}
+
+	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(ctx, m.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		if err := m.clearBootOverrideLocked(ctx); err != nil {
+			return false, fmt.Errorf("failed to clear stale boot override: %w", err)
 		}
-		if bmc.Status.BootOverride == nil {
-			return nil
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get VM for boot override reconcile: %w", err)
+	}
+
+	if override.VMUID == "" {
+		// Pre-vmUID records are adopted by the VM that currently holds the name.
+		override.VMUID = string(vm.UID)
+		if err := m.saveBootOverrideLocked(ctx, override); err != nil {
+			return true, fmt.Errorf("failed to adopt legacy boot override: %w", err)
 		}
-		bmc.Status.BootOverride = nil
-		if err := m.bmcClient.Status().Update(ctx, bmc); err != nil {
-			return fmt.Errorf("failed to update VirtualMachineBMC status: %w", err)
+	} else if override.VMUID != string(vm.UID) {
+		if err := m.clearBootOverrideLocked(ctx); err != nil {
+			return false, fmt.Errorf("failed to clear boot override for replaced VM: %w", err)
 		}
-		return nil
-	})
+		return false, nil
+	}
+	if override.Mode != bmcv1.BootOverrideModeOneshot {
+		return true, nil
+	}
+
+	vmi, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).
+		Get(ctx, m.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return true, nil
+	}
+	if err != nil {
+		return true, fmt.Errorf("failed to get VMI for oneshot restore: %w", err)
+	}
+	if string(vmi.UID) == override.VMIUID {
+		return true, nil
+	}
+	if vm.Spec.Template == nil {
+		return true, fmt.Errorf("no template found")
+	}
+
+	patchOps := BuildBootOrderRestorePatch(vm, override)
+	patchOps = guardVMUID(vm, patchOps)
+	if len(patchOps) > 0 {
+		patchData, err := json.Marshal(patchOps)
+		if err != nil {
+			return false, fmt.Errorf("failed to marshal boot order restore patch: %w", err)
+		}
+		if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Patch(ctx, m.name, types.JSONPatchType, patchData, metav1.PatchOptions{}); err != nil {
+			return false, fmt.Errorf("failed to patch VM to restore boot order: %w", err)
+		}
+	}
+
+	if err := m.clearBootOverrideLocked(ctx); err != nil {
+		return true, fmt.Errorf("failed to clear boot override: %w", err)
+	}
+	return false, nil
+}
+
+// saveBootOverrideLocked persists the boot override while the coordinator
+// mutex is held. The state store is the VirtualMachineBMC CR in managed mode
+// and a local file in standalone mode.
+// Read-modify-write with conflict retry REPLACES the whole bootOverride value —
+// a merge patch would linger stale keys from a previous override (e.g.
+// bootOrders surviving a oneshot→persistent overwrite).
+func (m *VirtualMachineResourceManager) saveBootOverrideLocked(ctx context.Context, override *bmcv1.BootOverrideStatus) error {
+	return m.store.SaveBootOverride(ctx, override)
+}
+
+func (m *VirtualMachineResourceManager) restoreBootOverrideStateLocked(ctx context.Context, override *bmcv1.BootOverrideStatus) error {
+	if override == nil {
+		return m.store.ClearBootOverride(ctx)
+	}
+	return m.store.SaveBootOverride(ctx, override)
+}
+
+// clearBootOverrideLocked removes state while the coordinator mutex is held.
+func (m *VirtualMachineResourceManager) clearBootOverrideLocked(ctx context.Context) error {
+	if err := m.store.ClearBootOverride(ctx); err != nil {
+		return err
+	}
+	m.notifyBootOverrideChanged()
+	return nil
+}
+
+func (m *VirtualMachineResourceManager) BootOverrideChanges() <-chan struct{} {
+	return m.bootOverrides.changed
+}
+
+// WatchBootOverrideSources watches only this manager's VM and VMI. The VM
+// watch catches deletion while no VMI exists; VMI events detect oneshot
+// consumption.
+func (m *VirtualMachineResourceManager) WatchBootOverrideSources(ctx context.Context) (watch.Interface, watch.Interface, error) {
+	opts := metav1.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector("metadata.name", m.name).String(),
+	}
+	vmWatch, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).Watch(ctx, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to watch VM: %w", err)
+	}
+	vmiWatch, err := m.virtClient.KubevirtV1().VirtualMachineInstances(m.namespace).Watch(ctx, opts)
+	if err != nil {
+		vmWatch.Stop()
+		return nil, nil, fmt.Errorf("failed to watch VMI: %w", err)
+	}
+	return vmWatch, vmiWatch, nil
+}
+
+func (m *VirtualMachineResourceManager) notifyBootOverrideChanged() {
+	select {
+	case m.bootOverrides.changed <- struct{}{}:
+	default:
+	}
 }
 
 // currentFirmwareType returns the VM firmware bootloader type (Legacy when
@@ -1102,6 +1236,17 @@ func buildBootOrderPatch(ordered []deviceGroup) []map[string]any {
 	return patchOps
 }
 
+func guardVMUID(vm *kubevirtv1.VirtualMachine, patchOps []map[string]any) []map[string]any {
+	if len(patchOps) == 0 || vm.UID == "" {
+		return patchOps
+	}
+	return append([]map[string]any{{
+		"op":    "test",
+		"path":  "/metadata/uid",
+		"value": string(vm.UID),
+	}}, patchOps...)
+}
+
 // BuildBootOrderRestorePatch creates JSON Patch operations that restore boot
 // order and firmware state from a BootOverrideStatus backup. Devices added
 // after the backup are left untouched; if they occupy a saved bootOrder, the
@@ -1208,12 +1353,8 @@ func buildBootOrderRestoreOps(path string, currentOrder, savedOrder *uint, saved
 	}}
 }
 
-// GetBootOverride reads status.bootOverride from the VirtualMachineBMC CR.
+// GetBootOverride reads the boot override from the state store.
 // Returns nil (without error) when no override is recorded.
 func (m *VirtualMachineResourceManager) GetBootOverride(ctx context.Context) (*bmcv1.BootOverrideStatus, error) {
-	bmc := &bmcv1.VirtualMachineBMC{}
-	if err := m.bmcClient.Get(ctx, client.ObjectKey{Namespace: m.namespace, Name: m.bmcName}, bmc); err != nil {
-		return nil, err
-	}
-	return bmc.Status.BootOverride, nil
+	return m.store.GetBootOverride(ctx)
 }

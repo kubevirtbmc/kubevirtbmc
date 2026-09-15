@@ -36,8 +36,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("ensuring IPMI is disabled for a clean starting state")
-		env.BMC.Spec.IPMI = nil
-		Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
+		if !standaloneMode {
+			env.BMC.Spec.IPMI = nil
+			Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
+		}
 
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
@@ -75,6 +77,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 	Context("IPMI enable/disable toggle", func() {
 		It("should start with IPMI disabled by default, verify failure, then enable", func() {
+			if standaloneMode {
+				Skip("IPMI is toggled via --enable-ipmi at process start in standalone mode; there is no CR to flip")
+			}
 			By("verifying IPMI commands fail when disabled by default")
 			_, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
 			Expect(err).To(HaveOccurred(), "IPMI command should fail when IPMI is disabled")
@@ -1059,6 +1064,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			const wantClass = "kubevirtbmc-e2e-override-sc"
 
 			BeforeAll(func() {
+				if standaloneMode {
+					Skip("the virtual media StorageClass comes from --storage-class in standalone mode, not the CR")
+				}
 				By("creating a dedicated StorageClass")
 				Expect(k8sClient.Create(ctx, newStorageClass(wantClass))).To(Succeed())
 				DeferCleanup(func() {
@@ -1077,6 +1085,12 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					},
 				}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
+
+				// The controller renders --storage-class into the agent args and
+				// rolls the pod; inserting before the rollout completes would hit
+				// the old pod with the old (default) StorageClass.
+				By("waiting for the agent to restart with the new --storage-class arg")
+				waitForAgentArgs(ctx, k8sClient, ns, agentDeploymentName, "--storage-class", wantClass)
 			})
 
 			It("should insert media and create a DataVolume using the configured StorageClass", func() {
@@ -1098,6 +1112,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			)
 
 			BeforeAll(func() {
+				if standaloneMode {
+					Skip("virtual media TLS comes from --virtual-media-* flags in standalone mode, not the CR")
+				}
 				By("deploying an in-cluster HTTPS server with a self-signed certificate")
 				var cleanup func()
 				imageURL, correctCAConfigMap, wrongCAConfigMap, cleanup = setupVirtualMediaTLSServer(ctx, k8sClient, ns)
@@ -1110,6 +1127,12 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				orig := bmc.DeepCopy()
 				bmc.Spec.Redfish = &bmcv1.RedfishSpec{VirtualMedia: &bmcv1.VirtualMediaSpec{TLS: tls}}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
+
+				// The CR reaches the agent only through the rendered
+				// Deployment args: wait for the controller to re-render and
+				// roll the pod, or insertMedia below hits the old pod with
+				// stale TLS flags.
+				waitForAgentTLSArgs(ctx, k8sClient, ns, tls)
 			}
 
 			insertMedia := func() string {
