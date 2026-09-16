@@ -198,6 +198,109 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 			Expect(createdSvc.Spec.Ports).To(HaveLen(1))
 		})
 
+		It("Should adopt Recreate on existing RollingUpdate agent Deployments", func() {
+			ctx := context.Background()
+
+			vmName := "testvm-recreate"
+			secretName := "secret-recreate"
+			bmcName := "bmc-recreate"
+			labels := map[string]string{
+				bmcv1.VirtualMachineBMCNameLabel: bmcName,
+				bmcv1.VMNameLabel:                vmName,
+			}
+
+			By("Creating the referenced VirtualMachine")
+			vm := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vmName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Running: boolPtr(false),
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirtv1.VirtualMachineInstanceSpec{
+							Domain: kubevirtv1.DomainSpec{},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, vm)).Should(Succeed())
+
+			By("Creating the referenced Secret")
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      secretName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("password123"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+
+			By("Creating a pre-upgrade RollingUpdate agent Deployment")
+			replicas := int32(1)
+			oldDeploy := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vmName + "-virtbmc",
+					Namespace: testVirtualMachineBMCNamespace,
+					Labels:    labels,
+				},
+				Spec: appsv1.DeploymentSpec{
+					Replicas: &replicas,
+					Selector: &metav1.LabelSelector{MatchLabels: labels},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{Labels: labels},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{{
+								Name:  virtBMCContainerName,
+								Image: "old-agent:old",
+							}},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, oldDeploy)).Should(Succeed())
+
+			createdDeploy := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      oldDeploy.Name,
+				Namespace: oldDeploy.Namespace,
+			}, createdDeploy)).Should(Succeed())
+			Expect(createdDeploy.Spec.Strategy.Type).To(Equal(appsv1.RollingUpdateDeploymentStrategyType))
+			Expect(createdDeploy.Spec.Strategy.RollingUpdate).NotTo(BeNil())
+
+			By("Creating a VirtualMachineBMC that must take over the agent Deployment")
+			virtualMachineBMC := &bmcv1.VirtualMachineBMC{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      bmcName,
+					Namespace: testVirtualMachineBMCNamespace,
+				},
+				Spec: bmcv1.VirtualMachineBMCSpec{
+					VirtualMachineRef: &corev1.LocalObjectReference{
+						Name: vmName,
+					},
+					AuthSecretRef: &corev1.LocalObjectReference{
+						Name: secretName,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, virtualMachineBMC)).To(Succeed())
+
+			By("Checking that the live Deployment drops rollingUpdate and uses Recreate")
+			Eventually(func(g Gomega) {
+				updated := &appsv1.Deployment{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldDeploy.Name,
+					Namespace: oldDeploy.Namespace,
+				}, updated)).To(Succeed())
+				g.Expect(updated.Spec.Strategy.Type).To(Equal(appsv1.RecreateDeploymentStrategyType))
+				g.Expect(updated.Spec.Strategy.RollingUpdate).To(BeNil())
+			}, timeout, interval).Should(Succeed())
+		})
+
 		It("Should set correct status conditions when VirtualMachine and Secret exist", func() {
 			ctx := context.Background()
 
@@ -430,6 +533,16 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
+			By("Recording a pending boot override")
+			bmcWithOverride := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, bmcLookupKey, bmcWithOverride)).To(Succeed())
+			bmcWithOverride.Status.BootOverride = &bmcv1.BootOverrideStatus{
+				Mode:   bmcv1.BootOverrideModeOneshot,
+				VMUID:  string(vm.UID),
+				VMIUID: "vmi-before-delete",
+			}
+			Expect(k8sClient.Status().Update(ctx, bmcWithOverride)).To(Succeed())
+
 			By("Deleting the VirtualMachine")
 			vmToDelete := &kubevirtv1.VirtualMachine{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: vmName, Namespace: testVirtualMachineBMCNamespace}, vmToDelete)).Should(Succeed())
@@ -465,6 +578,13 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				}
 			}
 			Expect(foundCondition).To(BeTrue())
+			Eventually(func() bool {
+				var updated bmcv1.VirtualMachineBMC
+				if err := k8sClient.Get(ctx, bmcLookupKey, &updated); err != nil {
+					return false
+				}
+				return updated.Status.BootOverride == nil
+			}, timeout, interval).Should(BeTrue())
 		})
 
 		It("Should update condition and delete Deployment when Secret is deleted", func() {
@@ -562,6 +682,16 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				return err == nil
 			}, timeout, interval).Should(BeTrue())
 
+			By("Recording a pending boot override")
+			bmcWithOverride := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, bmcLookupKey, bmcWithOverride)).To(Succeed())
+			bmcWithOverride.Status.BootOverride = &bmcv1.BootOverrideStatus{
+				Mode:   bmcv1.BootOverrideModeOneshot,
+				VMUID:  string(vm.UID),
+				VMIUID: "vmi-before-secret-delete",
+			}
+			Expect(k8sClient.Status().Update(ctx, bmcWithOverride)).To(Succeed())
+
 			By("Deleting the Secret")
 			secretToDelete := &corev1.Secret{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: secretName, Namespace: testVirtualMachineBMCNamespace}, secretToDelete)).Should(Succeed())
@@ -596,6 +726,11 @@ var _ = Describe("VirtualMachineBMC Controller", func() {
 				err := k8sClient.Get(ctx, serviceLookupKey, svc)
 				return errors.IsNotFound(err)
 			}, timeout, interval).Should(BeTrue())
+
+			By("Keeping boot state while the VM still exists")
+			var bmc bmcv1.VirtualMachineBMC
+			Expect(k8sClient.Get(ctx, bmcLookupKey, &bmc)).To(Succeed())
+			Expect(bmc.Status.BootOverride).NotTo(BeNil())
 		})
 
 		It("Should trigger a Deployment rollout when Secret is changed", func() {

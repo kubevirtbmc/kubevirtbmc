@@ -179,12 +179,18 @@ const (
 )
 
 // BootOverrideStatus records the currently active boot override driven through
-// the BMC (IPMI Set System Boot Options / Redfish Boot). It is written by the
-// virtbmc pod and consumed by the bootorderrestore controller, which restores
-// the captured boot state once a oneshot override has been consumed (detected
-// via VMI UID change).
+// the BMC (IPMI Set System Boot Options / Redfish Boot). The virtbmc agent
+// persists it either in this CR status or in a standalone state file and
+// restores the captured boot state after a oneshot override is consumed.
 type BootOverrideStatus struct {
 	Mode BootOverrideMode `json:"mode"`
+
+	// VMUID scopes this state to one VirtualMachine object so a deleted VM's
+	// backup is never applied to a different VM recreated with the same name.
+	// Records written before this field existed are adopted by stamping the
+	// current VM UID, then reconciled normally.
+	// +optional
+	VMUID string `json:"vmUID,omitempty"`
 
 	// VMIUID is the UID of the VMI generation current when a oneshot override
 	// was issued. A UID change means the oneshot boot was consumed.

@@ -65,10 +65,25 @@ jobs:
       run: |
         make generate-install-manifest IMG=${{ env.REPO }}/${{ env.MANAGER }}:${{ env.VERSION }}
 
+    # Static agent binaries (CGO disabled, stripped) for running virtbmc in
+    # standalone mode without pulling the container image.
+    - name: Build static agent binaries
+      run: |
+        for arch in amd64 arm64; do
+          CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+            -ldflags "-s -w -X main.AppVersion=${{ env.VERSION }} -X main.GitCommit=${{ env.GIT_COMMIT }}" \
+            -o virtbmc-linux-$arch cmd/virtbmc/main.go
+        done
+        sha256sum virtbmc-linux-amd64 virtbmc-linux-arm64 > virtbmc-checksums.txt
+
     - name: Create Release and upload install manifest
       uses: softprops/action-gh-release@v2
       with:
-        files: kubevirtbmc-install.yaml
+        files: |
+          kubevirtbmc-install.yaml
+          virtbmc-linux-amd64
+          virtbmc-linux-arm64
+          virtbmc-checksums.txt
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -58,7 +58,6 @@ rules:
   - update
 - apiGroups:
   - bmc.kubevirt.io
-  - virtualmachine.kubevirt.io
   resources:
   - virtualmachinebmcs/status
   verbs:
@@ -68,21 +67,10 @@ rules:
 - apiGroups:
   - kubevirt.io
   resources:
-  - virtualmachineinstances
-  verbs:
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kubevirt.io
-  resources:
   - virtualmachines
   verbs:
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - rbac.authorization.k8s.io
@@ -101,12 +89,4 @@ rules:
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - virtualmachine.kubevirt.io
-  resources:
-  - virtualmachinebmcs
-  verbs:
-  - get
-  - list
   - watch
