@@ -66,23 +66,9 @@ type VirtualMachineResourceManager struct {
 	virtClient kvclient.Interface
 	cdiClient  cdiclient.Interface
 	store      StateStore
-	// storageClass is the agent's --storage-class flag value for virtual media
-	// DataVolumes (rendered from the CR by the controller in managed mode);
-	// "" falls back to the cluster default.
-	storageClass string
-	// volumeMode and sizeMarginPercent are the --volume-mode and
-	// --datavolume-size-margin flag values for virtual media DataVolumes. In
-	// managed mode the controller renders them from the CR; in standalone
-	// mode the user passes them directly.
-	volumeMode        *corev1.PersistentVolumeMode
-	sizeMarginPercent int
-	// insecureSkipVerify and caBundleConfigMap are the
-	// --virtual-media-insecure-skip-verify and
-	// --virtual-media-ca-bundle-configmap flag values for fetching virtual
-	// media images over https; rendered from the CR's redfish.virtualMedia.tls
-	// in managed mode, passed directly in standalone mode.
-	insecureSkipVerify bool
-	caBundleConfigMap  string
+	// vmConfigSource resolves the virtual media knobs at InsertMedia time;
+	// see VirtualMediaConfigSource for the managed/standalone split.
+	vmConfigSource VirtualMediaConfigSource
 	// kubeClient reads the CA bundle ConfigMap at insert time; the agent sizes
 	// the image itself, unlike CDI which resolves CertConfigMap server-side.
 	kubeClient client.Client
@@ -111,25 +97,17 @@ func NewVirtualMachineResourceManager(
 	cdiClient cdiclient.Interface,
 	store StateStore,
 	kubeClient client.Client,
-	storageClass string,
-	volumeMode *corev1.PersistentVolumeMode,
-	sizeMarginPercent int,
-	insecureSkipVerify bool,
-	caBundleConfigMap string,
+	vmConfigSource VirtualMediaConfigSource,
 	firmwareVersion string,
 ) *VirtualMachineResourceManager {
 	return &VirtualMachineResourceManager{
-		virtClient:         virtClient,
-		cdiClient:          cdiClient,
-		store:              store,
-		kubeClient:         kubeClient,
-		storageClass:       storageClass,
-		volumeMode:         volumeMode,
-		sizeMarginPercent:  sizeMarginPercent,
-		insecureSkipVerify: insecureSkipVerify,
-		caBundleConfigMap:  caBundleConfigMap,
-		firmwareVersion:    firmwareVersion,
-		bootOverrides:      newBootOverrideCoordinator(),
+		virtClient:      virtClient,
+		cdiClient:       cdiClient,
+		store:           store,
+		kubeClient:      kubeClient,
+		vmConfigSource:  vmConfigSource,
+		firmwareVersion: firmwareVersion,
+		bootOverrides:   newBootOverrideCoordinator(),
 	}
 }
 
@@ -368,26 +346,30 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		}
 	}
 
+	vmCfg, err := m.vmConfigSource.Resolve(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to resolve virtual media config: %w", err)
+	}
+	logrus.Debugf("resolved virtual media config: storageClass=%q volumeMode=%s sizeMarginPercent=%d insecureSkipVerify=%t caBundleConfigMap=%q",
+		vmCfg.StorageClass, ptr.Deref(vmCfg.VolumeMode, ""), vmCfg.SizeMarginPercent, vmCfg.InsecureSkipVerify, vmCfg.CABundleConfigMap)
+
 	// The agent sizes the image over its own HTTPS connection, so unlike CDI
 	// (which resolves CertConfigMap server-side) it needs the CA bundle bytes.
 	var caBundle []byte
-	if m.caBundleConfigMap != "" {
+	if vmCfg.CABundleConfigMap != "" {
 		var cm corev1.ConfigMap
-		if err := m.kubeClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: m.caBundleConfigMap}, &cm); err != nil {
-			return fmt.Errorf("failed to get CA bundle ConfigMap %q: %w", m.caBundleConfigMap, err)
+		if err := m.kubeClient.Get(ctx, types.NamespacedName{Namespace: m.namespace, Name: vmCfg.CABundleConfigMap}, &cm); err != nil {
+			return fmt.Errorf("failed to get CA bundle ConfigMap %q: %w", vmCfg.CABundleConfigMap, err)
 		}
 		caBundle = []byte(cm.Data[util.CABundleConfigMapKey])
 	}
 
-	imageSize, err := util.GetRemoteFileSize(imageURL, m.insecureSkipVerify, caBundle)
+	imageSize, err := util.GetRemoteFileSize(imageURL, vmCfg.InsecureSkipVerify, caBundle)
 	if err != nil {
 		return err
 	}
 
-	// Virtual media settings come from the agent flags only. In managed mode
-	// the controller renders the CR values into them; in standalone mode the
-	// user passes them directly.
-	imageSize = util.WithImportMargin(imageSize, m.sizeMarginPercent)
+	imageSize = util.WithImportMargin(imageSize, vmCfg.SizeMarginPercent)
 
 	// Create DataVolume
 	dv := util.ConstructDataVolume(util.DataVolumeOptions{
@@ -396,10 +378,10 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		VirtualMachine:     m.name,
 		URL:                imageURL,
 		Size:               imageSize,
-		StorageClassName:   m.storageClass,
-		VolumeMode:         m.volumeMode,
-		InsecureSkipVerify: m.insecureSkipVerify,
-		CertConfigMap:      m.caBundleConfigMap,
+		StorageClassName:   vmCfg.StorageClass,
+		VolumeMode:         vmCfg.VolumeMode,
+		InsecureSkipVerify: vmCfg.InsecureSkipVerify,
+		CertConfigMap:      vmCfg.CABundleConfigMap,
 	})
 	_, err = m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Create(ctx, dv, metav1.CreateOptions{})
 	if err != nil {

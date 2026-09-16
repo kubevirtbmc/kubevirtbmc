@@ -925,16 +925,18 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			}
 
 			vmrm := &VirtualMachineResourceManager{
-				virtClient:         fakeVirtClient,
-				cdiClient:          fakeCdiClient,
-				namespace:          testNamespace,
-				name:               testVMName,
-				storageClass:       tc.storageClass,
-				volumeMode:         tc.volumeMode,
-				sizeMarginPercent:  tc.sizeMarginPercent,
-				insecureSkipVerify: tc.insecureSkipVerify,
-				caBundleConfigMap:  tc.caBundleConfigMap,
-				virtualMedia:       tc.virtualMedia,
+				virtClient: fakeVirtClient,
+				cdiClient:  fakeCdiClient,
+				namespace:  testNamespace,
+				name:       testVMName,
+				vmConfigSource: NewStaticVirtualMediaConfigSource(VirtualMediaConfig{
+					StorageClass:       tc.storageClass,
+					VolumeMode:         tc.volumeMode,
+					SizeMarginPercent:  tc.sizeMarginPercent,
+					InsecureSkipVerify: tc.insecureSkipVerify,
+					CABundleConfigMap:  tc.caBundleConfigMap,
+				}),
+				virtualMedia: tc.virtualMedia,
 			}
 
 			if tc.caBundleConfigMap != "" {
@@ -2579,7 +2581,7 @@ func TestInitializeReportsVMFirmwareIdentity(t *testing.T) {
 				cdifake.NewSimpleClientset(),
 				NewClusterStateStore(newTestBMCClient(newTestBMC()), testNamespace, testBMCName),
 				newTestBMCClient(newTestBMC()),
-				"", nil, 0, false, "",
+				NewStaticVirtualMediaConfigSource(VirtualMediaConfig{}),
 				"3b7bbc8b559d8a712e502afd9d1cb9251aacb2f3",
 			)
 			require.NoError(t, rm.Initialize(context.Background(), testNamespace, testVMName))

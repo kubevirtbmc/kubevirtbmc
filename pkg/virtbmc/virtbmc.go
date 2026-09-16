@@ -37,25 +37,25 @@ type Options struct {
 	// StateFile is where boot override state is persisted in standalone mode.
 	StateFile string
 	// StorageClass is the agent's --storage-class flag value, used for virtual
-	// media DataVolumes; empty falls back to the cluster default. In managed
-	// mode the controller renders the flag from the CR's spec.storageClassName.
+	// media DataVolumes; empty falls back to the cluster default. Standalone
+	// mode only: in managed mode the agent reads the CR at InsertMedia time.
 	StorageClass string
 	// VolumeMode is the --volume-mode flag value for virtual media
-	// DataVolumes; empty falls back to CDI's default (Filesystem).
+	// DataVolumes; empty falls back to CDI's default (Filesystem). Standalone
+	// mode only.
 	VolumeMode string
 	// DataVolumeSizeMargin is the --datavolume-size-margin flag value: pad
 	// inserted-media DataVolumes by this many percent; <= 0 is a no-op.
+	// Standalone mode only.
 	DataVolumeSizeMargin int
 	// InsecureSkipVerify is the --virtual-media-insecure-skip-verify flag
 	// value: skip TLS certificate verification when fetching virtual media
-	// images over https. In managed mode the controller renders it from the
-	// CR's spec.redfish.virtualMedia.tls.insecureSkipVerify.
+	// images over https. Standalone mode only.
 	InsecureSkipVerify bool
 	// CABundleConfigMap is the --virtual-media-ca-bundle-configmap flag value:
 	// name of a ConfigMap (in the VM's namespace, key "ca.pem") with the CA
-	// bundle trusted when fetching virtual media images over https; rendered
-	// from the CR's spec.redfish.virtualMedia.tls.caBundleConfigMapRef in
-	// managed mode.
+	// bundle trusted when fetching virtual media images over https.
+	// Standalone mode only.
 	CABundleConfigMap string
 }
 
@@ -85,28 +85,37 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 	// bundle ConfigMaps for virtual media https fetches in both modes.
 	kubeClient := NewBMCClient(options)
 
-	var store resourcemanager.StateStore
+	var (
+		store          resourcemanager.StateStore
+		vmConfigSource resourcemanager.VirtualMediaConfigSource
+	)
 	if options.Standalone {
 		var err error
 		store, err = resourcemanager.NewFileStateStore(options.StateFile)
 		if err != nil {
 			return nil, err
 		}
+		volumeMode, err := parseVolumeMode(options.VolumeMode)
+		if err != nil {
+			return nil, err
+		}
+		vmConfigSource = resourcemanager.NewStaticVirtualMediaConfigSource(resourcemanager.VirtualMediaConfig{
+			StorageClass:       options.StorageClass,
+			VolumeMode:         volumeMode,
+			SizeMarginPercent:  options.DataVolumeSizeMargin,
+			InsecureSkipVerify: options.InsecureSkipVerify,
+			CABundleConfigMap:  options.CABundleConfigMap,
+		})
 	} else {
 		bmcName, err := virtualMachineBMCNameFromPodLabel(ctx, kubeClient, vmNamespace, options.PodName)
 		if err != nil {
 			return nil, err
 		}
 		store = resourcemanager.NewClusterStateStore(kubeClient, vmNamespace, bmcName)
-	}
-	volumeMode, err := parseVolumeMode(options.VolumeMode)
-	if err != nil {
-		return nil, err
+		vmConfigSource = resourcemanager.NewClusterVirtualMediaConfigSource(kubeClient, vmNamespace, bmcName)
 	}
 	resourceManager := resourcemanager.NewVirtualMachineResourceManager(
-		virtClient, cdiClient, store, kubeClient,
-		options.StorageClass, volumeMode, options.DataVolumeSizeMargin,
-		options.InsecureSkipVerify, options.CABundleConfigMap, options.GitCommit)
+		virtClient, cdiClient, store, kubeClient, vmConfigSource, options.GitCommit)
 
 	var ipmiSimulator *ipmi.Simulator
 	if options.EnableIPMI {

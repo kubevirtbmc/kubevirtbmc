@@ -78,7 +78,8 @@ func newResourceManager(ctx context.Context) (*resourcemanager.VirtualMachineRes
 	rm := resourcemanager.NewVirtualMachineResourceManager(
 		virtClient, cdiClient,
 		resourcemanager.NewClusterStateStore(bmcClient, namespace, vmName),
-		bmcClient, "", nil, 0, false, "", "interop")
+		bmcClient,
+		resourcemanager.NewClusterVirtualMediaConfigSource(bmcClient, namespace, vmName), "interop")
 	if err := rm.Initialize(ctx, namespace, vmName); err != nil {
 		return nil, err
 	}

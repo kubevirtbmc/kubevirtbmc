@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
-	"slices"
 	"time"
 
 	kvclient "kubevirt.io/client-go/kubevirt"
@@ -586,64 +585,16 @@ func waitForAgentDeploymentReady(ctx context.Context, k8sClient client.Client, n
 	}, agentTestTimeout, agentTestInterval).Should(BeTrue(), "agent deployment %q should become ready", deploymentName)
 }
 
-// waitForAgentArgs waits until the controller has rendered the given args into
-// the agent Deployment's pod template and rolled out the new pod. The args
-// check must come first: the old ReplicaSet stays Ready until the updated spec
-// lands, so a readiness-only wait can return before the change is applied.
-func waitForAgentArgs(ctx context.Context, k8sClient client.Client, namespace, deploymentName string, want ...string) {
-	Eventually(func() bool {
-		var deployment appsv1.Deployment
-		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: deploymentName}, &deployment); err != nil {
-			return false
-		}
-		args := deployment.Spec.Template.Spec.Containers[0].Args
-		for _, w := range want {
-			if !slices.Contains(args, w) {
-				return false
-			}
-		}
-		return deployment.Status.ObservedGeneration >= deployment.Generation
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
-		"agent deployment %q should render args %v", deploymentName, want)
-	waitForAgentDeploymentReady(ctx, k8sClient, namespace, deploymentName)
-}
-
-// waitForAgentTLSArgs is waitForAgentArgs for redfish.virtualMedia.tls: it
-// exact-matches the TLS subset of the rendered args, so it also waits for
-// flags from a previous spec to disappear (presence-only checks can't).
-func waitForAgentTLSArgs(ctx context.Context, k8sClient client.Client, namespace string, tls *bmcv1.VirtualMediaTLSSpec) {
-	var want []string
-	if tls != nil {
-		if tls.InsecureSkipVerify != nil && *tls.InsecureSkipVerify {
-			want = append(want, "--virtual-media-insecure-skip-verify")
-		}
-		if ref := tls.CABundleConfigMapRef; ref != nil && ref.Name != "" {
-			want = append(want, "--virtual-media-ca-bundle-configmap", ref.Name)
-		}
-	}
-	renderedTLSArgs := func(args []string) []string {
-		var out []string
-		for i, a := range args {
-			if a == "--virtual-media-insecure-skip-verify" {
-				out = append(out, a)
-			}
-			if a == "--virtual-media-ca-bundle-configmap" && i+1 < len(args) {
-				out = append(out, a, args[i+1])
-			}
-		}
-		return out
-	}
-	Eventually(func() bool {
-		var deployment appsv1.Deployment
-		if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: agentDeploymentName}, &deployment); err != nil {
-			return false
-		}
-		args := deployment.Spec.Template.Spec.Containers[0].Args
-		return slices.Equal(renderedTLSArgs(args), want) &&
-			deployment.Status.ObservedGeneration >= deployment.Generation
-	}, agentTestTimeout, agentTestInterval).Should(BeTrue(),
-		"agent deployment %q should render TLS args %v", agentDeploymentName, want)
-	waitForAgentDeploymentReady(ctx, k8sClient, namespace, agentDeploymentName)
+// currentAgentPodUID returns the UID of the single virtbmc agent pod, used to
+// prove a CR change took effect without restarting the agent.
+func currentAgentPodUID(ctx context.Context, k8sClient client.Client, namespace string) types.UID {
+	pods := &corev1.PodList{}
+	Expect(k8sClient.List(ctx, pods,
+		client.InNamespace(namespace),
+		client.MatchingLabels{bmcv1.VMNameLabel: agentVMName},
+	)).To(Succeed())
+	Expect(pods.Items).To(HaveLen(1))
+	return pods.Items[0].UID
 }
 
 func verifyDataVolumeExists(ctx context.Context, k8sClient client.Client, namespace, name string) {

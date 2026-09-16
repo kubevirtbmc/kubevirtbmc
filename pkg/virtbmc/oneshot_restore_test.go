@@ -43,7 +43,7 @@ func TestBootOverrideReconcileSleepsWithoutActiveOverride(t *testing.T) {
 	vm := builder.NewVirtualMachineBuilder("default", "testvm").WithDisk("root", nil).Build()
 	virtClient := kubevirtfake.NewSimpleClientset(vm)
 	manager := resourcemanager.NewVirtualMachineResourceManager(
-		virtClient, nil, store, nil, "", nil, 0, false, "", "",
+		virtClient, nil, store, nil, resourcemanager.NewStaticVirtualMediaConfigSource(resourcemanager.VirtualMediaConfig{}), "",
 	)
 	if err := manager.Initialize(ctx, vm.Namespace, vm.Name); err != nil {
 		t.Fatalf("failed to initialize resource manager: %v", err)
@@ -122,7 +122,7 @@ func TestBootOverrideReconcileUsesVMIWatch(t *testing.T) {
 		t.Fatalf("failed to save boot override: %v", err)
 	}
 
-	manager := resourcemanager.NewVirtualMachineResourceManager(virtClient, nil, store, nil, "", nil, 0, false, "", "")
+	manager := resourcemanager.NewVirtualMachineResourceManager(virtClient, nil, store, nil, resourcemanager.NewStaticVirtualMediaConfigSource(resourcemanager.VirtualMediaConfig{}), "")
 	if err := manager.Initialize(ctx, vm.Namespace, vm.Name); err != nil {
 		t.Fatalf("failed to initialize resource manager: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestBootOverrideReconcileWatchesPersistentOverrideUntilVMDeletion(t *testin
 		t.Fatalf("failed to save boot override: %v", err)
 	}
 
-	manager := resourcemanager.NewVirtualMachineResourceManager(virtClient, nil, store, nil, "", nil, 0, false, "", "")
+	manager := resourcemanager.NewVirtualMachineResourceManager(virtClient, nil, store, nil, resourcemanager.NewStaticVirtualMediaConfigSource(resourcemanager.VirtualMediaConfig{}), "")
 	if err := manager.Initialize(ctx, vm.Namespace, vm.Name); err != nil {
 		t.Fatalf("failed to initialize resource manager: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestBootOverrideReconcileReconnectsClosedWatch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("failed to save boot override: %v", err)
 	}
-	manager := resourcemanager.NewVirtualMachineResourceManager(virtClient, nil, store, nil, "", nil, 0, false, "", "")
+	manager := resourcemanager.NewVirtualMachineResourceManager(virtClient, nil, store, nil, resourcemanager.NewStaticVirtualMediaConfigSource(resourcemanager.VirtualMediaConfig{}), "")
 	if err := manager.Initialize(ctx, vm.Namespace, vm.Name); err != nil {
 		t.Fatalf("failed to initialize resource manager: %v", err)
 	}

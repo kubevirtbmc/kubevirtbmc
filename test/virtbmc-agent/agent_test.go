@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1115,6 +1116,7 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 		Context("Virtual Media storageClassName override", func() {
 			const wantClass = "kubevirtbmc-e2e-override-sc"
+			var agentPodUIDBefore types.UID
 
 			BeforeAll(func() {
 				if standaloneMode {
@@ -1125,6 +1127,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				DeferCleanup(func() {
 					_ = k8sClient.Delete(ctx, newStorageClass(wantClass))
 				})
+
+				By("recording the agent pod UID before the spec change")
+				agentPodUIDBefore = currentAgentPodUID(ctx, k8sClient, ns)
 
 				By("setting spec.redfish.virtualMedia.storage.storageClassName on the VirtualMachineBMC")
 				bmc := &bmcv1.VirtualMachineBMC{}
@@ -1138,15 +1143,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					},
 				}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
-
-				// The controller renders --storage-class into the agent args and
-				// rolls the pod; inserting before the rollout completes would hit
-				// the old pod with the old (default) StorageClass.
-				By("waiting for the agent to restart with the new --storage-class arg")
-				waitForAgentArgs(ctx, k8sClient, ns, agentDeploymentName, "--storage-class", wantClass)
+				// No rollout to wait for: the agent resolves the CR at
+				// InsertMedia time, and the patch above is already persisted.
 			})
 
-			It("should insert media and create a DataVolume using the configured StorageClass", func() {
+			It("should insert media using the configured StorageClass without restarting the agent", func() {
 				body := `{"Image":"https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso","Inserted":true}`
 				out, err := testutil.RunCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia", body))
 				Expect(err).NotTo(HaveOccurred())
@@ -1154,6 +1155,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 				verifyDataVolumeExists(ctx, k8sClient, ns, agentVMName)
 				verifyDataVolumeStorageClass(ctx, k8sClient, ns, agentVMName, wantClass)
+
+				By("verifying the agent pod was not restarted by the spec change")
+				Expect(currentAgentPodUID(ctx, k8sClient, ns)).To(Equal(agentPodUIDBefore))
 			})
 		})
 
@@ -1180,12 +1184,8 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				orig := bmc.DeepCopy()
 				bmc.Spec.Redfish = &bmcv1.RedfishSpec{VirtualMedia: &bmcv1.VirtualMediaSpec{TLS: tls}}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
-
-				// The CR reaches the agent only through the rendered
-				// Deployment args: wait for the controller to re-render and
-				// roll the pod, or insertMedia below hits the old pod with
-				// stale TLS flags.
-				waitForAgentTLSArgs(ctx, k8sClient, ns, tls)
+				// The agent resolves the CR at InsertMedia time; the persisted
+				// patch above is already visible to the next insert.
 			}
 
 			insertMedia := func() string {
