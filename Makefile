@@ -96,14 +96,19 @@ generate-mock: mockgen ## Generate mocks for interfaces.
 # Keep in sync with hack/redfish/spec/openapi.yaml's own vendored version
 # (its `info.version`) and hack/redfish/spec/schemas/ -- vendor-redfish-schema
 # pulls from whatever bundle this points at, so bumping it is how you'd pick
-# up a newer DMTF schema release.
+# up a newer DMTF schema release. The content comes from the official
+# DMTF/Redfish-Publications mirror tag (dmtf.org itself refuses
+# GitHub-hosted runners with 403); the tag is the bundle version minus the
+# DSP8010_ prefix.
 REDFISH_SCHEMA_BUNDLE ?= DSP8010_2023.3
+DMTF_PUBLICATIONS_TAG = $(REDFISH_SCHEMA_BUNDLE:DSP8010_%=%)
 .PHONY: download-redfish-schema
 download-redfish-schema: ## Download and extract the Redfish DSP8010 schema bundle used by vendor-redfish-schema.
 	test -d ./hack/$(REDFISH_SCHEMA_BUNDLE) || \
-	( curl -sSL -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" https://www.dmtf.org/sites/default/files/standards/documents/$(REDFISH_SCHEMA_BUNDLE).zip -o ./hack/$(REDFISH_SCHEMA_BUNDLE).zip && \
-	mkdir -p ./hack/$(REDFISH_SCHEMA_BUNDLE) && \
-	unzip -q -d ./hack/$(REDFISH_SCHEMA_BUNDLE) ./hack/$(REDFISH_SCHEMA_BUNDLE).zip && \
+	( curl -sSL -o ./hack/$(REDFISH_SCHEMA_BUNDLE).zip \
+		https://github.com/DMTF/Redfish-Publications/archive/refs/tags/$(DMTF_PUBLICATIONS_TAG).zip && \
+	unzip -q -d ./hack ./hack/$(REDFISH_SCHEMA_BUNDLE).zip && \
+	mv ./hack/Redfish-Publications-$(DMTF_PUBLICATIONS_TAG) ./hack/$(REDFISH_SCHEMA_BUNDLE) && \
 	rm -f ./hack/$(REDFISH_SCHEMA_BUNDLE).zip )
 
 .PHONY: vendor-redfish-schema
@@ -121,6 +126,10 @@ generate-redfish-api: ## Generate Redfish API server.
 .PHONY: redfish-interop
 redfish-interop: ## Run the Redfish Interop Validator locally against the fake-client interopserver.
 	./hack/redfish/run-interop.sh
+
+.PHONY: redfish-service-validate
+redfish-service-validate: ## Run the Redfish Service Validator locally against the fake-client interopserver.
+	./hack/redfish/run-service-validate.sh
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
