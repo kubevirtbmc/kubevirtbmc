@@ -245,6 +245,19 @@ func (h *handler) GetComputerSystem(ctx context.Context) (*server.ComputerSystem
 		} else {
 			cs.Boot.BootSourceOverrideEnabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED
 		}
+	} else if override, oerr := h.rm.GetBootOverride(ctx); oerr == nil {
+		// GetBootFlags fails when no device carries a boot order; the target
+		// is underivable then, but the Enabled bit is not — the in-memory
+		// model may still hold an already-consumed override, or Disabled
+		// while one is recorded (agent restart).
+		enabled := server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED
+		if override != nil {
+			enabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS
+			if override.Mode == bmcv1.BootOverrideModeOneshot {
+				enabled = server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE
+			}
+		}
+		cs.Boot.BootSourceOverrideEnabled = enabled
 	}
 
 	return cs, nil

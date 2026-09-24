@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,8 +37,10 @@ var _ = Describe("Agent e2e", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("ensuring IPMI is disabled for a clean starting state")
-		env.BMC.Spec.IPMI = nil
-		Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
+		if !standaloneMode {
+			env.BMC.Spec.IPMI = nil
+			Expect(k8sClient.Update(ctx, env.BMC)).To(Succeed())
+		}
 
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
@@ -75,6 +78,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 	Context("IPMI enable/disable toggle", func() {
 		It("should start with IPMI disabled by default, verify failure, then enable", func() {
+			if standaloneMode {
+				Skip("IPMI is toggled via --enable-ipmi at process start in standalone mode; there is no CR to flip")
+			}
 			By("verifying IPMI commands fail when disabled by default")
 			_, _, err := testutil.RunIPMIInCluster(ctx, config, ns, ipmiReq("power", "status"))
 			Expect(err).To(HaveOccurred(), "IPMI command should fail when IPMI is disabled")
@@ -1110,13 +1116,20 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 		Context("Virtual Media storageClassName override", func() {
 			const wantClass = "kubevirtbmc-e2e-override-sc"
+			var agentPodUIDBefore types.UID
 
 			BeforeAll(func() {
+				if standaloneMode {
+					Skip("the virtual media StorageClass comes from --storage-class in standalone mode, not the CR")
+				}
 				By("creating a dedicated StorageClass")
 				Expect(k8sClient.Create(ctx, newStorageClass(wantClass))).To(Succeed())
 				DeferCleanup(func() {
 					_ = k8sClient.Delete(ctx, newStorageClass(wantClass))
 				})
+
+				By("recording the agent pod UID before the spec change")
+				agentPodUIDBefore = currentAgentPodUID(ctx, k8sClient, ns)
 
 				By("setting spec.redfish.virtualMedia.storage.storageClassName on the VirtualMachineBMC")
 				bmc := &bmcv1.VirtualMachineBMC{}
@@ -1130,9 +1143,11 @@ var _ = Describe("Agent e2e", Ordered, func() {
 					},
 				}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
+				// No rollout to wait for: the agent resolves the CR at
+				// InsertMedia time, and the patch above is already persisted.
 			})
 
-			It("should insert media and create a DataVolume using the configured StorageClass", func() {
+			It("should insert media using the configured StorageClass without restarting the agent", func() {
 				body := `{"Image":"https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso","Inserted":true}`
 				out, err := testutil.RunCurlRedfish(ctx, config, ns, redfishSession("POST", "/Managers/BMC/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia", body))
 				Expect(err).NotTo(HaveOccurred())
@@ -1140,6 +1155,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 
 				verifyDataVolumeExists(ctx, k8sClient, ns, agentVMName)
 				verifyDataVolumeStorageClass(ctx, k8sClient, ns, agentVMName, wantClass)
+
+				By("verifying the agent pod was not restarted by the spec change")
+				Expect(currentAgentPodUID(ctx, k8sClient, ns)).To(Equal(agentPodUIDBefore))
 			})
 		})
 
@@ -1151,6 +1169,9 @@ var _ = Describe("Agent e2e", Ordered, func() {
 			)
 
 			BeforeAll(func() {
+				if standaloneMode {
+					Skip("virtual media TLS comes from --virtual-media-* flags in standalone mode, not the CR")
+				}
 				By("deploying an in-cluster HTTPS server with a self-signed certificate")
 				var cleanup func()
 				imageURL, correctCAConfigMap, wrongCAConfigMap, cleanup = setupVirtualMediaTLSServer(ctx, k8sClient, ns)
@@ -1163,6 +1184,8 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				orig := bmc.DeepCopy()
 				bmc.Spec.Redfish = &bmcv1.RedfishSpec{VirtualMedia: &bmcv1.VirtualMediaSpec{TLS: tls}}
 				Expect(k8sClient.Patch(ctx, bmc, client.MergeFrom(orig))).To(Succeed())
+				// The agent resolves the CR at InsertMedia time; the persisted
+				// patch above is already visible to the next insert.
 			}
 
 			insertMedia := func() string {

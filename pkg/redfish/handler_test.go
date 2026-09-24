@@ -454,6 +454,68 @@ func TestPatchComputerSystem(t *testing.T) {
 	}
 }
 
+// TestGetComputerSystemBootOverrideFallback covers the degenerate state where
+// GetBootFlags fails (no device carries a boot order): the Enabled bit must
+// come from the state store, not the in-memory ComputerSystem model — which
+// may hold an already-consumed override, or Disabled while one is still
+// recorded after an agent restart.
+func TestGetComputerSystemBootOverrideFallback(t *testing.T) {
+	cases := []struct {
+		name        string
+		flags       *resourcemanager.BootFlagsState
+		flagsErr    error
+		override    *bmcv1.BootOverrideStatus // consulted only when flagsErr is set
+		wantEnabled server.ComputerSystemV1220BootSourceOverrideEnabled
+	}{
+		{
+			name: "flags OK with active override renders Once",
+			flags: &resourcemanager.BootFlagsState{
+				BootDevice:     resourcemanager.BootDevicePxe,
+				Mode:           resourcemanager.BootModeOneshot,
+				OverrideActive: true,
+			},
+			wantEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
+		},
+		{
+			name:        "flags error without recorded override renders Disabled",
+			flagsErr:    assert.AnError,
+			wantEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_DISABLED,
+		},
+		{
+			name:        "flags error with recorded oneshot override renders Once",
+			flagsErr:    assert.AnError,
+			override:    &bmcv1.BootOverrideStatus{Mode: bmcv1.BootOverrideModeOneshot},
+			wantEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_ONCE,
+		},
+		{
+			name:        "flags error with recorded persistent override renders Continuous",
+			flagsErr:    assert.AnError,
+			override:    &bmcv1.BootOverrideStatus{Mode: bmcv1.BootOverrideModePersistent},
+			wantEnabled: server.COMPUTERSYSTEMV1220BOOTSOURCEOVERRIDEENABLED_CONTINUOUS,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockRM := resourcemanager.NewMockResourceManager(ctrl)
+			mockRM.EXPECT().GetComputerSystem(gomock.Any()).Return(
+				resourcemanager.NewComputerSystem("1", "test", "", "", server.RESOURCEPOWERSTATE_ON), nil)
+			mockRM.EXPECT().GetBootFlags(gomock.Any()).Return(tc.flags, tc.flagsErr)
+			if tc.flagsErr != nil {
+				mockRM.EXPECT().GetBootOverride(gomock.Any()).Return(tc.override, nil)
+			}
+
+			handler := NewHandler(testUsername, testPassword, mockRM)
+			cs, err := handler.GetComputerSystem(context.Background())
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantEnabled, cs.Boot.BootSourceOverrideEnabled)
+		})
+	}
+}
+
 func TestComputerSystemReset(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

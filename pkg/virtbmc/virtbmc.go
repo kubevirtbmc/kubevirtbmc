@@ -3,11 +3,10 @@ package virtbmc
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
-	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
-	kvclient "kubevirt.io/client-go/kubevirt"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
@@ -31,6 +30,33 @@ type Options struct {
 	EnableIPMI     bool
 	PodName        string
 	GitCommit      string
+	// Standalone runs without the VirtualMachineBMC CRD: no owning CR, no
+	// controller. Boot override state is kept in StateFile instead of CR
+	// status; reconciliation remains identical in both modes.
+	Standalone bool
+	// StateFile is where boot override state is persisted in standalone mode.
+	StateFile string
+	// StorageClass is the agent's --storage-class flag value, used for virtual
+	// media DataVolumes; empty falls back to the cluster default. Standalone
+	// mode only: in managed mode the agent reads the CR at InsertMedia time.
+	StorageClass string
+	// VolumeMode is the --volume-mode flag value for virtual media
+	// DataVolumes; empty falls back to CDI's default (Filesystem). Standalone
+	// mode only.
+	VolumeMode string
+	// DataVolumeSizeMargin is the --datavolume-size-margin flag value: pad
+	// inserted-media DataVolumes by this many percent; <= 0 is a no-op.
+	// Standalone mode only.
+	DataVolumeSizeMargin int
+	// InsecureSkipVerify is the --virtual-media-insecure-skip-verify flag
+	// value: skip TLS certificate verification when fetching virtual media
+	// images over https. Standalone mode only.
+	InsecureSkipVerify bool
+	// CABundleConfigMap is the --virtual-media-ca-bundle-configmap flag value:
+	// name of a ConfigMap (in the VM's namespace, key "ca.pem") with the CA
+	// bundle trusted when fetching virtual media images over https.
+	// Standalone mode only.
+	CABundleConfigMap string
 }
 
 type VirtBMC struct {
@@ -40,10 +66,6 @@ type VirtBMC struct {
 	redfishPort int
 	vmNamespace string
 	vmName      string
-	bmcName     string
-
-	virtClient kvclient.Interface
-	cdiClient  cdiclient.Interface
 
 	resourceManager *resourcemanager.VirtualMachineResourceManager
 
@@ -55,15 +77,45 @@ type VirtBMC struct {
 func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC, error) {
 	virtClient := NewVirtClient(options)
 	cdiClient := NewCdiClient(options)
-	bmcClient := NewBMCClient(options)
 
 	vmNamespace := ctx.Value(VMNamespaceKey{}).(string)
 	vmName := ctx.Value(VMNameKey{}).(string)
-	bmcName, err := virtualMachineBMCNameFromPodLabel(ctx, bmcClient, vmNamespace, options.PodName)
-	if err != nil {
-		return nil, err
+
+	// kubeClient serves the CR-backed StateStore in managed mode and reads CA
+	// bundle ConfigMaps for virtual media https fetches in both modes.
+	kubeClient := NewBMCClient(options)
+
+	var (
+		store          resourcemanager.StateStore
+		vmConfigSource resourcemanager.VirtualMediaConfigSource
+	)
+	if options.Standalone {
+		var err error
+		store, err = resourcemanager.NewFileStateStore(options.StateFile)
+		if err != nil {
+			return nil, err
+		}
+		volumeMode, err := parseVolumeMode(options.VolumeMode)
+		if err != nil {
+			return nil, err
+		}
+		vmConfigSource = resourcemanager.NewStaticVirtualMediaConfigSource(resourcemanager.VirtualMediaConfig{
+			StorageClass:       options.StorageClass,
+			VolumeMode:         volumeMode,
+			SizeMarginPercent:  options.DataVolumeSizeMargin,
+			InsecureSkipVerify: options.InsecureSkipVerify,
+			CABundleConfigMap:  options.CABundleConfigMap,
+		})
+	} else {
+		bmcName, err := virtualMachineBMCNameFromPodLabel(ctx, kubeClient, vmNamespace, options.PodName)
+		if err != nil {
+			return nil, err
+		}
+		store = resourcemanager.NewClusterStateStore(kubeClient, vmNamespace, bmcName)
+		vmConfigSource = resourcemanager.NewClusterVirtualMediaConfigSource(kubeClient, vmNamespace, bmcName)
 	}
-	resourceManager := resourcemanager.NewVirtualMachineResourceManager(virtClient, cdiClient, bmcClient, bmcName, options.GitCommit)
+	resourceManager := resourcemanager.NewVirtualMachineResourceManager(
+		virtClient, cdiClient, store, kubeClient, vmConfigSource, options.GitCommit)
 
 	var ipmiSimulator *ipmi.Simulator
 	if options.EnableIPMI {
@@ -81,14 +133,26 @@ func NewVirtBMC(ctx context.Context, options Options, inCluster bool) (*VirtBMC,
 		redfishPort:     options.RedfishPort,
 		vmNamespace:     vmNamespace,
 		vmName:          vmName,
-		bmcName:         bmcName,
-		virtClient:      virtClient,
-		cdiClient:       cdiClient,
 		resourceManager: resourceManager,
 		ipmiSimulator:   ipmiSimulator,
 		redfishEmulator: redfish.NewEmulator(ctx, options.RedfishPort, options.BMCUser, options.BMCPassword, resourceManager),
 		enableIPMI:      options.EnableIPMI,
 	}, nil
+}
+
+// parseVolumeMode maps the --volume-mode flag value to KubeVirt's volume
+// mode; empty means "CDI default".
+func parseVolumeMode(s string) (*corev1.PersistentVolumeMode, error) {
+	switch strings.ToLower(s) {
+	case "":
+		return nil, nil
+	case "block":
+		return util.Ptr(corev1.PersistentVolumeBlock), nil
+	case "filesystem":
+		return util.Ptr(corev1.PersistentVolumeFilesystem), nil
+	default:
+		return nil, fmt.Errorf("invalid --volume-mode %q: must be block or filesystem", s)
+	}
 }
 
 func virtualMachineBMCNameFromPodLabel(ctx context.Context, bmcClient client.Client, namespace, podName string) (string, error) {
@@ -116,6 +180,11 @@ func (b *VirtBMC) Run() error {
 		return fmt.Errorf("unable to initialize the resource manager: %v", err)
 	}
 
+	activeBootOverride, err := b.resourceManager.ReconcileBootOverride(b.context)
+	if err != nil {
+		return fmt.Errorf("unable to reconcile boot override: %v", err)
+	}
+
 	// Start the IPMI simulator
 	if b.ipmiSimulator != nil {
 		if err := b.ipmiSimulator.Run(); err != nil {
@@ -129,6 +198,8 @@ func (b *VirtBMC) Run() error {
 		return fmt.Errorf("unable to run the redfish emulator: %v", err)
 	}
 	logrus.Infof("Redfish service listens on %s:%d", b.address, b.redfishPort)
+
+	go b.runBootOverrideReconcile(activeBootOverride)
 
 	<-b.context.Done()
 	logrus.Info("Gracefully shutting down the VirtBMC agent...")
