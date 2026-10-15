@@ -55,6 +55,13 @@ type VirtualMachineBMCSpec struct {
 	// Redfish configures Redfish-specific behavior.
 	// +optional
 	Redfish *RedfishSpec `json:"redfish,omitempty"`
+
+	// NetworkRef attaches an additional Multus network to the virtBMC Pod,
+	// alongside the default Pod network. The value is set verbatim as the
+	// k8s.v1.cni.cncf.io/networks Pod annotation, e.g. "my-nad" or
+	// "other-ns/my-nad". Changing it rolls out a new virtBMC Pod.
+	// +optional
+	NetworkRef string `json:"networkRef,omitempty"`
 }
 
 // VirtualMediaStorageClassName returns the configured StorageClass for the DataVolume

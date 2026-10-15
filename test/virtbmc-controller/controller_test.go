@@ -601,4 +601,71 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			}, timeout, interval).Should(BeTrue(), "status.clusterIP should track the current Service's ClusterIP even when the Ready condition's message stays unchanged across the recreation")
 		})
 	})
+
+	Context("when NetworkRef is set on the VirtualMachineBMC", Ordered, func() {
+		setNetworkRef := func(networkRef string) {
+			bmc := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), bmc)).To(Succeed())
+			bmc.Spec.NetworkRef = networkRef
+			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
+		}
+
+		It("should roll out the agent Pod with the additional Multus network attached", func() {
+			By("recording the current Pod and verifying it has no Multus network")
+			Eventually(util.DeploymentReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should become ready")
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(podBefore.Annotations).NotTo(HaveKey(virtualmachinebmccontroller.MultusNetworksAnnotation))
+
+			By("setting NetworkRef on the VirtualMachineBMC")
+			setNetworkRef(util.E2EMultusNetworkName)
+
+			By("verifying the Deployment Pod template carries the Multus networks annotation")
+			Eventually(func() string {
+				var deployment appsv1.Deployment
+				if err := k8sClient.Get(ctx, util.AgentDeploymentKey(util.E2ENamespace), &deployment); err != nil {
+					return ""
+				}
+				return deployment.Spec.Template.Annotations[virtualmachinebmccontroller.MultusNetworksAnnotation]
+			}, timeout, interval).Should(Equal(util.E2EMultusNetworkName))
+
+			By("verifying a new agent Pod becomes Running and Ready, so the default Pod network still serves the readiness probe")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "agent Pod should be rolled and become Running and Ready")
+
+			By("verifying Multus actually attached the bridge network")
+			Eventually(util.PodMultusNetworkAttached(ctx, k8sClient, util.E2ENamespace, util.E2EMultusNetworkName), timeout, interval).Should(BeTrue(),
+				"bridge network %s should be attached by Multus", util.E2EMultusNetworkName)
+		})
+
+		It("should roll out the agent Pod again when NetworkRef is changed", func() {
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("changing NetworkRef to a different NetworkAttachmentDefinition")
+			setNetworkRef(util.E2EMultusNetworkNameUpdated)
+
+			By("verifying a new agent Pod becomes Running and Ready")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "agent Pod should be rolled and become Running and Ready")
+
+			By("verifying Multus attached the updated bridge network")
+			Eventually(util.PodMultusNetworkAttached(ctx, k8sClient, util.E2ENamespace, util.E2EMultusNetworkNameUpdated), timeout, interval).Should(BeTrue(),
+				"bridge network %s should be attached by Multus", util.E2EMultusNetworkNameUpdated)
+		})
+
+		It("should roll out the agent Pod without the additional network when NetworkRef is removed", func() {
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("removing NetworkRef from the VirtualMachineBMC")
+			setNetworkRef("")
+
+			By("verifying a new agent Pod becomes Running and Ready")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "agent Pod should be rolled and become Running and Ready")
+
+			By("verifying the new Pod has no Multus networks annotation")
+			pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pod.Annotations).NotTo(HaveKey(virtualmachinebmccontroller.MultusNetworksAnnotation))
+		})
+	})
 })

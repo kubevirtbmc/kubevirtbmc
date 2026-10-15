@@ -76,6 +76,13 @@ spec:
                     description: Enabled toggles the IPMI simulator.
                     type: boolean
                 type: object
+              networkRef:
+                description: |-
+                  NetworkRef attaches an additional Multus network to the virtBMC Pod,
+                  alongside the default Pod network. The value is set verbatim as the
+                  k8s.v1.cni.cncf.io/networks Pod annotation, e.g. "my-nad" or
+                  "other-ns/my-nad". Changing it rolls out a new virtBMC Pod.
+                type: string
               redfish:
                 description: Redfish configures Redfish-specific behavior.
                 properties:

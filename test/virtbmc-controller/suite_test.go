@@ -36,6 +36,7 @@ var (
 	skipKubeVirtInstall           = os.Getenv("KUBEVIRT_INSTALL_SKIP") == envTrueValue
 	skipCertManagerInstall        = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == envTrueValue
 	isCertManagerAlreadyInstalled = false
+	skipMultusInstall             = os.Getenv("MULTUS_INSTALL_SKIP") == envTrueValue
 
 	repo = func() string {
 		if r := os.Getenv("REPO"); r != "" {
@@ -99,6 +100,22 @@ var _ = BeforeSuite(func() {
 		}
 	}
 
+	if !skipMultusInstall {
+		By("installing Multus (thick plugin)")
+		if !util.IsMultusInstalled() {
+			err = util.InstallMultus()
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: Multus is already installed. Skipping installation...\n")
+		}
+	}
+
+	By("creating test NetworkAttachmentDefinitions")
+	for _, nad := range []string{util.E2EMultusNetworkName, util.E2EMultusNetworkNameUpdated} {
+		err = util.CreateTestNetworkAttachmentDefinition(util.E2ENamespace, nad)
+		Expect(err).ToNot(HaveOccurred())
+	}
+
 	By("deploying the controller-manager")
 	cmd := exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", controllerManagerImage))
 	_, err = util.Run(cmd)
@@ -138,6 +155,11 @@ var _ = AfterSuite(func() {
 			return apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKey{Namespace: util.E2ENamespace, Name: util.E2EBMCName}, &bmc))
 		}, timeout, interval).Should(BeTrue(), "VirtualMachineBMC %s/%s should be deleted", util.E2ENamespace, util.E2EBMCName)
 	}
+	By("cleaning up the test NetworkAttachmentDefinitions")
+	for _, nad := range []string{util.E2EMultusNetworkName, util.E2EMultusNetworkNameUpdated} {
+		Expect(util.DeleteTestNetworkAttachmentDefinition(util.E2ENamespace, nad)).To(Succeed())
+	}
+
 	By("undeploying the controller-manager")
 	cmd := exec.Command("make", "undeploy")
 	_, err := util.Run(cmd)

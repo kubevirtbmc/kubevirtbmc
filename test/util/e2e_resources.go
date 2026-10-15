@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,6 +31,14 @@ const (
 	E2EWebhookServiceName      = "kubevirtbmc-webhook-service"
 	E2EWebhookServiceNamespace = "kubevirtbmc-system"
 	WebhookRegistrationDelay   = 10 * time.Second
+
+	// E2EMultusNetworkName and E2EMultusNetworkNameUpdated are the
+	// NetworkAttachmentDefinitions used as NetworkRef values in e2e tests.
+	E2EMultusNetworkName        = "test-multus-network"
+	E2EMultusNetworkNameUpdated = "updated-multus-network"
+
+	// MultusNetworkStatusAnnotation is where Multus reports attached networks.
+	MultusNetworkStatusAnnotation = "k8s.v1.cni.cncf.io/network-status"
 )
 
 func AgentDeploymentKey(namespace string) types.NamespacedName {
@@ -133,6 +142,34 @@ func PodRunningAndReadyWithNewUID(ctx context.Context, k8sClient client.Client, 
 		}
 		for _, cond := range pod.Status.Conditions {
 			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// PodMultusNetworkAttached reports whether the agent Pod's network-status
+// annotation lists the given NAD as attached.
+func PodMultusNetworkAttached(ctx context.Context, k8sClient client.Client, namespace, nadName string) func() bool {
+	return func() bool {
+		pod, err := AgentPod(ctx, k8sClient, namespace)
+		if err != nil {
+			return false
+		}
+		status, ok := pod.Annotations[MultusNetworkStatusAnnotation]
+		if !ok {
+			return false
+		}
+		var entries []struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal([]byte(status), &entries); err != nil {
+			return false
+		}
+		want := namespace + "/" + nadName
+		for _, e := range entries {
+			if e.Name == want {
 				return true
 			}
 		}
