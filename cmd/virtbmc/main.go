@@ -54,8 +54,7 @@ func newCommand(options *virtbmc.Options) *cli.Command {
 			&cli.StringFlag{
 				Name:        "kubeconfig",
 				Aliases:     []string{"k"},
-				Value:       "/root/.kube/config",
-				Usage:       "use a specific kubeconfig `FILE`",
+				Usage:       "use a specific kubeconfig `FILE` (default: in-cluster config, then $KUBECONFIG or ~/.kube/config)",
 				Destination: &options.KubeconfigPath,
 				Sources:     yamlSource("kubeconfig"),
 			},
