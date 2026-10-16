@@ -192,7 +192,9 @@ e2e-test: generate fmt vet kind ## Run end-to-end tests (controller first, then 
 	# read at package init) are invisible to the go test result cache.
 	go test -v -count=1 -timeout 15m ./test/virtbmc-controller/...
 	go test -v -count=1 -timeout 15m ./test/virtbmc-agent/...
-	$(MAKE) e2e-test-standalone
+	# The controller suite's `deploy` dirtied the tree; pin VERSION so the
+	# sub-make doesn't recompute it with a -dirty suffix that matches no image.
+	$(MAKE) e2e-test-standalone VERSION=$(VERSION)
 
 .PHONY: e2e-test-standalone
 e2e-test-standalone: generate fmt vet kind ## Run agent end-to-end tests in standalone mode (no CRD/controller).
