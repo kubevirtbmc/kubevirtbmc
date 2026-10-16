@@ -333,6 +333,14 @@ generate-install-manifest: manifests kustomize
 	$(KUSTOMIZE) build config/default > $(INSTALL_MANIFEST)
 	@echo "Generated $(INSTALL_MANIFEST)"
 
+STANDALONE_MANIFEST ?= standalone.yaml
+.PHONY: generate-standalone-manifest
+generate-standalone-manifest: kustomize ## Generate the standalone agent manifest with the agent image pinned to IMG.
+	@echo "Generating standalone manifest with image: $(IMG)"
+	cd config/standalone && $(KUSTOMIZE) edit set image virtbmc=${IMG}
+	$(KUSTOMIZE) build config/standalone > $(STANDALONE_MANIFEST)
+	@echo "Generated $(STANDALONE_MANIFEST)"
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to

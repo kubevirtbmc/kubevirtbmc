@@ -1,0 +1,190 @@
+# Standalone virtbmc agent: one agent per VM, no operator or CRD needed.
+# See docs/standalone.md.
+#
+# Before applying, change:
+#   - "default" (namespace) and "myvm" (VM name) everywhere below;
+#   - the username/password in the Secret;
+#   - storageClassName on the PVC (optional, defaults to the cluster default);
+#   - optional flags in the container args.
+---
+# Shared by every standalone agent in the cluster, like the operator's
+# virtbmc-role. Each agent gets it through a namespaced RoleBinding, so it
+# only has these permissions in its VM's namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: virtbmc-standalone-role
+rules:
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachines
+  verbs:
+  - get
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - subresources.kubevirt.io
+  resources:
+  - virtualmachines/start
+  - virtualmachines/stop
+  - virtualmachines/restart
+  verbs:
+  - update
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachineinstances
+  verbs:
+  - get
+  - watch
+- apiGroups:
+  - cdi.kubevirt.io
+  resources:
+  - datavolumes
+  verbs:
+  - create
+  - delete
+# Only needed for --virtual-media-ca-bundle-configmap.
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myvm-bmc-creds
+  namespace: default
+stringData:
+  username: admin
+  password: password
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: myvm-virtbmc
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: myvm-virtbmc-rolebinding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: virtbmc-standalone-role
+subjects:
+- kind: ServiceAccount
+  name: myvm-virtbmc
+  namespace: default
+---
+# The state file is the only place the boot override (and the VM's original
+# boot order backup) is recorded. Without a volume the agent state is lost
+# on every pod restart, so this PVC is not optional.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myvm-virtbmc-state
+  namespace: default
+spec:
+  # storageClassName: <csi-class>
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myvm-virtbmc
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    # Recreate avoids two pods fighting over the RWO state volume.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: myvm-virtbmc
+  template:
+    metadata:
+      labels:
+        app: myvm-virtbmc
+    spec:
+      serviceAccountName: myvm-virtbmc
+      securityContext:
+        # Matches the image's USER 65532; makes the PV writable for the agent
+        # on provisioners whose volume root is root-owned.
+        fsGroup: 65532
+      containers:
+      - name: virtbmc
+        image: virtbmc
+        args:
+        - --address=0.0.0.0
+        - --redfish-port=10080
+        - --enable-ipmi
+        - --ipmi-port=10623
+        - --standalone
+        - --state-file=/var/lib/virtbmc/state.json
+        # Optional, see docs/standalone.md:
+        # - --log-level=info
+        # - --storage-class=<storage-class>
+        # - --volume-mode=block
+        # - --datavolume-size-margin=10
+        # - --virtual-media-insecure-skip-verify
+        # - --virtual-media-ca-bundle-configmap=<configmap>
+        - default # VM namespace
+        - myvm    # VM name
+        env:
+        - name: BMC_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: myvm-bmc-creds
+              key: username
+        - name: BMC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: myvm-bmc-creds
+              key: password
+        ports:
+        - name: redfish
+          containerPort: 10080
+          protocol: TCP
+        - name: ipmi
+          containerPort: 10623
+          protocol: UDP
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: redfish
+        volumeMounts:
+        - name: state
+          mountPath: /var/lib/virtbmc
+      volumes:
+      - name: state
+        persistentVolumeClaim:
+          claimName: myvm-virtbmc-state
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myvm-virtbmc
+  namespace: default
+spec:
+  selector:
+    app: myvm-virtbmc
+  ports:
+  - name: redfish
+    port: 80
+    targetPort: redfish
+    protocol: TCP
+  - name: ipmi
+    port: 623
+    targetPort: ipmi
+    protocol: UDP

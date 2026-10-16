@@ -64,6 +64,9 @@ jobs:
     - name: Generate install manifest YAML
       run: |
         make generate-install-manifest IMG=${{ env.REPO }}/${{ env.MANAGER }}:${{ env.VERSION }}
+    - name: Generate standalone agent manifest YAML
+      run: |
+        make generate-standalone-manifest IMG=${{ env.REPO }}/${{ env.AGENT }}:${{ env.VERSION }}
 
     # Static agent binaries (CGO disabled, stripped) for running virtbmc in
     # standalone mode without pulling the container image.
@@ -81,6 +84,7 @@ jobs:
       with:
         files: |
           kubevirtbmc-install.yaml
+          standalone.yaml
           virtbmc-linux-amd64
           virtbmc-linux-arm64
           virtbmc-checksums.txt
