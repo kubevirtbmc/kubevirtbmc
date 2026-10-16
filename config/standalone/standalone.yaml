@@ -2,7 +2,7 @@
 # See docs/standalone.md.
 #
 # Before applying, change:
-#   - "default" (namespace) and "myvm" (VM name) everywhere below;
+#   - "default" (namespace) and "testvm" (VM name) everywhere below;
 #   - the username/password in the Secret;
 #   - storageClassName on the PVC (optional, defaults to the cluster default);
 #   - optional flags in the container args.
@@ -57,22 +57,22 @@ rules:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: myvm-bmc-creds
+  name: testvm-bmc-creds
   namespace: default
 stringData:
   username: admin
-  password: password
+  password: admin123
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: myvm-virtbmc
+  name: testvm-virtbmc
   namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: myvm-virtbmc-rolebinding
+  name: testvm-virtbmc-rolebinding
   namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -80,7 +80,7 @@ roleRef:
   name: virtbmc-standalone-role
 subjects:
 - kind: ServiceAccount
-  name: myvm-virtbmc
+  name: testvm-virtbmc
   namespace: default
 ---
 # The state file is the only place the boot override (and the VM's original
@@ -89,7 +89,7 @@ subjects:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: myvm-virtbmc-state
+  name: testvm-virtbmc-state
   namespace: default
 spec:
   # storageClassName: <csi-class>
@@ -97,12 +97,14 @@ spec:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      # The state file is a few hundred bytes of JSON; one agent per VM means
+      # one PVC per VM, so keep the request small.
+      storage: 100Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: myvm-virtbmc
+  name: testvm-virtbmc
   namespace: default
 spec:
   replicas: 1
@@ -111,13 +113,13 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: myvm-virtbmc
+      app: testvm-virtbmc
   template:
     metadata:
       labels:
-        app: myvm-virtbmc
+        app: testvm-virtbmc
     spec:
-      serviceAccountName: myvm-virtbmc
+      serviceAccountName: testvm-virtbmc
       securityContext:
         # Matches the image's USER 65532; makes the PV writable for the agent
         # on provisioners whose volume root is root-owned.
@@ -140,17 +142,17 @@ spec:
         # - --virtual-media-insecure-skip-verify
         # - --virtual-media-ca-bundle-configmap=<configmap>
         - default # VM namespace
-        - myvm    # VM name
+        - testvm    # VM name
         env:
         - name: BMC_USERNAME
           valueFrom:
             secretKeyRef:
-              name: myvm-bmc-creds
+              name: testvm-bmc-creds
               key: username
         - name: BMC_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: myvm-bmc-creds
+              name: testvm-bmc-creds
               key: password
         ports:
         - name: redfish
@@ -169,16 +171,16 @@ spec:
       volumes:
       - name: state
         persistentVolumeClaim:
-          claimName: myvm-virtbmc-state
+          claimName: testvm-virtbmc-state
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: myvm-virtbmc
+  name: testvm-virtbmc
   namespace: default
 spec:
   selector:
-    app: myvm-virtbmc
+    app: testvm-virtbmc
   ports:
   - name: redfish
     port: 80
