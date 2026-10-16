@@ -317,7 +317,7 @@ func TestVMChassisGetBootFlags(t *testing.T) {
 			},
 		},
 		{
-			name:      "resource manager error is propagated",
+			name:      "resource manager error maps to ErrNotSupported (0x80)",
 			stateErr:  assert.AnError,
 			expectErr: true,
 		},
@@ -339,11 +339,9 @@ func TestVMChassisGetBootFlags(t *testing.T) {
 
 			flags, err := c.GetBootFlags(context.Background())
 			if tc.expectErr {
-				if tc.stateErr != nil {
-					assert.ErrorIs(t, err, tc.stateErr)
-				} else {
-					assert.Error(t, err)
-				}
+				// Both error paths surface as 0x80 (parameter not supported,
+				// spec §28.13) — the released completion-code contract.
+				assert.ErrorIs(t, err, hal.ErrNotSupported)
 				assert.Nil(t, flags)
 				return
 			}

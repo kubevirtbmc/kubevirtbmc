@@ -247,7 +247,11 @@ func (c vmChassis) SetBootFlags(ctx context.Context, flags *types.BootOptionPara
 func (c vmChassis) GetBootFlags(ctx context.Context) (*types.BootOptionParam_BootFlags, error) {
 	state, err := c.rm.GetBootFlags(ctx)
 	if err != nil {
-		return nil, err
+		// Report backend failures as "parameter not supported" (0x80, spec
+		// §28.13) to match the released completion-code contract — a raw
+		// error would surface as 0xFF and break clients; the failure detail
+		// stays in the agent log.
+		return nil, hal.ErrNotSupported
 	}
 	if state == nil {
 		return nil, hal.ErrNotSupported
