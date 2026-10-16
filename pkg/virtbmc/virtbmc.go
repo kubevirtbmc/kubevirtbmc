@@ -182,7 +182,12 @@ func (b *VirtBMC) Run() error {
 
 	activeBootOverride, err := b.resourceManager.ReconcileBootOverride(b.context)
 	if err != nil {
-		return fmt.Errorf("unable to reconcile boot override: %v", err)
+		// A transient API error here must not crashloop the agent. The
+		// reconcile loop re-reconciles before acting on any state, so
+		// entering it via the active branch — which reconciles first and
+		// retries — is safe and self-heals.
+		logrus.WithError(err).Warn("unable to reconcile boot override at startup; retrying in the reconcile loop")
+		activeBootOverride = true
 	}
 
 	// Start the IPMI simulator
