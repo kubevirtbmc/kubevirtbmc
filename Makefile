@@ -187,21 +187,23 @@ else
 endif
 
 .PHONY: e2e-test
-e2e-test: generate fmt vet kind ## Run end-to-end tests (controller first, then agent: IPMI, Redfish, Virtual Media).
-	# -count=1: e2e inputs (Kind cluster state, env vars like AGENT_STANDALONE
-	# read at package init) are invisible to the go test result cache.
+e2e-test: generate fmt vet kind ## Run end-to-end tests in managed mode (controller first, then agent: IPMI, Redfish, Virtual Media).
+	# -count=1: e2e inputs (Kind cluster state) are invisible to the go test
+	# result cache.
 	go test -v -count=1 -timeout 15m ./test/virtbmc-controller/...
 	go test -v -count=1 -timeout 15m ./test/virtbmc-agent/...
-	# The controller suite's `deploy` dirtied the tree; pin VERSION so the
-	# sub-make doesn't recompute it with a -dirty suffix that matches no image.
-	$(MAKE) e2e-test-standalone VERSION=$(VERSION)
 
 .PHONY: e2e-test-standalone
 e2e-test-standalone: generate fmt vet kind ## Run agent end-to-end tests in standalone mode (no CRD/controller).
+	# -count=1: AGENT_STANDALONE is read at package init, invisible to the go
+	# test result cache.
 	AGENT_STANDALONE=true go test -v -count=1 -timeout 15m ./test/virtbmc-agent/...
 
 .PHONY: local-e2e-test
-local-e2e-test: e2e-setup e2e-test e2e-teardown ## Run end-to-end tests locally.
+# Prerequisites run in one make process: VERSION is computed once at parse
+# time, so the standalone leg can no longer observe the tree dirtied by the
+# controller suite's `deploy` (the old sub-make re-parsed and got -dirty).
+local-e2e-test: e2e-setup e2e-test e2e-test-standalone e2e-teardown ## Run end-to-end tests locally.
 
 ##@ Metal3 / Ironic integration e2e (release-grade; not run on PRs)
 

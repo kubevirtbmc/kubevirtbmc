@@ -63,7 +63,13 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("loading the built images to the Kind cluster")
-	err := util.LoadImageToKindClusterWithName(controllerManagerImage, agentImage)
+	// Standalone mode never deploys the controller-manager, and its CI job
+	// doesn't build that image.
+	images := []string{agentImage}
+	if !standaloneMode {
+		images = append(images, controllerManagerImage)
+	}
+	err := util.LoadImageToKindClusterWithName(images...)
 	Expect(err).ToNot(HaveOccurred())
 
 	By("creating the clientsets")
