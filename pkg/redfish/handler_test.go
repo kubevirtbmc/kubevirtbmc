@@ -454,11 +454,10 @@ func TestPatchComputerSystem(t *testing.T) {
 	}
 }
 
-// TestGetComputerSystemBootOverrideFallback covers the degenerate state where
-// GetBootFlags fails (no device carries a boot order): the Enabled bit must
-// come from the state store, not the in-memory ComputerSystem model — which
-// may hold an already-consumed override, or Disabled while one is still
-// recorded after an agent restart.
+// TestGetComputerSystemBootOverrideFallback covers the case where GetBootFlags
+// fails: the Enabled bit must come from the state store, not the in-memory
+// ComputerSystem model — which may hold an already-consumed override, or
+// Disabled while one is still recorded after an agent restart.
 func TestGetComputerSystemBootOverrideFallback(t *testing.T) {
 	cases := []struct {
 		name        string

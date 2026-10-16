@@ -276,10 +276,10 @@ func standaloneIPMIRequest(namespace string, args ...string) IPMIRequest {
 
 // verifyStandaloneBootOverride checks the recorded boot override through
 // Redfish: GET /Systems/1 renders BootSourceOverrideEnabled from the agent's
-// boot state regardless of the VM's bootOrder fields. The IPMI readback
-// (GetBootFlags) cannot serve here: it errors out when no device has a boot
-// order — exactly the state after a cancel or reset — so it can never
-// report "override absent".
+// boot state, so the test never has to read the VM's bootOrder fields or the
+// in-pod state file directly. Presence goes over Redfish here and the mode
+// bit over IPMI in verifyStandaloneBootOverrideMode, so both protocol
+// surfaces get covered.
 func verifyStandaloneBootOverride(ctx context.Context, namespace string, shouldExist bool) {
 	Eventually(func() bool {
 		out, err := testutil.RunCurlRedfish(ctx, config, namespace, RedfishRequest{
