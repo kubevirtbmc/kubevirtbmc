@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
 const bootOverrideWatchRetryInterval = time.Second
@@ -60,7 +62,15 @@ func (b *VirtBMC) watchActiveBootOverride() (bool, error) {
 		return active, err
 	}
 
+	// The reconcile's triggers are identity-only: it acts on VM/VMI existence
+	// and UID changes, reading live objects when it runs. Same-UID Modified
+	// events — status heartbeats, the bulk of watch traffic — cannot change
+	// its outcome, so they are skipped; a recreated object coalesced into a
+	// single Modified event still carries a new UID and reconciles.
+	var lastVMUID, lastVMIUID types.UID
+
 	for {
+		reconcile := true
 		select {
 		case <-b.context.Done():
 			return false, b.context.Err()
@@ -72,6 +82,10 @@ func (b *VirtBMC) watchActiveBootOverride() (bool, error) {
 			if event.Type == watch.Error {
 				return true, fmt.Errorf("VM watch returned an error event")
 			}
+			if vm, ok := event.Object.(*kubevirtv1.VirtualMachine); ok {
+				reconcile = event.Type != watch.Modified || vm.UID != lastVMUID
+				lastVMUID = vm.UID
+			}
 		case event, ok := <-vmiWatch.ResultChan():
 			if !ok {
 				return true, nil
@@ -79,6 +93,14 @@ func (b *VirtBMC) watchActiveBootOverride() (bool, error) {
 			if event.Type == watch.Error {
 				return true, fmt.Errorf("VMI watch returned an error event")
 			}
+			if vmi, ok := event.Object.(*kubevirtv1.VirtualMachineInstance); ok {
+				reconcile = event.Type != watch.Modified || vmi.UID != lastVMIUID
+				lastVMIUID = vmi.UID
+			}
+		}
+
+		if !reconcile {
+			continue
 		}
 
 		active, err = b.resourceManager.ReconcileBootOverride(b.context)
