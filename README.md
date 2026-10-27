@@ -52,6 +52,10 @@ development environments, and demos, which saves hardware and shortens bring-up 
 
 For installation, configuration, and usage guides, see the [KubeVirtBMC documentation](https://docs.kubevirtbmc.io).
 
+## Roadmap
+
+To see what's shipped, what's in progress, and what's planned next, read [ROADMAP.md](ROADMAP.md).
+
 ## Community
 
 - [Discord](https://discord.gg/k5hT9GDQkY)
