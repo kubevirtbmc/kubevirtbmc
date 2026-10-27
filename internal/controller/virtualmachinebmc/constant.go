@@ -16,4 +16,5 @@ const (
 	VirtualMachineBMCNamespace = "kubevirtbmc-system"
 	EnableIPMIAnnotation       = "bmc.kubevirt.io/enable-ipmi"
 	SecretHashAnnotation       = "bmc.kubevirt.io/secret-hash"
+	MultusNetworksAnnotation   = "k8s.v1.cni.cncf.io/networks"
 )

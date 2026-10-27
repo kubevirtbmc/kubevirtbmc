@@ -440,6 +440,7 @@ func (r *VirtualMachineBMCReconciler) reconcileService(ctx context.Context, vmbm
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=bind
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups=k8s.cni.cncf.io,resources=network-attachment-definitions,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -517,6 +518,14 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	networkPending, err := r.reconcileNetworkStatus(ctx, &virtualMachineBMC)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if networkPending {
+		return ctrl.Result{RequeueAfter: networkPendingRequeue}, nil
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -572,7 +581,19 @@ func (r *VirtualMachineBMCReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.findVirtualMachineBMCsForSecretAndVM),
 		).
+		Watches(
+			&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(findVirtualMachineBMCForPod),
+		).
 		Complete(r)
+}
+
+func findVirtualMachineBMCForPod(_ context.Context, obj client.Object) []reconcile.Request {
+	name, ok := obj.GetLabels()[bmcv1.VirtualMachineBMCNameLabel]
+	if !ok {
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: name, Namespace: obj.GetNamespace()}}}
 }
 
 func (r *VirtualMachineBMCReconciler) findVirtualMachineBMCsForSecretAndVM(ctx context.Context, obj client.Object) []reconcile.Request {

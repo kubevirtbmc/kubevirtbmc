@@ -30,6 +30,14 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='ServiceReady')].status
       name: SERVICEREADY
       type: string
+    - jsonPath: .spec.networkRef
+      name: NETWORK
+      priority: 1
+      type: string
+    - jsonPath: .status.network.ips[0]
+      name: NETWORKIP
+      priority: 1
+      type: string
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -76,6 +84,14 @@ spec:
                     description: Enabled toggles the IPMI simulator.
                     type: boolean
                 type: object
+              networkRef:
+                description: |-
+                  NetworkRef is a NetworkAttachmentDefinition ("name" or "namespace/name")
+                  attached to the virtBMC Pod as an extra Multus network. Changing it
+                  restarts the virtBMC Pod.
+                maxLength: 317
+                pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                type: string
               redfish:
                 description: Redfish configures Redfish-specific behavior.
                 properties:
@@ -277,6 +293,27 @@ spec:
               loadBalancerIP:
                 description: IP address assigned to the LoadBalancer Type BMC service
                 type: string
+              network:
+                description: Network is the attached spec.networkRef network, as reported
+                  by Multus.
+                properties:
+                  interface:
+                    description: Interface is the interface name inside the Pod.
+                    type: string
+                  ips:
+                    description: IPs assigned on this network.
+                    items:
+                      type: string
+                    type: array
+                  mac:
+                    description: MAC address of the interface.
+                    type: string
+                  name:
+                    description: Name is the NetworkAttachmentDefinition as "namespace/name".
+                    type: string
+                required:
+                - name
+                type: object
             type: object
         type: object
     served: true

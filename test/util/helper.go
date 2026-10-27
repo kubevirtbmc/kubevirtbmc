@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -18,6 +19,13 @@ const (
 	defaultCDIVersion      = "v1.65.0"
 	kubeVirtOperatorURLFmt = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-operator.yaml"
 	kubeVirtCRURLFmt       = "https://github.com/kubevirt/kubevirt/releases/download/%s/kubevirt-cr.yaml"
+
+	// multusDaemonSetURL bundles the NetworkAttachmentDefinition CRD and
+	// auto-generates 00-multus.conf delegating to the primary CNI (kindnet).
+	multusDaemonSetURL = "https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/v4.2.2/deployments/multus-daemonset-thick.yml"
+	// Kind node images may not ship the bridge binary the test NAD needs.
+	cniPluginsVersion = "v1.6.2"
+	cniPluginsURLFmt  = "https://github.com/containernetworking/plugins/releases/download/%[1]s/cni-plugins-linux-%[2]s-%[1]s.tgz"
 )
 
 var (
@@ -184,6 +192,141 @@ func EnsureDeclarativeHotplugVolumes() error {
 		return err
 	}, "5m", "5s").Should(Succeed(), "virt-api should be Available after feature-gate patch")
 	Eventually(IsKubeVirtInstalled, "3m", "5s").Should(BeTrue(), "KubeVirt should return to Deployed")
+	return nil
+}
+
+// IsMultusInstalled checks whether the Multus daemonset is present.
+func IsMultusInstalled() bool {
+	cmd := exec.Command("kubectl", "get", "daemonset", "kube-multus-ds",
+		"-n", "kube-system", "--no-headers", "-o", "name", "--ignore-not-found")
+	output, err := Run(cmd)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(output) == "daemonset.apps/kube-multus-ds"
+}
+
+// InstallMultus installs Multus (thick plugin) and the bridge CNI binary on
+// every Kind node.
+func InstallMultus() error {
+	if err := ensureBridgeCNIPlugin(); err != nil {
+		return err
+	}
+
+	cmd := exec.Command("kubectl", "apply", "-f", multusDaemonSetURL)
+	if out, err := Run(cmd); err != nil {
+		return fmt.Errorf("apply Multus thick daemonset: %w\noutput: %s", err, out)
+	}
+
+	cmd = exec.Command("kubectl", "rollout", "status", "daemonset/kube-multus-ds",
+		"-n", "kube-system", "--timeout=180s")
+	if out, err := Run(cmd); err != nil {
+		return fmt.Errorf("wait for Multus daemonset rollout: %w\noutput: %s", err, out)
+	}
+	return nil
+}
+
+// ensureBridgeCNIPlugin copies the bridge CNI binary into /opt/cni/bin on
+// Kind nodes that lack it. The plugin creates the host bridge itself.
+func ensureBridgeCNIPlugin() error {
+	out, err := Run(exec.Command(resolveKindBinary(), "get", "nodes", "--name", kindClusterName()))
+	if err != nil {
+		return fmt.Errorf("kind get nodes: %w\noutput: %s", err, out)
+	}
+
+	tmp, err := os.MkdirTemp("", "cni-plugins")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp) //nolint:errcheck
+
+	bridgeByArch := map[string]string{}
+	for _, node := range getNonEmptyLines(out) {
+		if _, err := Run(exec.Command("docker", "exec", node, "test", "-x", "/opt/cni/bin/bridge")); err == nil {
+			_, _ = fmt.Fprintf(GinkgoWriter, "bridge CNI plugin already present on %s\n", node)
+			continue
+		}
+
+		archOut, err := Run(exec.Command("docker", "exec", node, "uname", "-m"))
+		if err != nil {
+			return fmt.Errorf("get architecture of node %s: %w", node, err)
+		}
+		var arch string
+		switch strings.TrimSpace(archOut) {
+		case "x86_64":
+			arch = "amd64"
+		case "aarch64", "arm64":
+			arch = "arm64"
+		default:
+			return fmt.Errorf("unsupported node architecture %q on %s", strings.TrimSpace(archOut), node)
+		}
+
+		bridge, ok := bridgeByArch[arch]
+		if !ok {
+			archDir := filepath.Join(tmp, arch)
+			if err := os.MkdirAll(archDir, 0o755); err != nil {
+				return err
+			}
+			tgz := filepath.Join(archDir, "cni-plugins.tgz")
+			url := fmt.Sprintf(cniPluginsURLFmt, cniPluginsVersion, arch)
+			if out, err := Run(exec.Command("curl", "-fsSL", "-o", tgz, url)); err != nil {
+				return fmt.Errorf("download CNI plugins from %s: %w\noutput: %s", url, err, out)
+			}
+			if out, err := Run(exec.Command("tar", "-xzf", tgz, "-C", archDir, "./bridge")); err != nil {
+				return fmt.Errorf("extract bridge plugin: %w\noutput: %s", err, out)
+			}
+			bridge = filepath.Join(archDir, "bridge")
+			bridgeByArch[arch] = bridge
+		}
+
+		if out, err := Run(exec.Command("docker", "cp", bridge, node+":/opt/cni/bin/bridge")); err != nil {
+			return fmt.Errorf("copy bridge plugin to node %s: %w\noutput: %s", node, err, out)
+		}
+		if out, err := Run(exec.Command("docker", "exec", node, "chmod", "+x", "/opt/cni/bin/bridge")); err != nil {
+			return fmt.Errorf("chmod bridge plugin on node %s: %w\noutput: %s", node, err, out)
+		}
+		_, _ = fmt.Fprintf(GinkgoWriter, "installed bridge CNI plugin on %s\n", node)
+	}
+	return nil
+}
+
+func IsNetworkAttachmentDefinitionCRDInstalled() bool {
+	cmd := exec.Command("kubectl", "get", "crd", "network-attachment-definitions.k8s.cni.cncf.io",
+		"--no-headers", "-o", "name", "--ignore-not-found")
+	output, err := Run(cmd)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(output) != ""
+}
+
+// CreateTestNetworkAttachmentDefinition creates a bridge NAD with host-local IPAM.
+func CreateTestNetworkAttachmentDefinition(namespace, name, bridge, subnet string) error {
+	nadYAML := fmt.Sprintf(`apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: %[1]s
+  namespace: %[2]s
+spec:
+  config: '{"cniVersion":"0.3.1","name":"%[1]s","type":"bridge","bridge":"%[3]s","ipam":{"type":"host-local","subnet":"%[4]s"}}'
+`, name, namespace, bridge, subnet)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(nadYAML)
+	if out, err := Run(cmd); err != nil {
+		return fmt.Errorf("create NetworkAttachmentDefinition %s/%s: %w\noutput: %s", namespace, name, err, out)
+	}
+	return nil
+}
+
+// DeleteTestNetworkAttachmentDefinition deletes a NAD created by
+// CreateTestNetworkAttachmentDefinition, ignoring it if already gone.
+func DeleteTestNetworkAttachmentDefinition(namespace, name string) error {
+	cmd := exec.Command("kubectl", "delete", "network-attachment-definitions.k8s.cni.cncf.io",
+		name, "-n", namespace, "--ignore-not-found")
+	if out, err := Run(cmd); err != nil {
+		return fmt.Errorf("delete NetworkAttachmentDefinition %s/%s: %w\noutput: %s", namespace, name, err, out)
+	}
 	return nil
 }
 

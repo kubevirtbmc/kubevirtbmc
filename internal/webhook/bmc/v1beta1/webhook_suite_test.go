@@ -80,6 +80,7 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "..", "..", "config", "crd", "bases"),
 			filepath.Join("..", "..", "..", "..", "config", "kubevirt-crd"),
+			filepath.Join("testdata", "crd"),
 		},
 		ErrorIfCRDPathMissing: false,
 
