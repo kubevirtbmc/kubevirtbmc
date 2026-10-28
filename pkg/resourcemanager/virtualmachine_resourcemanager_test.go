@@ -237,7 +237,9 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Eject media from a virtual machine who doesn't have media inserted should fail",
+			// Ejecting is idempotent: Ironic ejects before every insert, and a
+			// drive that is already empty must not fail the deployment.
+			name:         "Eject media from a virtual machine who doesn't have media inserted should succeed",
 			virtualMedia: &fakeVirtualMedia{},
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
@@ -251,7 +253,7 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 					},
 				}...).Build(),
 			expectedVirtualMedia: &fakeVirtualMedia{
-				called:   false,
+				called:   true,
 				imageURL: "",
 				inserted: false,
 			},
@@ -266,7 +268,111 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 						},
 					},
 				}...).Build(),
-			shouldError: true,
+			shouldError: false,
+		},
+		{
+			// An eject that stopped after detaching the volume left the
+			// DataVolume behind; the next eject removes it.
+			name:         "Eject media from a virtual machine without media but with a leftover DataVolume should delete it",
+			virtualMedia: &fakeVirtualMedia{},
+			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(testImageURL).
+				WithStorage(testImageSizeBytes).
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes([]kubevirtv1.Volume{
+					{
+						Name: "default",
+						VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{},
+						},
+					},
+				}...).Build(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: "",
+				inserted: false,
+			},
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes([]kubevirtv1.Volume{
+					{
+						Name: "default",
+						VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{},
+						},
+					},
+				}...).Build(),
+			shouldError: false,
+		},
+		{
+			// Users often name a VM's own disk after the VM: a DataVolume that
+			// does not look like virtual media is never deleted.
+			name:         "Eject media from a virtual machine without media must not delete a non-media DataVolume named after it",
+			virtualMedia: &fakeVirtualMedia{},
+			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(testImageURL).
+				WithStorage(testImageSizeBytes).Build(),
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes([]kubevirtv1.Volume{
+					{
+						Name: "default",
+						VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{},
+						},
+					},
+				}...).Build(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: "",
+				inserted: false,
+			},
+			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(testImageURL).
+				WithStorage(testImageSizeBytes).Build(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes([]kubevirtv1.Volume{
+					{
+						Name: "default",
+						VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{},
+						},
+					},
+				}...).Build(),
+			shouldError: false,
+		},
+		{
+			name:         "Eject media whose DataVolume is already gone should succeed",
+			virtualMedia: &fakeVirtualMedia{},
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: "",
+				inserted: false,
+			},
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes().Build(),
+			shouldError: false,
 		},
 	}
 
@@ -313,6 +419,88 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 			if tc.expectedVirtualMedia != nil {
 				require.Equal(t, tc.expectedVirtualMedia, vmrm.virtualMedia)
 			}
+		})
+	}
+}
+
+// The virtual media state comes from the VM, so it is right after an
+// interrupted insert or eject, an agent restart, or an edit by someone else.
+func TestVirtualMachineResourceManager_GetVirtualMediaFollowsVM(t *testing.T) {
+	testCases := []struct {
+		name     string
+		vm       *kubevirtv1.VirtualMachine
+		dv       *cdiv1.DataVolume
+		before   *fakeVirtualMedia
+		expected *fakeVirtualMedia
+	}{
+		{
+			name: "VM with a CD DataVolume reports it inserted, with its URL",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			dv:       builder.NewDataVolumeBuilder(testNamespace, testVMName).WithHTTPSource(testImageURL).WithStorage(testImageSizeBytes).Build(),
+			before:   &fakeVirtualMedia{},
+			expected: &fakeVirtualMedia{called: true, imageURL: testImageURL, inserted: true},
+		},
+		{
+			name: "VM without a CD reports empty even if the agent thought otherwise",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes([]kubevirtv1.Volume{
+					{
+						Name: "default",
+						VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{},
+						},
+					},
+				}...).Build(),
+			before:   &fakeVirtualMedia{imageURL: testImageURL, inserted: true},
+			expected: &fakeVirtualMedia{called: true, imageURL: "", inserted: false},
+		},
+		{
+			name: "VM with a CD whose DataVolume is gone still reports it inserted",
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			before:   &fakeVirtualMedia{},
+			expected: &fakeVirtualMedia{called: true, imageURL: "", inserted: true},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeCdiClient := cdifake.NewSimpleClientset()
+			if tc.dv != nil {
+				require.NoError(t, fakeCdiClient.Tracker().Add(tc.dv))
+			}
+			vmrm := &VirtualMachineResourceManager{
+				virtClient:   kubevirtfake.NewSimpleClientset(tc.vm),
+				cdiClient:    fakeCdiClient,
+				namespace:    testNamespace,
+				name:         testVMName,
+				virtualMedia: tc.before,
+			}
+			vmedia, err := vmrm.GetVirtualMedia(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, vmedia)
 		})
 	}
 }
@@ -685,6 +873,42 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
 				WithCDRomDisk("cdrom-2", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			shouldError: false,
+		},
+		{
+			// A DataVolume named after the VM that the VM does not use (left by
+			// an interrupted eject) must not block the insert.
+			name:         "Insert media into a virtual machine with a leftover DataVolume should replace it",
+			imageURL:     imageURL,
+			virtualMedia: &fakeVirtualMedia{},
+			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource("http://127.0.0.1/old.iso").
+				WithStorage(testImageSizeBytes).
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).Build(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: imageURL,
+				inserted: true,
+			},
+			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(imageURL).
+				WithStorage(testImageSizeBytes).
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
 				WithVolumes(kubevirtv1.Volume{
 					Name: "cdrom",
 					VolumeSource: kubevirtv1.VolumeSource{

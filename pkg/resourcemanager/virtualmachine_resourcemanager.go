@@ -6,17 +6,20 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiclient "kubevirt.io/client-go/containerizeddataimporter"
 	kvclient "kubevirt.io/client-go/kubevirt"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"kubevirt.io/kubevirtbmc/pkg/accesslog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -158,8 +161,70 @@ func (m *VirtualMachineResourceManager) GetManager(ctx context.Context) (Manager
 	return m.manager, nil
 }
 
+// GetVirtualMedia reads the media state from the VM on every call, like the
+// power state, so it cannot drift from the VM.
 func (m *VirtualMachineResourceManager) GetVirtualMedia(ctx context.Context) (VirtualMediaInterface, error) {
+	if m.virtualMedia == nil {
+		return nil, fmt.Errorf("virtual media not initialized")
+	}
+	if err := m.syncVirtualMedia(ctx); err != nil {
+		return nil, err
+	}
 	return m.virtualMedia, nil
+}
+
+// syncVirtualMedia: inserted when the CD-ROM has a DataVolume volume; the
+// image is that DataVolume's HTTP source.
+func (m *VirtualMachineResourceManager) syncVirtualMedia(ctx context.Context) error {
+	vm, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+		Get(ctx, m.name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	// A VM without a CD-ROM disk has an empty drive, not an error.
+	dvName, _, err := cdromDataVolume(vm)
+	if err != nil || dvName == "" {
+		m.virtualMedia.SetVirtualMedia("", false)
+		return nil
+	}
+	imageURL := ""
+	dv, err := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Get(ctx, dvName, metav1.GetOptions{})
+	switch {
+	case err == nil:
+		if dv.Spec.Source != nil && dv.Spec.Source.HTTP != nil {
+			imageURL = dv.Spec.Source.HTTP.URL
+		}
+	case !apierrors.IsNotFound(err):
+		return err
+	}
+	m.virtualMedia.SetVirtualMedia(imageURL, true)
+	return nil
+}
+
+// cdromDataVolume returns the CD-ROM's DataVolume ("" if empty) and disk name.
+func cdromDataVolume(vm *kubevirtv1.VirtualMachine) (dvName, diskName string, err error) {
+	if vm.Spec.Template == nil {
+		return "", "", fmt.Errorf("no template found")
+	}
+	cdromDisk, err := util.GetCdromDisk(vm.Spec.Template.Spec.Domain.Devices.Disks)
+	if err != nil {
+		return "", "", err
+	}
+	for _, v := range vm.Spec.Template.Spec.Volumes {
+		if v.Name == cdromDisk.Name && v.DataVolume != nil {
+			return v.DataVolume.Name, cdromDisk.Name, nil
+		}
+	}
+	return "", cdromDisk.Name, nil
+}
+
+// deleteDataVolume ignores NotFound.
+func (m *VirtualMachineResourceManager) deleteDataVolume(ctx context.Context, name string) error {
+	err := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (m *VirtualMachineResourceManager) GetSystemUUID(ctx context.Context) (string, error) {
@@ -176,6 +241,8 @@ func (m *VirtualMachineResourceManager) GetSystemSerial(ctx context.Context) (st
 	return m.systemSerial, nil
 }
 
+// EjectMedia is idempotent: an empty drive or a missing DataVolume is not an
+// error, and a leftover virtual media DataVolume is removed.
 func (m *VirtualMachineResourceManager) EjectMedia(ctx context.Context) error {
 	if m.virtualMedia == nil {
 		return fmt.Errorf("virtual media not initialized")
@@ -187,40 +254,26 @@ func (m *VirtualMachineResourceManager) EjectMedia(ctx context.Context) error {
 		return err
 	}
 
-	if vm.Spec.Template == nil {
-		return fmt.Errorf("no template found")
-	}
-
-	cdromDisk, err := util.GetCdromDisk(vm.Spec.Template.Spec.Domain.Devices.Disks)
+	dvName, diskName, err := cdromDataVolume(vm)
 	if err != nil {
 		return err
 	}
 
-	var dvName string
-	vm.Spec.Template.Spec.Volumes = slices.DeleteFunc(vm.Spec.Template.Spec.Volumes, func(v kubevirtv1.Volume) bool {
-		if v.Name == cdromDisk.Name {
-			dvName = v.DataVolume.Name
-			return true
+	if dvName != "" {
+		vm.Spec.Template.Spec.Volumes = slices.DeleteFunc(vm.Spec.Template.Spec.Volumes, func(v kubevirtv1.Volume) bool {
+			return v.Name == diskName
+		})
+		if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
+			Update(ctx, vm, metav1.UpdateOptions{}); err != nil {
+			return err
 		}
-		return false
-	})
-
-	if dvName == "" {
-		return fmt.Errorf("no media inserted")
+		m.virtualMedia.SetVirtualMedia("", false)
+		return m.deleteDataVolume(ctx, dvName)
 	}
 
-	if _, err := m.virtClient.KubevirtV1().VirtualMachines(m.namespace).
-		Update(ctx, vm, metav1.UpdateOptions{}); err != nil {
-		return err
-	}
-
-	if err := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Delete(ctx, dvName, metav1.DeleteOptions{}); err != nil {
-		return err
-	}
-
+	// Nothing attached: remove a leftover from an interrupted eject.
 	m.virtualMedia.SetVirtualMedia("", false)
-
-	return nil
+	return m.removeOrphanDataVolume(ctx, vm, false)
 }
 
 func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageURL string) error {
@@ -234,13 +287,16 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 		return err
 	}
 
-	if vm.Spec.Template == nil {
-		return fmt.Errorf("no template found")
-	}
-
-	cdromDisk, err := util.GetCdromDisk(vm.Spec.Template.Spec.Domain.Devices.Disks)
+	attached, cdromDiskName, err := cdromDataVolume(vm)
 	if err != nil {
 		return err
+	}
+
+	// A leftover virtual media DataVolume would block the create below.
+	if attached == "" {
+		if err := m.removeOrphanDataVolume(ctx, vm, true); err != nil {
+			return err
+		}
 	}
 
 	// A missing BMC client/object means no StorageClassName/VolumeMode/size-margin/VirtualMedia
@@ -316,7 +372,7 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 
 	// Attach DataVolume to VirtualMachine
 	volume := kubevirtv1.Volume{
-		Name: cdromDisk.Name,
+		Name: cdromDiskName,
 		VolumeSource: kubevirtv1.VolumeSource{
 			DataVolume: &kubevirtv1.DataVolumeSource{
 				Name:         dv.Name,
@@ -334,6 +390,73 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 	m.virtualMedia.SetVirtualMedia(imageURL, true)
 
 	return nil
+}
+
+// orphanDataVolumeTimeout bounds the wait for a leftover DataVolume to go.
+var orphanDataVolumeTimeout = 2 * time.Minute
+
+// removeOrphanDataVolume deletes the VM-named DataVolume if it is unused
+// virtual media. forInsert waits for it to go, and errors if the name is
+// taken by anything else.
+func (m *VirtualMachineResourceManager) removeOrphanDataVolume(ctx context.Context, vm *kubevirtv1.VirtualMachine, forInsert bool) error {
+	dvs := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace)
+	dv, err := dvs.Get(ctx, m.name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !isOrphanVirtualMedia(vm, dv) {
+		if forInsert {
+			return fmt.Errorf("DataVolume %s/%s exists and is not unused virtual media; cannot insert media under that name", m.namespace, m.name)
+		}
+		return nil
+	}
+	accesslog.Logger(ctx).Warnf("deleting DataVolume %s/%s, virtual media left over from an earlier insert that the VM no longer uses", m.namespace, m.name)
+	if err := m.deleteDataVolume(ctx, m.name); err != nil {
+		return err
+	}
+	if !forInsert {
+		return nil
+	}
+	return wait.PollUntilContextTimeout(ctx, time.Second, orphanDataVolumeTimeout, true, func(ctx context.Context) (bool, error) {
+		_, err := dvs.Get(ctx, m.name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	})
+}
+
+// isOrphanVirtualMedia: dv looks like one ConstructDataVolume makes and vm
+// does not use, own or template it (VM disks are often named after the VM).
+func isOrphanVirtualMedia(vm *kubevirtv1.VirtualMachine, dv *cdiv1.DataVolume) bool {
+	if dv.Spec.Source == nil || dv.Spec.Source.HTTP == nil {
+		return false
+	}
+	if _, ok := dv.Annotations[util.AnnStorageBindImmediateRequested]; !ok {
+		return false
+	}
+	for _, ref := range dv.OwnerReferences {
+		if ref.UID == vm.UID {
+			return false
+		}
+	}
+	for _, t := range vm.Spec.DataVolumeTemplates {
+		if t.Name == dv.Name {
+			return false
+		}
+	}
+	if vm.Spec.Template != nil {
+		for _, v := range vm.Spec.Template.Spec.Volumes {
+			if (v.DataVolume != nil && v.DataVolume.Name == dv.Name) ||
+				(v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == dv.Name) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (m *VirtualMachineResourceManager) GetPowerStatus(ctx context.Context) (bool, error) {
