@@ -697,8 +697,49 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			shouldError: false,
 		},
 		{
-			name:         "Insert media into a virtual machine who already has media inserted should fail",
+			name:         "Insert same media again should succeed (idempotent retry)",
 			imageURL:     imageURL,
+			virtualMedia: &fakeVirtualMedia{},
+			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(imageURL).
+				WithStorage(testImageSizeBytes).Build(),
+			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			expectedVirtualMedia: &fakeVirtualMedia{
+				called:   true,
+				imageURL: imageURL,
+				inserted: true,
+			},
+			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
+				WithHTTPSource(imageURL).
+				WithStorage(testImageSizeBytes).Build(),
+			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
+				WithTemplate().
+				WithCDRomDisk("cdrom", nil).
+				WithVolumes(kubevirtv1.Volume{
+					Name: "cdrom",
+					VolumeSource: kubevirtv1.VolumeSource{
+						DataVolume: &kubevirtv1.DataVolumeSource{
+							Name:         testVMName,
+							Hotpluggable: true,
+						},
+					},
+				}).Build(),
+			shouldError: false,
+		},
+		{
+			name:         "Insert different media when media is already inserted should fail",
+			imageURL:     imageURL + "/different.iso",
 			virtualMedia: &fakeVirtualMedia{},
 			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
