@@ -168,7 +168,8 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 			virtualMedia: &fakeVirtualMedia{},
 			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(testImageURL).
-				WithStorage(testImageSizeBytes).Build(),
+				WithStorage(testImageSizeBytes).
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -197,7 +198,8 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 			virtualMedia: &fakeVirtualMedia{},
 			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(testImageURL).
-				WithStorage(testImageSizeBytes).Build(),
+				WithStorage(testImageSizeBytes).
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -278,7 +280,8 @@ func TestVirtualMachineResourceManager_EjectMedia(t *testing.T) {
 			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(testImageURL).
 				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -544,7 +547,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -586,7 +590,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
 				WithStorageClass("custom-storage-class").
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -629,7 +634,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				WithStorage(testImageSizeBytes).
 				WithAccessModes(corev1.ReadWriteOnce).
 				WithVolumeMode(corev1.PersistentVolumeBlock).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -669,7 +675,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
 				WithInsecureSkipVerify(true).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -715,7 +722,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
 				WithCertConfigMap("custom-ca").
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -750,7 +758,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
 				WithStorage(util.WithImportMargin(testImageSizeBytes, 30)).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -785,7 +794,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -868,7 +878,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).
@@ -893,7 +904,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			dv: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource("http://127.0.0.1/old.iso").
 				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			vm: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).Build(),
@@ -905,7 +917,8 @@ func TestVirtualMachineResourceManager_InsertMedia(t *testing.T) {
 			expectedDV: builder.NewDataVolumeBuilder(testNamespace, testVMName).
 				WithHTTPSource(imageURL).
 				WithStorage(testImageSizeBytes).
-				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").Build(),
+				WithAnnotation("cdi.kubevirt.io/storage.bind.immediate.requested", "").
+				WithLabel(util.LabelVirtualMedia, testVMName).Build(),
 			expectedVM: builder.NewVirtualMachineBuilder(testNamespace, testVMName).
 				WithTemplate().
 				WithCDRomDisk("cdrom", nil).

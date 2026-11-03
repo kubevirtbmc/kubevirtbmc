@@ -34,6 +34,10 @@ const (
 	defaultManagerName      = "Manager"
 	defaultVirtualMediaId   = "CD1"
 	defaultVirtualMediaName = "Virtual Media"
+
+	// orphanDataVolumeTimeout bounds the wait for a leftover virtual media
+	// DataVolume to go before a new one is created under its name.
+	orphanDataVolumeTimeout = 2 * time.Minute
 )
 
 var (
@@ -218,6 +222,23 @@ func cdromDataVolume(vm *kubevirtv1.VirtualMachine) (dvName, diskName string, er
 	return "", cdromDisk.Name, nil
 }
 
+// deleteOwnDataVolume deletes the DataVolume name if kubevirtbmc created it
+// for this VM; anything else is left alone. A missing one is fine.
+func (m *VirtualMachineResourceManager) deleteOwnDataVolume(ctx context.Context, name string) error {
+	dv, err := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !util.IsVirtualMediaFor(dv, m.name) {
+		accesslog.Logger(ctx).Infof("detached DataVolume %s/%s from the CD-ROM; not deleting it: kubevirtbmc did not create it", m.namespace, name)
+		return nil
+	}
+	return m.deleteDataVolume(ctx, name)
+}
+
 // deleteDataVolume ignores NotFound.
 func (m *VirtualMachineResourceManager) deleteDataVolume(ctx context.Context, name string) error {
 	err := m.cdiClient.CdiV1beta1().DataVolumes(m.namespace).Delete(ctx, name, metav1.DeleteOptions{})
@@ -242,7 +263,10 @@ func (m *VirtualMachineResourceManager) GetSystemSerial(ctx context.Context) (st
 }
 
 // EjectMedia is idempotent: an empty drive or a missing DataVolume is not an
-// error, and a leftover virtual media DataVolume is removed.
+// error. It always detaches what the CD-ROM holds, but deletes a DataVolume
+// only if kubevirtbmc created it for this VM (LabelVirtualMedia): media a
+// user attached is left in place. A leftover kubevirtbmc DataVolume from an
+// interrupted eject is removed.
 func (m *VirtualMachineResourceManager) EjectMedia(ctx context.Context) error {
 	if m.virtualMedia == nil {
 		return fmt.Errorf("virtual media not initialized")
@@ -268,7 +292,7 @@ func (m *VirtualMachineResourceManager) EjectMedia(ctx context.Context) error {
 			return err
 		}
 		m.virtualMedia.SetVirtualMedia("", false)
-		return m.deleteDataVolume(ctx, dvName)
+		return m.deleteOwnDataVolume(ctx, dvName)
 	}
 
 	// Nothing attached: remove a leftover from an interrupted eject.
@@ -358,6 +382,7 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 	dv := util.ConstructDataVolume(util.DataVolumeOptions{
 		Namespace:          m.namespace,
 		Name:               m.name,
+		VirtualMachine:     m.name,
 		URL:                imageURL,
 		Size:               imageSize,
 		StorageClassName:   storageClassName,
@@ -392,9 +417,6 @@ func (m *VirtualMachineResourceManager) InsertMedia(ctx context.Context, imageUR
 	return nil
 }
 
-// orphanDataVolumeTimeout bounds the wait for a leftover DataVolume to go.
-var orphanDataVolumeTimeout = 2 * time.Minute
-
 // removeOrphanDataVolume deletes the VM-named DataVolume if it is unused
 // virtual media. forInsert waits for it to go, and errors if the name is
 // taken by anything else.
@@ -409,7 +431,7 @@ func (m *VirtualMachineResourceManager) removeOrphanDataVolume(ctx context.Conte
 	}
 	if !isOrphanVirtualMedia(vm, dv) {
 		if forInsert {
-			return fmt.Errorf("DataVolume %s/%s exists and is not unused virtual media; cannot insert media under that name", m.namespace, m.name)
+			return fmt.Errorf("DataVolume %s/%s exists and is not unused kubevirtbmc virtual media (label %s=%s); cannot insert media under that name", m.namespace, m.name, util.LabelVirtualMedia, m.name)
 		}
 		return nil
 	}
@@ -429,9 +451,14 @@ func (m *VirtualMachineResourceManager) removeOrphanDataVolume(ctx context.Conte
 	})
 }
 
-// isOrphanVirtualMedia: dv looks like one ConstructDataVolume makes and vm
-// does not use, own or template it (VM disks are often named after the VM).
+// isOrphanVirtualMedia: kubevirtbmc created dv as virtual media for vm
+// (LabelVirtualMedia), and vm neither uses, owns nor templates it. Only such a
+// DataVolume is ever deleted outside an eject: VM disks are often named after
+// the VM, and look like media (an HTTP source, bind-immediate).
 func isOrphanVirtualMedia(vm *kubevirtv1.VirtualMachine, dv *cdiv1.DataVolume) bool {
+	if !util.IsVirtualMediaFor(dv, vm.Name) {
+		return false
+	}
 	if dv.Spec.Source == nil || dv.Spec.Source.HTTP == nil {
 		return false
 	}
@@ -451,7 +478,8 @@ func isOrphanVirtualMedia(vm *kubevirtv1.VirtualMachine, dv *cdiv1.DataVolume) b
 	if vm.Spec.Template != nil {
 		for _, v := range vm.Spec.Template.Spec.Volumes {
 			if (v.DataVolume != nil && v.DataVolume.Name == dv.Name) ||
-				(v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == dv.Name) {
+				(v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == dv.Name) ||
+				(v.Ephemeral != nil && v.Ephemeral.PersistentVolumeClaim != nil && v.Ephemeral.PersistentVolumeClaim.ClaimName == dv.Name) {
 				return false
 			}
 		}

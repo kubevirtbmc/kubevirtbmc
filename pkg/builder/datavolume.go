@@ -30,6 +30,14 @@ func (b *DataVolumeBuilder) WithAnnotation(key, value string) *DataVolumeBuilder
 	return b
 }
 
+func (b *DataVolumeBuilder) WithLabel(key, value string) *DataVolumeBuilder {
+	if b.dv.Labels == nil {
+		b.dv.Labels = map[string]string{}
+	}
+	b.dv.Labels[key] = value
+	return b
+}
+
 func (b *DataVolumeBuilder) Build() *cdiv1.DataVolume {
 	return b.dv
 }

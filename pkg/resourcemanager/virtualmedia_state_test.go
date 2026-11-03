@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stypes "k8s.io/apimachinery/pkg/types"
@@ -29,7 +30,8 @@ func mediaDV() *cdiv1.DataVolume {
 	return builder.NewDataVolumeBuilder(testNamespace, testVMName).
 		WithHTTPSource(testImageURL).
 		WithStorage(testImageSizeBytes).
-		WithAnnotation(util.AnnStorageBindImmediateRequested, "").Build()
+		WithAnnotation(util.AnnStorageBindImmediateRequested, "").
+		WithLabel(util.LabelVirtualMedia, testVMName).Build()
 }
 
 func failing() k8stesting.ReactionFunc {
@@ -50,6 +52,23 @@ func TestIsOrphanVirtualMedia(t *testing.T) {
 		orphan bool
 	}{
 		{"unused virtual media", emptyVM, mediaDV, true},
+		{"not made by kubevirtbmc (no virtual-media label)", emptyVM, func() *cdiv1.DataVolume {
+			dv := mediaDV()
+			dv.Labels = nil
+			return dv
+		}, false},
+		{"kubevirtbmc media of another VM", emptyVM, func() *cdiv1.DataVolume {
+			dv := mediaDV()
+			dv.Labels[util.LabelVirtualMedia] = "other-vm"
+			return dv
+		}, false},
+		{"used as an ephemeral volume", func() *kubevirtv1.VirtualMachine {
+			vm := emptyVM()
+			vm.Spec.Template.Spec.Volumes = []kubevirtv1.Volume{{Name: "rootdisk",
+				VolumeSource: kubevirtv1.VolumeSource{Ephemeral: &kubevirtv1.EphemeralVolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: testVMName}}}}}
+			return vm
+		}, mediaDV, false},
 		{"no HTTP source", emptyVM, func() *cdiv1.DataVolume {
 			dv := mediaDV()
 			dv.Spec.Source = nil
@@ -162,6 +181,11 @@ func TestVirtualMediaErrorPaths(t *testing.T) {
 		require.ErrorIs(t, m.EjectMedia(ctx), errInjected)
 		require.Equal(t, &fakeVirtualMedia{called: true}, m.virtualMedia, "the VM no longer has the media")
 	})
+	t.Run("EjectMedia: DataVolume read fails after detaching", func(t *testing.T) {
+		m, _, cdi := manager(withCD(), mediaDV())
+		cdi.PrependReactor("get", "datavolumes", failing())
+		require.ErrorIs(t, m.EjectMedia(ctx), errInjected)
+	})
 	t.Run("EjectMedia: VM without template", func(t *testing.T) {
 		m, _, _ := manager(builder.NewVirtualMachineBuilder(testNamespace, testVMName).Build())
 		require.Error(t, m.EjectMedia(ctx))
@@ -195,5 +219,63 @@ func TestVirtualMediaErrorPaths(t *testing.T) {
 		got, err := cdi.CdiV1beta1().DataVolumes(testNamespace).Get(ctx, testVMName, metav1.GetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, userDisk, got, "the user's DataVolume is untouched")
+	})
+}
+
+// Media a user attached to the CD-ROM is detached by an eject, never deleted:
+// only DataVolumes kubevirtbmc created (LabelVirtualMedia) are (#251).
+func TestEjectLeavesUserMedia(t *testing.T) {
+	ctx := context.Background()
+	newManager := func(vm *kubevirtv1.VirtualMachine, dvs ...runtime.Object) (*VirtualMachineResourceManager, *kubevirtfake.Clientset, *cdifake.Clientset) {
+		virt := kubevirtfake.NewSimpleClientset(vm)
+		cdi := cdifake.NewSimpleClientset(dvs...)
+		return &VirtualMachineResourceManager{virtClient: virt, cdiClient: cdi, namespace: testNamespace, name: testVMName,
+			virtualMedia: &fakeVirtualMedia{}}, virt, cdi
+	}
+	requireDV := func(t *testing.T, cdi *cdifake.Clientset, name string) {
+		t.Helper()
+		_, err := cdi.CdiV1beta1().DataVolumes(testNamespace).Get(ctx, name, metav1.GetOptions{})
+		require.NoError(t, err, "DataVolume %s must be kept", name)
+	}
+
+	t.Run("a user's DataVolume on the CD-ROM is detached and kept", func(t *testing.T) {
+		userISO := builder.NewDataVolumeBuilder(testNamespace, "user-iso").WithHTTPSource(testImageURL).WithStorage(testImageSizeBytes).Build()
+		vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithTemplate().WithCDRomDisk("cdrom", nil).
+			WithVolumes(cdVolume(kubevirtv1.VolumeSource{DataVolume: &kubevirtv1.DataVolumeSource{Name: "user-iso"}})).Build()
+		m, virt, cdi := newManager(vm, userISO)
+
+		vmedia, err := m.GetVirtualMedia(ctx)
+		require.NoError(t, err)
+		require.Equal(t, &fakeVirtualMedia{called: true, imageURL: testImageURL, inserted: true}, vmedia, "the drive holds media")
+
+		require.NoError(t, m.EjectMedia(ctx))
+		requireDV(t, cdi, "user-iso")
+		got, err := virt.KubevirtV1().VirtualMachines(testNamespace).Get(ctx, testVMName, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Empty(t, got.Spec.Template.Spec.Volumes, "the CD-ROM is empty")
+	})
+
+	t.Run("a DataVolume named after the VM in use as an ephemeral volume is kept", func(t *testing.T) {
+		// Looks like media (HTTP source, bind-immediate) but kubevirtbmc did
+		// not make it.
+		disk := builder.NewDataVolumeBuilder(testNamespace, testVMName).WithHTTPSource(testImageURL).WithStorage(testImageSizeBytes).
+			WithAnnotation(util.AnnStorageBindImmediateRequested, "").Build()
+		vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithTemplate().WithCDRomDisk("cdrom", nil).
+			WithVolumes(kubevirtv1.Volume{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{Ephemeral: &kubevirtv1.EphemeralVolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: testVMName}}}}).Build()
+		m, _, cdi := newManager(vm, disk)
+		require.NoError(t, m.EjectMedia(ctx))
+		requireDV(t, cdi, testVMName)
+		require.Error(t, m.InsertMedia(ctx, testImageURL), "the name is taken by the user's disk")
+		requireDV(t, cdi, testVMName)
+	})
+
+	t.Run("media kubevirtbmc inserted is deleted on eject", func(t *testing.T) {
+		vm := builder.NewVirtualMachineBuilder(testNamespace, testVMName).WithTemplate().WithCDRomDisk("cdrom", nil).
+			WithVolumes(cdVolume(kubevirtv1.VolumeSource{DataVolume: &kubevirtv1.DataVolumeSource{Name: testVMName, Hotpluggable: true}})).Build()
+		m, _, cdi := newManager(vm, mediaDV())
+		require.NoError(t, m.EjectMedia(ctx))
+		_, err := cdi.CdiV1beta1().DataVolumes(testNamespace).Get(ctx, testVMName, metav1.GetOptions{})
+		require.Error(t, err, "deleted")
 	})
 }
