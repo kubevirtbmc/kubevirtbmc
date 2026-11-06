@@ -64,54 +64,51 @@ func ExecInPod(ctx context.Context, cfg *rest.Config, clientset *kubernetes.Clie
 }
 
 func CreateRedfishClientPod(ctx context.Context, clientset *kubernetes.Clientset, namespace string) error {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: RedfishClientPodName, Namespace: namespace},
-		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
-			Containers: []corev1.Container{{
-				Name:    "curl",
-				Image:   CurlImage,
-				Command: []string{"sleep", sleepDuration},
-			}},
-		},
-	}
-	_, err := clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create redfish-client pod: %w", err)
-	}
-	Eventually(func() bool {
-		p, getErr := clientset.CoreV1().Pods(namespace).Get(ctx, RedfishClientPodName, metav1.GetOptions{})
-		if getErr != nil {
-			return false
-		}
-		return p.Status.Phase == corev1.PodRunning
-	}, helperPodTimeout, helperPodInterval).Should(BeTrue(), "redfish-client pod should reach Running")
-	return nil
+	return ensureHelperPod(ctx, clientset, namespace, RedfishClientPodName, "curl", CurlImage)
 }
 
 func CreateIPMIToolPod(ctx context.Context, clientset *kubernetes.Clientset, namespace string) error {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: IPMIToolPodName, Namespace: namespace},
-		Spec: corev1.PodSpec{
-			RestartPolicy: corev1.RestartPolicyNever,
-			Containers: []corev1.Container{{
-				Name:    "ipmitool",
-				Image:   IPMIToolImage,
-				Command: []string{"sleep", sleepDuration},
-			}},
-		},
-	}
-	_, err := clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create ipmitool pod: %w", err)
-	}
-	Eventually(func() bool {
-		p, getErr := clientset.CoreV1().Pods(namespace).Get(ctx, IPMIToolPodName, metav1.GetOptions{})
-		if getErr != nil {
-			return false
+	return ensureHelperPod(ctx, clientset, namespace, IPMIToolPodName, "ipmitool", IPMIToolImage)
+}
+
+// ensureHelperPod waits until a non-terminating pod with the given name is
+// Running, creating it when absent.
+func ensureHelperPod(ctx context.Context, clientset *kubernetes.Clientset, namespace, podName, containerName, image string) error {
+	newPod := func() *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: namespace},
+			Spec: corev1.PodSpec{
+				RestartPolicy: corev1.RestartPolicyNever,
+				Containers: []corev1.Container{{
+					Name:    containerName,
+					Image:   image,
+					Command: []string{"sleep", sleepDuration},
+				}},
+			},
 		}
-		return p.Status.Phase == corev1.PodRunning
-	}, helperPodTimeout, helperPodInterval).Should(BeTrue(), "ipmitool pod should reach Running")
+	}
+	// Create eagerly so a hard failure (RBAC, invalid spec) surfaces now
+	// instead of after the poll timeout. AlreadyExists falls through to the
+	// poll: a leftover pod from a previous suite may still be terminating —
+	// its phase stays Running while its containers die, and exec into it
+	// fails with "container not found" — so a pod with a deletion timestamp
+	// is waited out and recreated rather than reused.
+	if _, err := clientset.CoreV1().Pods(namespace).Create(ctx, newPod(), metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create %s pod: %w", podName, err)
+	}
+	var lastCreateErr error
+	Eventually(func() bool {
+		p, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+		switch {
+		case apierrors.IsNotFound(err):
+			_, lastCreateErr = clientset.CoreV1().Pods(namespace).Create(ctx, newPod(), metav1.CreateOptions{})
+			return false
+		case err != nil, p.DeletionTimestamp != nil:
+			return false
+		default:
+			return p.Status.Phase == corev1.PodRunning
+		}
+	}, helperPodTimeout, helperPodInterval).Should(BeTrue(), "%s pod should reach Running (last create error: %v)", podName, lastCreateErr)
 	return nil
 }
 

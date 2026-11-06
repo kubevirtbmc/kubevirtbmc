@@ -232,6 +232,15 @@ func (r *VirtualMachineBMCReconciler) patchStatusCondition(ctx context.Context, 
 	return r.Status().Patch(ctx, virtualMachineBMC, client.MergeFrom(orig))
 }
 
+func (r *VirtualMachineBMCReconciler) clearStaleBootOverride(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	if virtualMachineBMC.Status.BootOverride == nil {
+		return nil
+	}
+	orig := virtualMachineBMC.DeepCopy()
+	virtualMachineBMC.Status.BootOverride = nil
+	return r.Status().Patch(ctx, virtualMachineBMC, client.MergeFrom(orig))
+}
+
 func (r *VirtualMachineBMCReconciler) validateVirtualMachineExists(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) (bool, error) {
 	log := log.FromContext(ctx)
 
@@ -430,8 +439,7 @@ func (r *VirtualMachineBMCReconciler) reconcileService(ctx context.Context, vmbm
 	return nil
 }
 
-//+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachineinstances,verbs=get;list;watch;delete
+//+kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=bmc.kubevirt.io,resources=virtualmachinebmcs/finalizers,verbs=update
@@ -473,6 +481,13 @@ func (r *VirtualMachineBMCReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	if !vmExists || !secretExists {
+		if !vmExists {
+			if err := r.clearStaleBootOverride(ctx, &virtualMachineBMC); err != nil {
+				log.Error(err, "unable to clear stale boot override")
+				return ctrl.Result{}, err
+			}
+		}
+
 		if err := r.deleteVirtBMCDeployment(ctx, &virtualMachineBMC); err != nil {
 			log.Error(err, "unable to delete virtBMC Deployment")
 			return ctrl.Result{}, err

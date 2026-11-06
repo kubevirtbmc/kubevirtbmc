@@ -3,11 +3,15 @@
 VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "$(shell git rev-parse --abbrev-ref HEAD)-head")
 COMMIT ?= $(shell git rev-parse HEAD)
 
-DIRTY :=
+# -dirty marks a build from a dirty checkout, but only for the auto-derived
+# VERSION. An explicit VERSION (CI) names the images the pipeline already
+# built; appending -dirty breaks e2e image lookup once `make deploy` has
+# legitimately dirtied the tree (kustomize edit set image).
+ifeq ($(origin VERSION),file)
 ifneq ($(shell git status --porcelain --untracked-files=no),)
-DIRTY := -dirty
+VERSION := $(VERSION)-dirty
 endif
-VERSION := $(VERSION)$(DIRTY)
+endif
 # Sanitize for Docker image tag: replace chars not in [a-zA-Z0-9_.-] with '-'
 export TAG = $(shell echo "$(VERSION)" | sed 's|[^a-zA-Z0-9_.-]|-|g')
 
@@ -183,12 +187,23 @@ else
 endif
 
 .PHONY: e2e-test
-e2e-test: generate fmt vet kind ## Run end-to-end tests (controller first, then agent: IPMI, Redfish, Virtual Media).
-	go test -v -timeout 15m ./test/virtbmc-controller/...
-	go test -v -timeout 15m ./test/virtbmc-agent/...
+e2e-test: generate fmt vet kind ## Run end-to-end tests in managed mode (controller first, then agent: IPMI, Redfish, Virtual Media).
+	# -count=1: e2e inputs (Kind cluster state) are invisible to the go test
+	# result cache.
+	go test -v -count=1 -timeout 15m ./test/virtbmc-controller/...
+	go test -v -count=1 -timeout 15m ./test/virtbmc-agent/...
+
+.PHONY: e2e-test-standalone
+e2e-test-standalone: generate fmt vet kind ## Run agent end-to-end tests in standalone mode (no CRD/controller).
+	# -count=1: AGENT_STANDALONE is read at package init, invisible to the go
+	# test result cache.
+	AGENT_STANDALONE=true go test -v -count=1 -timeout 15m ./test/virtbmc-agent/...
 
 .PHONY: local-e2e-test
-local-e2e-test: e2e-setup e2e-test e2e-teardown ## Run end-to-end tests locally.
+# Prerequisites run in one make process: VERSION is computed once at parse
+# time, so the standalone leg can no longer observe the tree dirtied by the
+# controller suite's `deploy` (the old sub-make re-parsed and got -dirty).
+local-e2e-test: e2e-setup e2e-test e2e-test-standalone e2e-teardown ## Run end-to-end tests locally.
 
 ##@ Metal3 / Ironic integration e2e (release-grade; not run on PRs)
 
@@ -221,7 +236,7 @@ endif
 .PHONY: metal3-e2e-test
 metal3-e2e-test: generate fmt vet ## Run Metal3/Ironic integration tests (requires metal3-e2e-setup + built images).
 	# go test -timeout bounds the process; -ginkgo.timeout bounds the suite (Ginkgo default is 1h).
-	KIND_CLUSTER=$(METAL3_CLUSTER) go test -v ./test/metal3-e2e/... -ginkgo.v -ginkgo.timeout=120m -timeout 120m
+	KIND_CLUSTER=$(METAL3_CLUSTER) go test -v -count=1 ./test/metal3-e2e/... -ginkgo.v -ginkgo.timeout=120m -timeout 120m
 
 .PHONY: metal3-e2e-diagnostics
 metal3-e2e-diagnostics: ## Dump Metal3 e2e diagnostics (pods, BMH, Ironic logs) into ./artifacts. Best-effort, never fails.
@@ -315,6 +330,14 @@ generate-install-manifest: manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > $(INSTALL_MANIFEST)
 	@echo "Generated $(INSTALL_MANIFEST)"
+
+STANDALONE_MANIFEST ?= standalone.yaml
+.PHONY: generate-standalone-manifest
+generate-standalone-manifest: kustomize ## Generate the standalone agent manifest with the agent image pinned to IMG.
+	@echo "Generating standalone manifest with image: $(IMG)"
+	cd config/standalone && $(KUSTOMIZE) edit set image virtbmc=${IMG}
+	$(KUSTOMIZE) build config/standalone > $(STANDALONE_MANIFEST)
+	@echo "Generated $(STANDALONE_MANIFEST)"
 
 ##@ Build Dependencies
 

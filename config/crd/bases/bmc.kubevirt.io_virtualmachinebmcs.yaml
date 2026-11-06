@@ -206,6 +206,13 @@ spec:
                     - Legacy
                     - UEFI
                     type: string
+                  vmUID:
+                    description: |-
+                      VMUID scopes this state to one VirtualMachine object so a deleted VM's
+                      backup is never applied to a different VM recreated with the same name.
+                      Records written before this field existed are adopted by stamping the
+                      current VM UID, then reconciled normally.
+                    type: string
                   vmiUID:
                     description: |-
                       VMIUID is the UID of the VMI generation current when a oneshot override

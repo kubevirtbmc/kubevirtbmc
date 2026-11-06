@@ -65,6 +65,9 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To(defaultDesiredReplicas),
+			// The agent is the sole boot-override reconciler. Recreate prevents
+			// old and new pods from mutating the same VM during a rollout.
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -109,6 +112,10 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 								if specIPMIEnabled(&virtualMachineBMC.Spec) {
 									args = append(args, "--enable-ipmi", "--ipmi-port", strconv.Itoa(ipmiPort))
 								}
+								// Virtual media knobs (storage, TLS, size margin) are
+								// deliberately NOT rendered here: the agent reads them
+								// from the CR at InsertMedia time, so changing them no
+								// longer rolls the pod.
 								args = append(args, virtualMachineBMC.Namespace, virtualMachineBMC.Spec.VirtualMachineRef.Name)
 								return args
 							}(),
@@ -227,12 +234,36 @@ func (r *VirtualMachineBMCReconciler) ensureVirtBMCDeployment(ctx context.Contex
 		return err
 	}
 
+	if err := r.clearRollingUpdateIfPresent(ctx, virtualMachineBMC); err != nil {
+		return err
+	}
+
 	if err := r.Patch(ctx, desired, client.Apply, client.FieldOwner(fieldManager), client.ForceOwnership); err != nil {
 		log.Error(err, "unable to apply Deployment for VirtualMachineBMC", "deployment", desired.Name)
 		return err
 	}
 
 	log.V(1).Info("applied Deployment for VirtualMachineBMC", "deployment", desired.Name)
+	return nil
+}
+
+// SSA cannot drop API-owned rollingUpdate by omission, and Recreate plus
+// leftover rollingUpdate is rejected. Merge-patch null deletes the field.
+var recreateStrategyPatch = []byte(`{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null}}}`)
+
+func (r *VirtualMachineBMCReconciler) clearRollingUpdateIfPresent(ctx context.Context, virtualMachineBMC *bmcv1.VirtualMachineBMC) error {
+	existing, err := r.getVirtBMCDeployment(ctx, virtualMachineBMC)
+	if err != nil || existing == nil {
+		return err
+	}
+	if existing.Spec.Strategy.RollingUpdate == nil {
+		return nil
+	}
+
+	if err := r.Patch(ctx, existing, client.RawPatch(types.MergePatchType, recreateStrategyPatch)); err != nil {
+		log.FromContext(ctx).Error(err, "unable to drop rollingUpdate for Recreate agent Deployment", "deployment", existing.Name)
+		return err
+	}
 	return nil
 }
 

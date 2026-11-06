@@ -31,8 +31,15 @@ var (
 )
 
 // BootDeviceToRedfishTarget maps a BootDevice to the Redfish BootSource enum.
+// An underivable device ("" when no device carries a bootOrder) renders as
+// None: the DMTF schema marks the property omitempty, so mapping to the zero
+// value would silently drop BootSourceOverrideTarget from the response
+// instead of stating that no override target exists.
 func BootDeviceToRedfishTarget(d BootDevice) server.ComputerSystemBootSource {
-	return bootSourceMap[d]
+	if target, ok := bootSourceMap[d]; ok {
+		return target
+	}
+	return server.COMPUTERSYSTEMBOOTSOURCE_NONE
 }
 
 // EFIBootToRedfishMode maps the EFI firmware flag to the Redfish override mode.

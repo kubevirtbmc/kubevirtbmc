@@ -12,15 +12,29 @@ import (
 	bmcv1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 )
 
+// buildConfig resolves the REST config the way kubectl does: an explicit
+// --kubeconfig wins; with no flag, in-cluster config when running in a pod,
+// otherwise the default loading rules ($KUBECONFIG, then ~/.kube/config).
+// clientcmd.BuildConfigFromFlags("", "") alone is NOT enough for the last
+// step: it builds bare ClientConfigLoadingRules with no Precedence, so it
+// never consults the default chain.
+func buildConfig(kubeconfigPath string) (*rest.Config, error) {
+	if kubeconfigPath != "" {
+		return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	}
+	if config, err := rest.InClusterConfig(); err == nil {
+		return config, nil
+	}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
+}
+
 func NewVirtClient(options Options) kvclient.Interface {
-	// Build config
-	config, err := clientcmd.BuildConfigFromFlags("", options.KubeconfigPath)
+	config, err := buildConfig(options.KubeconfigPath)
 	if err != nil {
-		// Fallback to in-cluster config
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			panic(err)
-		}
+		panic(err)
 	}
 
 	// KubeVirt client
@@ -33,14 +47,9 @@ func NewVirtClient(options Options) kvclient.Interface {
 }
 
 func NewCdiClient(options Options) *cdiclient.Clientset {
-	// Build config
-	config, err := clientcmd.BuildConfigFromFlags("", options.KubeconfigPath)
+	config, err := buildConfig(options.KubeconfigPath)
 	if err != nil {
-		// Fallback to in-cluster config
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			panic(err)
-		}
+		panic(err)
 	}
 
 	// CDI client
@@ -55,12 +64,9 @@ func NewCdiClient(options Options) *cdiclient.Clientset {
 // NewBMCClient returns a typed (controller-runtime) client for the
 // VirtualMachineBMC CR and core Pods
 func NewBMCClient(options Options) client.Client {
-	config, err := clientcmd.BuildConfigFromFlags("", options.KubeconfigPath)
+	config, err := buildConfig(options.KubeconfigPath)
 	if err != nil {
-		config, err = rest.InClusterConfig()
-		if err != nil {
-			panic(err)
-		}
+		panic(err)
 	}
 
 	scheme := runtime.NewScheme()
