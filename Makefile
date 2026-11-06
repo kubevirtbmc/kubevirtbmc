@@ -307,6 +307,10 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: virtualmedialabel
+virtualmedialabel: ## Label virtual media DataVolumes created before bmc.kubevirt.io/virtual-media existed, so an upgraded kubevirtbmc can eject them. Dry run; APPLY=1 to label, NAMESPACE=<ns> for one namespace.
+	KUBECTL=$(KUBECTL) ./hack/backfill-virtual-media-label.sh $(if $(filter 1 true,$(APPLY)),--apply,)
+
 INSTALL_MANIFEST ?= kubevirtbmc-install.yaml
 .PHONY: generate-install-manifest
 generate-install-manifest: manifests kustomize
