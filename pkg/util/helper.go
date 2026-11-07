@@ -21,6 +21,17 @@ import (
 // immediate binding of the underlying PVC, bypassing WaitForFirstConsumer.
 const AnnStorageBindImmediateRequested = "cdi.kubevirt.io/storage.bind.immediate.requested"
 
+// LabelVirtualMedia marks a DataVolume kubevirtbmc created for virtual media;
+// its value is the VirtualMachine's name. kubevirtbmc deletes only
+// DataVolumes carrying it for the VM in question.
+const LabelVirtualMedia = "bmc.kubevirt.io/virtual-media"
+
+// IsVirtualMediaFor reports whether dv is virtual media kubevirtbmc created
+// for the VirtualMachine named vmName.
+func IsVirtualMediaFor(dv *cdiv1.DataVolume, vmName string) bool {
+	return dv != nil && vmName != "" && dv.Labels[LabelVirtualMedia] == vmName
+}
+
 // WithImportMargin pads size by marginPercent; marginPercent <= 0 is a no-op.
 func WithImportMargin(size int64, marginPercent int) int64 {
 	if marginPercent <= 0 {
@@ -138,6 +149,7 @@ func GetRemoteFileSize(url string, insecureSkipVerify bool, caBundle []byte) (in
 type DataVolumeOptions struct {
 	Namespace          string
 	Name               string
+	VirtualMachine     string // the VM the media is for: the LabelVirtualMedia value
 	URL                string
 	Size               int64
 	StorageClassName   string
@@ -181,6 +193,9 @@ func ConstructDataVolume(params DataVolumeOptions) *cdiv1.DataVolume {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: params.Namespace,
 			Name:      params.Name,
+			Labels: map[string]string{
+				LabelVirtualMedia: params.VirtualMachine,
+			},
 			Annotations: map[string]string{
 				AnnStorageBindImmediateRequested: "",
 			},
