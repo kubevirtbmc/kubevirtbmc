@@ -78,6 +78,9 @@ func (r *VirtualMachineBMCReconciler) createVirtBMCDeployment(virtualMachineBMC 
 						if secretHash != "" {
 							annotations[SecretHashAnnotation] = secretHash
 						}
+						if virtualMachineBMC.Spec.NetworkRef != "" {
+							annotations[MultusNetworksAnnotation] = virtualMachineBMC.Spec.NetworkRef
+						}
 						return annotations
 					}(),
 				},

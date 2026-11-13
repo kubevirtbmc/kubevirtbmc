@@ -23,7 +23,9 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	bmcv1beta1 "kubevirt.io/kubevirtbmc/api/bmc/v1beta1"
 )
@@ -360,4 +362,102 @@ var _ = Describe("VirtualMachineBMC Webhook", func() {
 		})
 	})
 
+	Context("When validating NetworkRef", func() {
+		const otherNamespace = "nad-other-ns"
+
+		newNAD := func(namespace, name string) *unstructured.Unstructured {
+			nad := &unstructured.Unstructured{}
+			nad.SetGroupVersionKind(bmcv1beta1.NetworkAttachmentDefinitionGVK)
+			nad.SetNamespace(namespace)
+			nad.SetName(name)
+			Expect(unstructured.SetNestedField(nad.Object, `{"cniVersion":"0.3.1","type":"bridge"}`, "spec", "config")).To(Succeed())
+			return nad
+		}
+
+		BeforeEach(func() {
+			vm := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: vmName, Namespace: namespace},
+				Spec: kubevirtv1.VirtualMachineSpec{
+					Running: boolPtr(false),
+					Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirtv1.VirtualMachineInstanceSpec{Domain: kubevirtv1.DomainSpec{}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, vm)).Should(Succeed())
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: namespace},
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("password"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).Should(Succeed())
+
+			for _, o := range []*bmcv1beta1.VirtualMachineBMC{obj, oldObj} {
+				o.Spec.VirtualMachineRef = &corev1.LocalObjectReference{Name: vmName}
+				o.Spec.AuthSecretRef = &corev1.LocalObjectReference{Name: secretName}
+			}
+
+			ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: otherNamespace}}
+			Expect(client.IgnoreAlreadyExists(k8sClient.Create(ctx, ns))).To(Succeed())
+			for _, nad := range []*unstructured.Unstructured{newNAD(namespace, "bmc-net"), newNAD(otherNamespace, "shared-net")} {
+				Expect(k8sClient.Create(ctx, nad)).To(Succeed())
+				DeferCleanup(func() {
+					Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, nad))).To(Succeed())
+				})
+			}
+		})
+
+		It("Should deny a NetworkRef that is not a name or namespace/name", func() {
+			for _, networkRef := range []string{`[{"name":"bmc-net"}]`, "a/b/c", "Bmc_Net", "/bmc-net", "default/"} {
+				obj.Spec.NetworkRef = networkRef
+				_, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).To(HaveOccurred(), "networkRef %q should be denied", networkRef)
+				Expect(err.Error()).To(ContainSubstring("spec.networkRef"))
+			}
+		})
+
+		It("Should accept an existing NetworkAttachmentDefinition in the same namespace without warnings", func() {
+			for _, networkRef := range []string{"bmc-net", namespace + "/bmc-net"} {
+				obj.Spec.NetworkRef = networkRef
+				warnings, err := validator.ValidateCreate(ctx, obj)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(warnings).To(BeEmpty(), "networkRef %q", networkRef)
+			}
+		})
+
+		It("Should accept a missing NetworkAttachmentDefinition with a warning", func() {
+			obj.Spec.NetworkRef = "missing-net"
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ConsistOf(ContainSubstring(`NetworkAttachmentDefinition "default/missing-net" not found`)))
+		})
+
+		It("Should accept a cross-namespace NetworkAttachmentDefinition with a warning", func() {
+			obj.Spec.NetworkRef = otherNamespace + "/shared-net"
+			warnings, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ConsistOf(ContainSubstring("namespaceIsolation")))
+		})
+
+		It("Should only warn on update when NetworkRef changes", func() {
+			oldObj.Spec.NetworkRef = "missing-net"
+			obj.Spec.NetworkRef = "missing-net"
+			warnings, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(BeEmpty())
+
+			obj.Spec.NetworkRef = "other-missing-net"
+			warnings, err = validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(warnings).To(ConsistOf(ContainSubstring("not found")))
+		})
+
+		It("Should deny an update to a malformed NetworkRef", func() {
+			obj.Spec.NetworkRef = "a/b/c"
+			_, err := validator.ValidateUpdate(ctx, oldObj, obj)
+			Expect(err).To(HaveOccurred())
+		})
+	})
 })

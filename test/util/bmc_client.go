@@ -16,16 +16,18 @@ import (
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/utils/ptr"
 )
 
 const (
-	RedfishClientPodName = "redfish-client"
-	IPMIToolPodName      = "ipmitool"
-	CurlImage            = "curlimages/curl:latest"
-	IPMIToolImage        = "kubevirtbmc/ipmitool:latest" // ipmitool v1.8.19
-	helperPodTimeout     = 180 * time.Second
-	helperPodInterval    = 250 * time.Millisecond
-	sleepDuration        = "999999999"
+	RedfishClientPodName       = "redfish-client"
+	MultusRedfishClientPodName = "multus-redfish-client"
+	IPMIToolPodName            = "ipmitool"
+	CurlImage                  = "curlimages/curl:latest"
+	IPMIToolImage              = "kubevirtbmc/ipmitool:latest" // ipmitool v1.8.19
+	helperPodTimeout           = 180 * time.Second
+	helperPodInterval          = 250 * time.Millisecond
+	sleepDuration              = "999999999"
 )
 
 type ExecOptions struct {
@@ -87,6 +89,56 @@ func CreateRedfishClientPod(ctx context.Context, clientset *kubernetes.Clientset
 		return p.Status.Phase == corev1.PodRunning
 	}, helperPodTimeout, helperPodInterval).Should(BeTrue(), "redfish-client pod should reach Running")
 	return nil
+}
+
+// RunCurlOverMultusNetwork runs curl from a Pod attached to nadName. The Pod
+// is pinned to nodeName because bridge networks are node-local.
+func RunCurlOverMultusNetwork(ctx context.Context, cfg *rest.Config, namespace, nadName, nodeName string, args ...string) (string, error) {
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return "", fmt.Errorf("building clientset: %w", err)
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        MultusRedfishClientPodName,
+			Namespace:   namespace,
+			Annotations: map[string]string{"k8s.v1.cni.cncf.io/networks": nadName},
+		},
+		Spec: corev1.PodSpec{
+			NodeName:      nodeName,
+			RestartPolicy: corev1.RestartPolicyNever,
+			Containers: []corev1.Container{{
+				Name:    "curl",
+				Image:   CurlImage,
+				Command: []string{"sleep", sleepDuration},
+			}},
+		},
+	}
+	if _, err := clientset.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		return "", fmt.Errorf("create %s pod: %w", MultusRedfishClientPodName, err)
+	}
+	defer func() {
+		_ = clientset.CoreV1().Pods(namespace).Delete(ctx, MultusRedfishClientPodName, metav1.DeleteOptions{GracePeriodSeconds: ptr.To[int64](0)})
+		Eventually(func() bool {
+			_, getErr := clientset.CoreV1().Pods(namespace).Get(ctx, MultusRedfishClientPodName, metav1.GetOptions{})
+			return apierrors.IsNotFound(getErr)
+		}, helperPodTimeout, helperPodInterval).Should(BeTrue(), "%s pod should be deleted", MultusRedfishClientPodName)
+	}()
+	Eventually(func() bool {
+		p, getErr := clientset.CoreV1().Pods(namespace).Get(ctx, MultusRedfishClientPodName, metav1.GetOptions{})
+		return getErr == nil && p.Status.Phase == corev1.PodRunning
+	}, helperPodTimeout, helperPodInterval).Should(BeTrue(), "%s pod should reach Running", MultusRedfishClientPodName)
+
+	stdout, stderr, err := ExecInPod(ctx, cfg, clientset, ExecOptions{
+		Namespace:     namespace,
+		PodName:       MultusRedfishClientPodName,
+		ContainerName: "curl",
+		Command:       append([]string{"curl"}, args...),
+	})
+	if err != nil {
+		return stdout, fmt.Errorf("%w; stderr: %s", err, stderr)
+	}
+	return stdout, nil
 }
 
 func CreateIPMIToolPod(ctx context.Context, clientset *kubernetes.Clientset, namespace string) error {

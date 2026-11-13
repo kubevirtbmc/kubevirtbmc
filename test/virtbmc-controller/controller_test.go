@@ -2,6 +2,7 @@ package virtbmccontroller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -10,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -599,6 +601,164 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 				}
 				return bmc.Status.ClusterIP == svc.Spec.ClusterIP
 			}, timeout, interval).Should(BeTrue(), "status.clusterIP should track the current Service's ClusterIP even when the Ready condition's message stays unchanged across the recreation")
+		})
+	})
+
+	Context("when NetworkRef is set on the VirtualMachineBMC", Ordered, func() {
+		BeforeAll(func() {
+			if !multusAvailable {
+				Skip("NetworkAttachmentDefinition CRD not found; Multus is required for NetworkRef specs")
+			}
+		})
+
+		setNetworkRef := func(networkRef string) {
+			bmc := &bmcv1.VirtualMachineBMC{}
+			Expect(k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), bmc)).To(Succeed())
+			bmc.Spec.NetworkRef = networkRef
+			Expect(k8sClient.Update(ctx, bmc)).To(Succeed())
+		}
+
+		redfishOverNetwork := func(nadName, ip string) {
+			pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+			var redfishPort int32
+			for _, p := range pod.Spec.Containers[0].Ports {
+				if p.Name == "redfish" {
+					redfishPort = p.ContainerPort
+				}
+			}
+			Expect(redfishPort).NotTo(BeZero(), "agent container should expose the redfish port")
+
+			// Earlier specs rotate the password, so read the current one.
+			var secret corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: util.E2ESecretName, Namespace: util.E2ENamespace}, &secret)).To(Succeed())
+			creds := string(secret.Data["username"]) + ":" + string(secret.Data["password"])
+
+			url := fmt.Sprintf("http://%s:%d/redfish/v1/Systems", ip, redfishPort)
+			out, err := util.RunCurlOverMultusNetwork(ctx, config, util.E2ENamespace, nadName, pod.Spec.NodeName,
+				"-s", "-o", "/dev/null", "-w", "%{http_code}", "--connect-timeout", "5", "--max-time", "15",
+				"-u", creds, url)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(Equal("200"), "Redfish should answer at %s over network %s", url, nadName)
+		}
+
+		It("should roll out the agent Pod with the additional Multus network attached", func() {
+			By("recording the current Pod and verifying it has no Multus network")
+			Eventually(util.DeploymentReady(ctx, k8sClient, util.E2ENamespace), timeout, interval).Should(BeTrue(), "agent Deployment should become ready")
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(podBefore.Annotations).NotTo(HaveKey(virtualmachinebmccontroller.MultusNetworksAnnotation))
+
+			By("setting NetworkRef on the VirtualMachineBMC")
+			setNetworkRef(util.E2EMultusNetworkName)
+
+			By("verifying the Deployment Pod template carries the Multus networks annotation")
+			Eventually(func() string {
+				var deployment appsv1.Deployment
+				if err := k8sClient.Get(ctx, util.AgentDeploymentKey(util.E2ENamespace), &deployment); err != nil {
+					return ""
+				}
+				return deployment.Spec.Template.Annotations[virtualmachinebmccontroller.MultusNetworksAnnotation]
+			}, timeout, interval).Should(Equal(util.E2EMultusNetworkName))
+
+			By("verifying a new agent Pod becomes Running and Ready, so the default Pod network still serves the readiness probe")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "agent Pod should be rolled and become Running and Ready")
+
+			By("verifying Multus actually attached the bridge network")
+			Eventually(util.PodMultusNetworkAttached(ctx, k8sClient, util.E2ENamespace, util.E2EMultusNetworkName), timeout, interval).Should(BeTrue(),
+				"bridge network %s should be attached by Multus", util.E2EMultusNetworkName)
+
+			By("verifying status.network reports the attached network and its IP")
+			var network *bmcv1.NetworkStatus
+			Eventually(func() *bmcv1.NetworkStatus {
+				network = util.BMCNetworkStatus(ctx, k8sClient, util.E2ENamespace, util.E2EMultusNetworkName)()
+				return network
+			}, timeout, interval).ShouldNot(BeNil())
+			Expect(network.Interface).NotTo(BeEmpty())
+			Eventually(util.HasBMCCondition(ctx, k8sClient, util.E2ENamespace,
+				bmcv1.ConditionNetworkAttached, metav1.ConditionTrue, "NetworkAttached"), timeout, interval).Should(BeTrue())
+
+			By("verifying Redfish is reachable over the additional network")
+			redfishOverNetwork(util.E2EMultusNetworkName, network.IPs[0])
+		})
+
+		It("should roll out the agent Pod again when NetworkRef is changed", func() {
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("changing NetworkRef to a different NetworkAttachmentDefinition")
+			setNetworkRef(util.E2EMultusNetworkNameUpdated)
+
+			By("verifying a new agent Pod becomes Running and Ready")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "agent Pod should be rolled and become Running and Ready")
+
+			By("verifying Multus attached the updated bridge network")
+			Eventually(util.PodMultusNetworkAttached(ctx, k8sClient, util.E2ENamespace, util.E2EMultusNetworkNameUpdated), timeout, interval).Should(BeTrue(),
+				"bridge network %s should be attached by Multus", util.E2EMultusNetworkNameUpdated)
+
+			By("verifying status.network reports the updated network")
+			var network *bmcv1.NetworkStatus
+			Eventually(func() *bmcv1.NetworkStatus {
+				network = util.BMCNetworkStatus(ctx, k8sClient, util.E2ENamespace, util.E2EMultusNetworkNameUpdated)()
+				return network
+			}, timeout, interval).ShouldNot(BeNil())
+
+			By("verifying Redfish is reachable over the updated network")
+			redfishOverNetwork(util.E2EMultusNetworkNameUpdated, network.IPs[0])
+		})
+
+		It("should roll out the agent Pod without the additional network when NetworkRef is removed", func() {
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("removing NetworkRef from the VirtualMachineBMC")
+			setNetworkRef("")
+
+			By("verifying a new agent Pod becomes Running and Ready")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "agent Pod should be rolled and become Running and Ready")
+
+			By("verifying the new Pod has no Multus networks annotation")
+			pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pod.Annotations).NotTo(HaveKey(virtualmachinebmccontroller.MultusNetworksAnnotation))
+
+			By("verifying status.network and the NetworkAttached condition are cleared")
+			Eventually(func() bool {
+				var bmc bmcv1.VirtualMachineBMC
+				if err := k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), &bmc); err != nil {
+					return false
+				}
+				return bmc.Status.Network == nil && meta.FindStatusCondition(bmc.Status.Conditions, bmcv1.ConditionNetworkAttached) == nil
+			}, timeout, interval).Should(BeTrue())
+		})
+
+		It("should report a missing NetworkAttachmentDefinition and keep the current Pod serving", func() {
+			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("setting NetworkRef to a NetworkAttachmentDefinition that does not exist")
+			setNetworkRef(util.E2EMultusNetworkNameMissing)
+
+			By("verifying NetworkAttached=False with reason NetworkAttachmentDefinitionNotFound")
+			Eventually(util.HasBMCCondition(ctx, k8sClient, util.E2ENamespace,
+				bmcv1.ConditionNetworkAttached, metav1.ConditionFalse, "NetworkAttachmentDefinitionNotFound"), timeout, interval).Should(BeTrue())
+
+			By("verifying the previous agent Pod is still Running and Ready")
+			pod := &corev1.Pod{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(podBefore), pod)).To(Succeed())
+			Expect(pod.UID).To(Equal(podBefore.UID))
+			Expect(pod.DeletionTimestamp).To(BeNil())
+			Expect(pod.Status.Conditions).To(ContainElement(And(
+				HaveField("Type", corev1.PodReady),
+				HaveField("Status", corev1.ConditionTrue),
+			)))
+
+			By("removing NetworkRef so the stuck rollout is reverted")
+			setNetworkRef("")
+			Eventually(func() bool {
+				pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+				return err == nil && pod.UID == podBefore.UID
+			}, timeout, interval).Should(BeTrue(), "only the previous agent Pod should remain")
 		})
 	})
 })

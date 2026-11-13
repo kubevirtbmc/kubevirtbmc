@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -27,6 +29,7 @@ const (
 	ConditionNotReady                = "ServiceNotReady"
 	ConditionVirtualMachineAvailable = "VirtualMachineAvailable"
 	ConditionSecretAvailable         = "SecretAvailable"
+	ConditionNetworkAttached         = "NetworkAttached"
 	VirtualMachineBMCNameLabel       = "kubevirt.io/virtualmachinebmc-name"
 	VMNameLabel                      = "kubevirt.io/vm-name"
 )
@@ -55,6 +58,25 @@ type VirtualMachineBMCSpec struct {
 	// Redfish configures Redfish-specific behavior.
 	// +optional
 	Redfish *RedfishSpec `json:"redfish,omitempty"`
+
+	// NetworkRef is a NetworkAttachmentDefinition ("name" or "namespace/name")
+	// attached to the virtBMC Pod as an extra Multus network. Changing it
+	// restarts the virtBMC Pod.
+	// +optional
+	// +kubebuilder:validation:MaxLength=317
+	// +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9]*[a-z0-9])?/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+	NetworkRef string `json:"networkRef,omitempty"`
+}
+
+// NetworkRefNamespacedName splits NetworkRef into namespace and name.
+func (s VirtualMachineBMCSpec) NetworkRefNamespacedName(defaultNamespace string) (namespace, name string, ok bool) {
+	if s.NetworkRef == "" {
+		return "", "", false
+	}
+	if ns, n, found := strings.Cut(s.NetworkRef, "/"); found {
+		return ns, n, true
+	}
+	return defaultNamespace, s.NetworkRef, true
 }
 
 // VirtualMediaStorageClassName returns the configured StorageClass for the DataVolume
@@ -222,6 +244,28 @@ type VirtualMachineBMCStatus struct {
 	// boots per its normal boot order.
 	// +optional
 	BootOverride *BootOverrideStatus `json:"bootOverride,omitempty"`
+
+	// Network is the attached spec.networkRef network, as reported by Multus.
+	// +optional
+	Network *NetworkStatus `json:"network,omitempty"`
+}
+
+// NetworkStatus describes the extra network attached to the virtBMC Pod.
+type NetworkStatus struct {
+	// Name is the NetworkAttachmentDefinition as "namespace/name".
+	Name string `json:"name"`
+
+	// Interface is the interface name inside the Pod.
+	// +optional
+	Interface string `json:"interface,omitempty"`
+
+	// IPs assigned on this network.
+	// +optional
+	IPs []string `json:"ips,omitempty"`
+
+	// MAC address of the interface.
+	// +optional
+	MAC string `json:"mac,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -231,6 +275,8 @@ type VirtualMachineBMCStatus struct {
 // +kubebuilder:printcolumn:name="SECRET",type="string",JSONPath=`.spec.authSecretRef.name`
 // +kubebuilder:printcolumn:name="CLUSTERIP",type="string",JSONPath=`.status.clusterIP`
 // +kubebuilder:printcolumn:name="SERVICEREADY",type="string",JSONPath=`.status.conditions[?(@.type=='ServiceReady')].status`
+// +kubebuilder:printcolumn:name="NETWORK",type="string",JSONPath=`.spec.networkRef`,priority=1
+// +kubebuilder:printcolumn:name="NETWORKIP",type="string",JSONPath=`.status.network.ips[0]`,priority=1
 
 // VirtualMachineBMC is the Schema for the virtualmachinebmcs API
 type VirtualMachineBMC struct {

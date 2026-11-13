@@ -8,17 +8,20 @@ import (
 )
 
 func LoadImageToKindClusterWithName(names ...string) error {
-	cluster := "kvbmc-e2e"
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
-	}
-	kindOptions := append([]string{"load", "docker-image", "--name", cluster}, names...)
+	kindOptions := append([]string{"load", "docker-image", "--name", kindClusterName()}, names...)
 	cmd := exec.Command(resolveKindBinary(), kindOptions...)
 	out, err := Run(cmd)
 	if err != nil {
 		return fmt.Errorf("kind load docker-image failed: %w\noutput: %s", err, out)
 	}
 	return nil
+}
+
+func kindClusterName() string {
+	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
+		return v
+	}
+	return "kvbmc-e2e"
 }
 
 func resolveKindBinary() string {

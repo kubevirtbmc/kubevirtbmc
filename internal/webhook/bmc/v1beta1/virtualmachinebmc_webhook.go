@@ -19,10 +19,14 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -108,7 +112,7 @@ func (v *VirtualMachineBMCCustomValidator) ValidateCreate(ctx context.Context, o
 		return nil, err
 	}
 
-	return nil, nil
+	return v.validateNetworkRef(ctx, virtualmachinebmc)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type VirtualMachineBMC.
@@ -116,6 +120,10 @@ func (v *VirtualMachineBMCCustomValidator) ValidateUpdate(ctx context.Context, o
 	virtualmachinebmc, ok := newObj.(*bmcv1beta1.VirtualMachineBMC)
 	if !ok {
 		return nil, fmt.Errorf("expected a VirtualMachineBMC object for the newObj but got %T", newObj)
+	}
+	oldVirtualmachinebmc, ok := oldObj.(*bmcv1beta1.VirtualMachineBMC)
+	if !ok {
+		return nil, fmt.Errorf("expected a VirtualMachineBMC object for the oldObj but got %T", oldObj)
 	}
 	virtualmachinebmclog.Info("Validation for VirtualMachineBMC upon update", "name", virtualmachinebmc.GetName())
 
@@ -127,7 +135,12 @@ func (v *VirtualMachineBMCCustomValidator) ValidateUpdate(ctx context.Context, o
 		return nil, err
 	}
 
-	return nil, nil
+	// Don't repeat warnings on updates that leave networkRef alone.
+	warnings, err := v.validateNetworkRef(ctx, virtualmachinebmc)
+	if err != nil || virtualmachinebmc.Spec.NetworkRef == oldVirtualmachinebmc.Spec.NetworkRef {
+		return nil, err
+	}
+	return warnings, nil
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type VirtualMachineBMC.
@@ -196,4 +209,44 @@ func (v *VirtualMachineBMCCustomValidator) validateAuthSecretRef(ctx context.Con
 	}
 
 	return nil
+}
+
+// validateNetworkRef only warns about a missing NAD, since it may be created later.
+func (v *VirtualMachineBMCCustomValidator) validateNetworkRef(ctx context.Context, virtualmachinebmc *bmcv1beta1.VirtualMachineBMC) (admission.Warnings, error) {
+	nadNamespace, nadName, ok := virtualmachinebmc.Spec.NetworkRefNamespacedName(virtualmachinebmc.Namespace)
+	if !ok {
+		return nil, nil
+	}
+
+	if strings.Contains(nadName, "/") {
+		return nil, fmt.Errorf("spec.networkRef %q must be a NetworkAttachmentDefinition name or namespace/name", virtualmachinebmc.Spec.NetworkRef)
+	}
+	if errs := validation.IsDNS1123Label(nadNamespace); len(errs) > 0 {
+		return nil, fmt.Errorf("spec.networkRef %q has an invalid namespace: %s", virtualmachinebmc.Spec.NetworkRef, strings.Join(errs, "; "))
+	}
+	if errs := validation.IsDNS1123Subdomain(nadName); len(errs) > 0 {
+		return nil, fmt.Errorf("spec.networkRef %q has an invalid name: %s", virtualmachinebmc.Spec.NetworkRef, strings.Join(errs, "; "))
+	}
+
+	nadKey := nadNamespace + "/" + nadName
+	var warnings admission.Warnings
+	if nadNamespace != virtualmachinebmc.Namespace {
+		warnings = append(warnings, fmt.Sprintf("spec.networkRef references NetworkAttachmentDefinition %q in another namespace; "+
+			"enable Multus namespaceIsolation to restrict cross-namespace network attachments", nadKey))
+	}
+
+	nad := &unstructured.Unstructured{}
+	nad.SetGroupVersionKind(bmcv1beta1.NetworkAttachmentDefinitionGVK)
+	err := v.Client.Get(ctx, client.ObjectKey{Namespace: nadNamespace, Name: nadName}, nad)
+	switch {
+	case err == nil:
+	case meta.IsNoMatchError(err):
+		warnings = append(warnings, "NetworkAttachmentDefinition CRD not found; Multus must be installed for spec.networkRef to take effect")
+	case apierrors.IsNotFound(err):
+		warnings = append(warnings, fmt.Sprintf("NetworkAttachmentDefinition %q not found; the virtBMC Pod will not start until it exists", nadKey))
+	default:
+		virtualmachinebmclog.Error(err, "unable to get NetworkAttachmentDefinition", "networkAttachmentDefinition", nadKey)
+	}
+
+	return warnings, nil
 }
