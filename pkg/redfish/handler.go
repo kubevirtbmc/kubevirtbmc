@@ -2,6 +2,7 @@ package redfish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -14,6 +15,10 @@ import (
 	"kubevirt.io/kubevirtbmc/pkg/session"
 	"kubevirt.io/kubevirtbmc/pkg/util"
 )
+
+// errUnsupportedResetType is returned by ComputerSystemReset for a ResetType
+// that is valid in the Redfish enum but not one this service implements.
+var errUnsupportedResetType = errors.New("unsupported reset type")
 
 type handler struct {
 	rm resourcemanager.ResourceManager
@@ -350,7 +355,7 @@ func (h *handler) ComputerSystemReset(ctx context.Context, resetType server.Reso
 
 	powerAction, ok := powerActionMap[resetType]
 	if !ok {
-		return fmt.Errorf("unsupported reset type: %s", resetType)
+		return fmt.Errorf("%w: %s", errUnsupportedResetType, resetType)
 	}
 	return powerAction(ctx)
 }
