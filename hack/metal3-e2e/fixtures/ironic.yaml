@@ -7,6 +7,12 @@ metadata:
   namespace: ${IRONIC_NS}
 spec:
   version: "${IRONIC_VERSION}"
+  # Sushy's best-effort Session DELETE retries 10 times. Fail stale
+  # ClusterIPs quickly so session cleanup cannot block BMH deletion.
+  extraConfig:
+    - group: redfish
+      name: connect_timeout
+      value: "5"
   networking:
     interface: ${BR_NAME}
     ipAddress: "${BR_IP}" # PXE/DHCP on provisioning L2 only
