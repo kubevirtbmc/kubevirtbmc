@@ -312,6 +312,21 @@ func (s *APIService) RedfishV1SystemsComputerSystemIdActionsComputerSystemResetP
 	}
 
 	if err := s.handler.ComputerSystemReset(ctx, computerSystemV1220ResetRequestBody.ResetType); err != nil {
+		if errors.Is(err, errUnsupportedResetType) {
+			// A valid ResetType outside the advertised
+			// ResetType@Redfish.AllowableValues is a client error, not a
+			// service failure.
+			return server.Response(http.StatusBadRequest, server.RedfishError{
+				Error: server.RedfishErrorError{
+					MessageExtendedInfo: []server.MessageV120Message{
+						{
+							MessageId: "Base.1.10.ActionParameterValueNotInList",
+							Message:   "The value '" + string(computerSystemV1220ResetRequestBody.ResetType) + "' for the parameter ResetType in the action ComputerSystem.Reset is not in the list of acceptable values.",
+						},
+					},
+				},
+			}), nil
+		}
 		var retryable *resourcemanager.ErrRetryable
 		if errors.As(err, &retryable) {
 			// Signal a retryable state the way iLO does: OpenStack sushy
