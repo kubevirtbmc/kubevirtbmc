@@ -51,7 +51,7 @@ Regenerate with the matching target; never hand-edit. CI dirty-tree-checks the c
 ## Style
 
 - Keep changes scoped to the ask — no drive-by refactors or unrequested hardening.
-- Comments are the exception, and review will ask you to trim them. Write one only when it explains non-obvious rationale or complex business logic (concisely), feeds a tool (`//nolint:<rule> // reason`, `// +kubebuilder:` markers), or tracks follow-up work (TODO/FIXME with an issue link). If the code already says it, the comment goes.
+- Write a comment only where it is actually needed: non-obvious rationale or complex business logic, a tool directive (`//nolint:<rule> // reason`, `// +kubebuilder:` markers), or follow-up work (TODO/FIXME with an issue link). Keep it short — avoid large comment blocks; if the code already says it, the comment goes.
 - Tests prove behavior: a bug fix adds one regression test that fails without the fix. Test function, not structure.
 - Error messages name what failed and why; wrap the cause with `%w`.
 
