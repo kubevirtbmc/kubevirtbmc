@@ -1074,11 +1074,13 @@ var _ = Describe("Agent e2e", Ordered, func() {
 				verifyVMHasDataVolumeVolume(ctx, k8sClient, ns, agentVMName, agentVMName)
 			})
 
-			It("should return virtual media status after insert attempt", func() {
+			It("should read back the inserted image", func() {
 				out, err := testutil.RunCurlRedfish(ctx, config, ns, redfishSession("GET", "/Managers/BMC/VirtualMedia/CD1", ""))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(out).To(ContainSubstring("VirtualMedia"))
 				Expect(out).To(ContainSubstring("CD1"))
+				// syncVirtualMedia reads the URL from the DataVolume. A missing get verb is Forbidden here.
+				Expect(out).To(ContainSubstring("https://releases.ubuntu.com/noble/ubuntu-24.04.3-live-server-amd64.iso"))
 			})
 
 			It("should set boot to Cd and verify CDROM becomes boot index 1", func() {

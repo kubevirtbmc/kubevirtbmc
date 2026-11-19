@@ -46,6 +46,7 @@ rules:
   verbs:
   - create
   - delete
+  - get
 # Only needed for --virtual-media-ca-bundle-configmap.
 - apiGroups:
   - ""

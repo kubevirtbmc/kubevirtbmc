@@ -1,7 +1,9 @@
 package virtbmcagent
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	k8syaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -121,7 +124,7 @@ func standaloneRole(namespace string) *rbacv1.Role {
 			{
 				APIGroups: []string{"cdi.kubevirt.io"},
 				Resources: []string{"datavolumes"},
-				Verbs:     []string{"create", "delete"},
+				Verbs:     []string{"create", "delete", "get"},
 			},
 		},
 	}
@@ -246,6 +249,57 @@ func TestStandaloneRoleWatchesKubeVirtWithoutBMCPermissions(t *testing.T) {
 			t.Errorf("standalone role must watch %s", resource)
 		}
 	}
+	if !dataVolumeGet(standaloneRole("default").Rules) {
+		t.Error("standaloneRole must grant get on datavolumes")
+	}
+}
+
+// The bundled roles are what the agent ServiceAccount actually uses. A fake
+// client never returns Forbidden, so this only checks the manifests grant get.
+func TestBundledDataVolumeRolesAllowGet(t *testing.T) {
+	for _, path := range []string{
+		"../../config/standalone/standalone.yaml",
+		"../../config/virtbmc/role.yaml",
+	} {
+		if !dataVolumeGet(clusterRoleRules(t, path)) {
+			t.Errorf("%s must grant get on datavolumes", path)
+		}
+	}
+}
+
+func dataVolumeGet(rules []rbacv1.PolicyRule) bool {
+	for _, rule := range rules {
+		if slices.Contains(rule.APIGroups, "cdi.kubevirt.io") &&
+			slices.Contains(rule.Resources, "datavolumes") &&
+			slices.Contains(rule.Verbs, "get") {
+			return true
+		}
+	}
+	return false
+}
+
+func clusterRoleRules(t *testing.T, path string) []rbacv1.PolicyRule {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := k8syaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096)
+	for {
+		var role rbacv1.ClusterRole
+		err := dec.Decode(&role)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		if role.Kind == "ClusterRole" {
+			return role.Rules
+		}
+	}
+	t.Fatalf("%s has no ClusterRole", path)
+	return nil
 }
 
 func standaloneService(namespace string) *corev1.Service {
