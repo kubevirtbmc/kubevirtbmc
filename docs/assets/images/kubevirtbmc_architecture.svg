@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2800" height="1790" viewBox="0 0 2800 1790" font-family="'Noto Sans Mono', 'DejaVu Sans Mono', monospace">
+  <!-- Source for kubevirtbmc_architecture.png. Re-render it after editing
+       (for example with headless Chrome at 2800x1790, device scale factor 2). -->
+  <defs>
+    <marker id="arr" viewBox="0 0 20 20" refX="18" refY="10" markerWidth="20" markerHeight="20" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M2,2 L18,10 L2,18" fill="none" stroke="#111" stroke-width="2.5"/>
+    </marker>
+    <style>
+      .box { fill: #fff; stroke: #111; stroke-width: 3; }
+      .t { font-size: 30px; font-weight: 700; fill: #111; text-anchor: middle; }
+      .s { font-size: 24px; font-weight: 600; fill: #111; text-anchor: middle; }
+      .h { font-size: 32px; font-weight: 700; fill: #111; }
+      .l { font-size: 23px; font-weight: 600; fill: #111; }
+      .ln { fill: none; stroke: #111; stroke-width: 3; }
+      .dash { stroke-dasharray: 12 8; }
+      .mode { font-size: 30px; font-weight: 800; fill: #6b7280; }
+    </style>
+  </defs>
+
+  <rect width="2800" height="1790" fill="#fff"/>
+
+  <!-- Kubernetes cluster -->
+  <rect x="15" y="15" width="2320" height="1755" rx="18" fill="none" stroke="#2f6fe0" stroke-width="5"/>
+  <text x="50" y="75" font-size="40" font-weight="800" fill="#2f6fe0">⎈ Kubernetes cluster</text>
+
+  <!-- KubeVirt -->
+  <rect x="820" y="115" width="900" height="230" rx="16" fill="#eaf8ec" stroke="#111" stroke-width="3"/>
+  <text x="850" y="165" class="h">KubeVirt</text>
+  <rect x="850" y="200" width="360" height="110" rx="14" class="box"/>
+  <text x="1030" y="266" class="t">VirtualMachine</text>
+  <rect x="1310" y="200" width="370" height="110" rx="14" class="box"/>
+  <text x="1495" y="248" class="t">VirtualMachine</text>
+  <text x="1495" y="286" class="t">Instance</text>
+  <path d="M1210,255 H1308" class="ln" marker-end="url(#arr)"/>
+
+  <!-- CDI -->
+  <rect x="1820" y="200" width="400" height="110" rx="14" fill="#f6f7f9" stroke="#111" stroke-width="3" class="dash"/>
+  <text x="2020" y="246" class="s">CDI DataVolume</text>
+  <text x="2020" y="280" class="s">(virtual media ISO)</text>
+
+  <!-- ============ Managed mode ============ -->
+  <rect x="40" y="410" width="2270" height="770" rx="16" fill="none" stroke="#9ca3af" stroke-width="3" class="dash"/>
+  <text x="60" y="455" class="mode">MANAGED MODE</text>
+
+  <!-- Controller manager -->
+  <rect x="70" y="480" width="620" height="670" rx="16" fill="#e6f4fd" stroke="#111" stroke-width="3"/>
+  <text x="100" y="530" class="h">KubeVirtBMC controller manager</text>
+  <rect x="120" y="570" width="520" height="140" rx="14" class="box"/>
+  <text x="380" y="630" class="t">VirtualMachineBMC</text>
+  <text x="380" y="670" class="t">Controller</text>
+  <rect x="120" y="900" width="520" height="120" rx="14" class="box"/>
+  <text x="380" y="970" class="t">Service Controller</text>
+  <rect x="120" y="1050" width="520" height="80" rx="14" fill="#f6f7f9" stroke="#111" stroke-width="3"/>
+  <text x="380" y="1100" class="s">Mutating &amp; Validating Webhooks</text>
+
+  <!-- CR + Secret -->
+  <rect x="820" y="570" width="380" height="140" rx="14" fill="#fdf8dc" stroke="#111" stroke-width="3"/>
+  <text x="1010" y="622" class="t">VirtualMachineBMC CR</text>
+  <text x="1010" y="660" class="s">spec · status</text>
+  <text x="1010" y="690" class="s">(incl. bootOverride)</text>
+  <rect x="820" y="770" width="380" height="100" rx="14" fill="#fdf8dc" stroke="#111" stroke-width="3"/>
+  <text x="1010" y="812" class="s">Auth Secret</text>
+  <text x="1010" y="846" class="s">(username/password)</text>
+
+  <!-- Per-VM resources -->
+  <rect x="1300" y="480" width="960" height="670" rx="16" fill="#fdf3e6" stroke="#111" stroke-width="3" class="dash"/>
+  <text x="1330" y="530" class="h">Per-VM resources</text>
+  <rect x="1340" y="570" width="380" height="140" rx="14" class="box"/>
+  <text x="1530" y="620" class="t">virtbmc</text>
+  <text x="1530" y="656" class="t">Deployment</text>
+  <text x="1530" y="690" class="s">(Recreate)</text>
+  <rect x="1850" y="570" width="380" height="140" rx="14" fill="#f0effd" stroke="#111" stroke-width="3"/>
+  <text x="2040" y="630" class="t">virtbmc Pod</text>
+  <text x="2040" y="668" class="s">IPMI · Redfish</text>
+  <rect x="1340" y="790" width="380" height="110" rx="14" class="box"/>
+  <text x="1530" y="838" class="s">ServiceAccount</text>
+  <text x="1530" y="872" class="s">+ RoleBinding</text>
+  <rect x="1850" y="960" width="380" height="120" rx="14" class="box"/>
+  <text x="2040" y="1010" class="s">virtbmc Service</text>
+  <text x="2040" y="1046" class="s">623/UDP · 80/TCP</text>
+
+  <!-- Managed arrows -->
+  <path d="M642,630 H818" class="ln" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="730" y="612" class="l" text-anchor="middle">reconcile</text>
+  <path d="M640,690 H760 V1120 H1298" class="ln" marker-end="url(#arr)"/>
+  <text x="790" y="1108" class="l">creates &amp; owns</text>
+  <path d="M642,960 H1848" class="ln" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="790" y="995" class="l">watches Service, updates CR status</text>
+  <text x="790" y="1025" class="l">(ClusterIP / LB IP, ServiceReady)</text>
+  <path d="M1200,820 H1260 V650 H1338" class="ln dash" marker-end="url(#arr)"/>
+  <text x="1210" y="760" class="l">env</text>
+  <path d="M1720,640 H1848" class="ln" marker-end="url(#arr)"/>
+  <text x="1748" y="628" class="l">runs</text>
+  <path d="M2040,960 V712" class="ln" marker-end="url(#arr)"/>
+  <!-- agent reads/writes status.bootOverride and reads spec (virtual media config) -->
+  <path d="M1900,568 V445 H1100 V568" class="ln dash" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="1120" y="436" class="l">reads/writes status.bootOverride, reads spec</text>
+
+  <!-- ============ Standalone mode ============ -->
+  <rect x="40" y="1210" width="2270" height="535" rx="16" fill="none" stroke="#9ca3af" stroke-width="3" class="dash"/>
+  <text x="60" y="1255" class="mode">STANDALONE MODE</text>
+  <text x="60" y="1292" class="l" fill="#6b7280">virtbmc --standalone: no operator, CRD or cert-manager</text>
+
+  <rect x="120" y="1330" width="520" height="130" rx="14" class="box"/>
+  <text x="380" y="1380" class="s">ServiceAccount + RoleBinding</text>
+  <text x="380" y="1414" class="s">(ClusterRole</text>
+  <text x="380" y="1442" class="s">virtbmc-standalone-role)</text>
+  <text x="120" y="1530" class="l" fill="#374151">Applied by hand, one set per VM:</text>
+  <text x="120" y="1626" class="l" fill="#374151">Or run the static virtbmc binary</text>
+  <text x="120" y="1658" class="l" fill="#374151">anywhere, with --kubeconfig.</text>
+  <text x="120" y="1562" class="l" fill="#374151">config/standalone/standalone.yaml</text>
+
+  <rect x="820" y="1330" width="380" height="100" rx="14" fill="#fdf8dc" stroke="#111" stroke-width="3"/>
+  <text x="1010" y="1372" class="s">Auth Secret</text>
+  <text x="1010" y="1406" class="s">(username/password)</text>
+
+  <rect x="1340" y="1330" width="380" height="140" rx="14" class="box"/>
+  <text x="1530" y="1380" class="t">virtbmc</text>
+  <text x="1530" y="1416" class="t">Deployment</text>
+  <text x="1530" y="1450" class="s">(Recreate)</text>
+  <rect x="1850" y="1330" width="380" height="140" rx="14" fill="#f0effd" stroke="#111" stroke-width="3"/>
+  <text x="2040" y="1390" class="t">virtbmc Pod</text>
+  <text x="2040" y="1428" class="s">--standalone ns vm</text>
+
+  <rect x="1340" y="1580" width="380" height="120" rx="14" fill="#f6f7f9" stroke="#111" stroke-width="3"/>
+  <text x="1530" y="1628" class="s">State PVC</text>
+  <text x="1530" y="1662" class="s">(state.json)</text>
+  <rect x="1850" y="1580" width="380" height="120" rx="14" class="box"/>
+  <text x="2040" y="1630" class="s">virtbmc Service</text>
+  <text x="2040" y="1666" class="s">623/UDP · 80/TCP</text>
+
+  <path d="M1200,1380 H1338" class="ln dash" marker-end="url(#arr)"/>
+  <text x="1240" y="1368" class="l">env</text>
+  <path d="M1720,1400 H1848" class="ln" marker-end="url(#arr)"/>
+  <text x="1748" y="1388" class="l">runs</text>
+  <path d="M2040,1580 V1472" class="ln" marker-end="url(#arr)"/>
+  <path d="M1848,1450 H1785 V1640 H1722" class="ln dash" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="1770" y="1530" class="l" text-anchor="end">reads/writes boot override</text>
+
+  <!-- ============ Shared: agent -> KubeVirt / CDI ============ -->
+  <path d="M2000,570 V398 H1030 V312" class="ln" marker-end="url(#arr)"/>
+  <path d="M2232,1360 H2285 V398 H2000" class="ln"/>
+  <text x="1190" y="385" class="l">KubeVirt API: power · boot override &amp; restore · virtual media</text>
+  <path d="M2150,570 V312" class="ln dash" marker-end="url(#arr)"/>
+  <text x="2160" y="350" class="l">insert</text>
+  <text x="2160" y="378" class="l">media</text>
+
+  <!-- User -->
+  <rect x="2420" y="1100" width="350" height="130" rx="14" fill="#f6f7f9" stroke="#111" stroke-width="3"/>
+  <text x="2595" y="1158" class="s">User /</text>
+  <text x="2595" y="1192" class="s">Provisioning tool</text>
+  <text x="2440" y="1080" class="l">IPMI / Redfish</text>
+  <path d="M2420,1140 H2370 V1020 H2232" class="ln" marker-end="url(#arr)"/>
+  <path d="M2420,1190 H2370 V1640 H2232" class="ln" marker-end="url(#arr)"/>
+</svg>

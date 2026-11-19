@@ -44,9 +44,24 @@ development environments, and demos, which saves hardware and shortens bring-up 
   <img src="docs/assets/images/kubevirtbmc_architecture.png" alt="KubeVirtBMC architecture" width="900"/>
 </div>
 
+KubeVirtBMC runs in one of two modes:
+
+**Managed mode** (operator + CRD):
+
 1. You create a `VirtualMachineBMC` that references a `VirtualMachine` and a credentials `Secret`.
 2. The **controller manager** reconciles it into a per-VM **virtbmc** Deployment, Service, and RBAC.
-3. The **virtbmc** pod serves IPMI and Redfish. It translates each request into KubeVirt API calls on the target VM.
+3. The **virtbmc** pod serves IPMI and Redfish. It translates each request into KubeVirt API calls on the target VM
+   and keeps the boot override state in the `VirtualMachineBMC` status.
+
+**Standalone mode** (`virtbmc --standalone`, no operator, CRD, or cert-manager):
+
+1. Run the agent for one VM, either:
+   - in the cluster, by applying a per-VM Deployment, Service, Secret, ServiceAccount, and RoleBinding, for example from
+     [`config/standalone/standalone.yaml`](config/standalone/standalone.yaml), or
+   - anywhere else, with the static `virtbmc` binary from the [releases](https://github.com/kubevirtbmc/kubevirtbmc/releases)
+     and a kubeconfig (`--kubeconfig`).
+2. **virtbmc** takes the VM namespace and name as arguments and serves IPMI and Redfish for that VM.
+3. Boot override state is kept in a local JSON file (`--state-file`), on a persistent volume when running in the cluster.
 
 ## Documentation
 
