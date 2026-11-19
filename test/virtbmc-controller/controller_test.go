@@ -732,7 +732,7 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 
-		It("should report a missing NetworkAttachmentDefinition and keep the current Pod serving", func() {
+		It("should report a missing NetworkAttachmentDefinition and delete the serving Pod", func() {
 			podBefore, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -743,22 +743,27 @@ var _ = Describe("KubeVirtBMC controller manager", Ordered, func() {
 			Eventually(util.HasBMCCondition(ctx, k8sClient, util.E2ENamespace,
 				bmcv1.ConditionNetworkAttached, metav1.ConditionFalse, "NetworkAttachmentDefinitionNotFound"), timeout, interval).Should(BeTrue())
 
-			By("verifying the previous agent Pod is still Running and Ready")
-			pod := &corev1.Pod{}
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(podBefore), pod)).To(Succeed())
-			Expect(pod.UID).To(Equal(podBefore.UID))
-			Expect(pod.DeletionTimestamp).To(BeNil())
-			Expect(pod.Status.Conditions).To(ContainElement(And(
-				HaveField("Type", corev1.PodReady),
-				HaveField("Status", corev1.ConditionTrue),
-			)))
-
-			By("removing NetworkRef so the stuck rollout is reverted")
-			setNetworkRef("")
+			// Recreate deletes the serving Pod before the replacement starts.
+			By("verifying the serving Pod is deleted")
 			Eventually(func() bool {
-				pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
-				return err == nil && pod.UID == podBefore.UID
-			}, timeout, interval).Should(BeTrue(), "only the previous agent Pod should remain")
+				pod := &corev1.Pod{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(podBefore), pod)
+				return errors.IsNotFound(err) || (err == nil && pod.DeletionTimestamp != nil)
+			}, timeout, interval).Should(BeTrue(), "Recreate should delete the serving Pod")
+
+			By("removing NetworkRef so a replacement Pod can serve")
+			setNetworkRef("")
+			Eventually(util.PodRunningAndReadyWithNewUID(ctx, k8sClient, util.E2ENamespace, podBefore.UID), timeout, interval).Should(BeTrue(), "a new agent Pod should become Running and Ready")
+			pod, err := util.AgentPod(ctx, k8sClient, util.E2ENamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pod.Annotations).NotTo(HaveKey(virtualmachinebmccontroller.MultusNetworksAnnotation))
+			Eventually(func() bool {
+				var bmc bmcv1.VirtualMachineBMC
+				if err := k8sClient.Get(ctx, util.BMCKey(util.E2ENamespace), &bmc); err != nil {
+					return false
+				}
+				return bmc.Status.Network == nil && meta.FindStatusCondition(bmc.Status.Conditions, bmcv1.ConditionNetworkAttached) == nil
+			}, timeout, interval).Should(BeTrue())
 		})
 	})
 })

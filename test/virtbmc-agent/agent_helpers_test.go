@@ -575,10 +575,9 @@ func waitForAgentDeploymentReady(ctx context.Context, k8sClient client.Client, n
 			return false
 		}
 
-		// Exact counts, not >=: with the default RollingUpdate surge, the old
-		// and new pods are briefly both Ready and both in the Service
-		// endpoints. Returning on >= would let a following request hit the old
-		// pod (e.g. stale --storage-class args).
+		// Exact counts, not >=. A terminating Pod can still be Ready while
+		// Recreate brings up its replacement; >= would let the next request
+		// hit the old Pod.
 		return deployment.Status.UpdatedReplicas == desiredReplicas &&
 			deployment.Status.ReadyReplicas == desiredReplicas &&
 			deployment.Status.AvailableReplicas == desiredReplicas
