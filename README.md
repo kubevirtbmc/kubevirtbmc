@@ -48,6 +48,7 @@ KubeVirtBMC runs in one of two modes:
 
 **Managed mode** (operator + CRD):
 
+
 1. You create a `VirtualMachineBMC` that references a `VirtualMachine` and a credentials `Secret`.
 2. The **controller manager** reconciles it into a per-VM **virtbmc** Deployment, Service, and RBAC.
 3. The **virtbmc** pod serves IPMI and Redfish. It translates each request into KubeVirt API calls on the target VM
