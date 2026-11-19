@@ -79,5 +79,73 @@ jobs:
         load: true
         tags: ${{ env.REPO }}/${{ env.AGENT }}:${{ env.VERSION }}
         labels: ${{ steps.meta.outputs.labels }}
-    - name: Run end-to-end testing
-      run: make local-e2e-test
+    # Hand the freshly built images to the e2e jobs as artifacts: every job
+    # runs on a fresh runner with an empty docker store.
+    - name: Export e2e images
+      run: |
+        docker save -o ${{ runner.temp }}/manager-image.tar ${{ env.REPO }}/${{ env.MANAGER }}:${{ env.VERSION }}
+        docker save -o ${{ runner.temp }}/agent-image.tar ${{ env.REPO }}/${{ env.AGENT }}:${{ env.VERSION }}
+    - name: Upload e2e images
+      uses: actions/upload-artifact@v4
+      with:
+        name: e2e-images
+        path: |
+          ${{ runner.temp }}/manager-image.tar
+          ${{ runner.temp }}/agent-image.tar
+        retention-days: 1
+        if-no-files-found: error
+
+  e2e-managed:
+    needs: build-pr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      REPO: kubevirtbmc
+      VERSION: pr-${{ github.event.number }}-head
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: Download e2e images
+      uses: actions/download-artifact@v4
+      with:
+        name: e2e-images
+        path: ${{ runner.temp }}
+    - name: Load images into docker
+      run: |
+        docker load -i ${{ runner.temp }}/manager-image.tar
+        docker load -i ${{ runner.temp }}/agent-image.tar
+    - name: Run managed end-to-end testing
+      run: make e2e-setup e2e-test e2e-teardown
+
+  # Standalone needs only the agent image and none of the
+  # cert-manager/CRD/controller setup, so it gets its own leg: a failure here
+  # reruns without the managed suite and vice versa.
+  e2e-standalone:
+    needs: build-pr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      REPO: kubevirtbmc
+      VERSION: pr-${{ github.event.number }}-head
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: Download e2e images
+      uses: actions/download-artifact@v4
+      with:
+        name: e2e-images
+        path: ${{ runner.temp }}
+    - name: Load images into docker
+      run: docker load -i ${{ runner.temp }}/agent-image.tar
+    - name: Run standalone end-to-end testing
+      run: make e2e-setup e2e-test-standalone e2e-teardown
